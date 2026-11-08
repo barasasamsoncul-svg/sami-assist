@@ -81,11 +81,26 @@ function isDocumentSatisfied(
   );
 }
 
+function isDocumentChangesRequested(
+  document: RunnerUploadedDocument | undefined,
+) {
+  return (
+    document?.reviewStatus === "rejected" ||
+    document?.reviewStatus === "resubmission_required"
+  );
+}
+
 function getDocumentState(
   document: RunnerUploadedDocument | undefined,
 ): ReviewDocumentRow["status"] {
-  if (isDocumentSatisfied(document)) return "complete";
-  if (document?.reviewStatus === "rejected") return "rejected";
+  if (isDocumentSatisfied(document)) {
+    return "complete";
+  }
+
+  if (isDocumentChangesRequested(document)) {
+    return "rejected";
+  }
+
   return "missing";
 }
 
@@ -123,6 +138,7 @@ function buildDocumentRows(
       documents,
       NATIONAL_ID_FRONT_KEY,
     );
+
     const backDocument = getLatestDocument(
       documents,
       NATIONAL_ID_BACK_KEY,
@@ -138,10 +154,20 @@ function buildDocumentRows(
           ? "rejected"
           : "missing";
 
+    const frontDetail =
+      frontState === "rejected"
+        ? frontDocument?.rejectionReason || "Replacement required"
+        : getDocumentStateLabel(frontState);
+
+    const backDetail =
+      backState === "rejected"
+        ? backDocument?.rejectionReason || "Replacement required"
+        : getDocumentStateLabel(backState);
+
     rows.push({
       key: "national_identity",
       title: "National ID",
-      detail: `Front: ${getDocumentStateLabel(frontState)} · Back: ${getDocumentStateLabel(backState)}`,
+      detail: `Front: ${frontDetail} · Back: ${backDetail}`,
       status: groupStatus,
       required: true,
     });
@@ -160,14 +186,17 @@ function buildDocumentRows(
       requirement.key,
     );
 
+    const documentState = getDocumentState(document);
+
     rows.push({
       key: requirement.key,
       title: requirement.title,
       detail:
-        document?.reviewStatus === "rejected"
-          ? document.rejectionReason || "Please upload this document again."
-          : getDocumentStateLabel(getDocumentState(document)),
-      status: getDocumentState(document),
+        documentState === "rejected"
+          ? document?.rejectionReason ||
+            "Please upload this document again."
+          : getDocumentStateLabel(documentState),
+      status: documentState,
       required: true,
     });
   }
@@ -264,8 +293,6 @@ export default function RunnerApplicationReviewScreen() {
   const [error, setError] = useState<string | null>(null);
 
   const goToDocuments = useCallback(() => {
-    // Return to Documents if it exists in history.
-    // If it does not, replace Review with Documents.
     router.dismissTo("/(auth)/documents");
   }, [router]);
 
@@ -301,8 +328,6 @@ export default function RunnerApplicationReviewScreen() {
     }, [loadReview]),
   );
 
-  // Android hardware Back follows the same rule as the
-  // visible Back control: return to the Documents checklist.
   useFocusEffect(
     useCallback(() => {
       const subscription = BackHandler.addEventListener(
@@ -382,9 +407,6 @@ export default function RunnerApplicationReviewScreen() {
     try {
       await submitRunnerOnboarding();
 
-      // Remove the onboarding history before opening the
-      // Operations waiting screen. Back must not reveal Login,
-      // Register, Welcome or the completed application flow.
       router.dismissAll();
       router.replace("/(app)/profile-setup?mode=status");
     } catch (cause) {
@@ -394,7 +416,6 @@ export default function RunnerApplicationReviewScreen() {
           : "Your application could not be submitted. Please try again.",
       );
 
-      // Refresh the server's view of the application.
       await loadReview();
     } finally {
       setSubmitting(false);
@@ -532,7 +553,12 @@ export default function RunnerApplicationReviewScreen() {
             />
           </View>
 
-          <Text style={[styles.progressDescription, { color: colors.textMuted }]}>
+          <Text
+            style={[
+              styles.progressDescription,
+              { color: colors.textMuted },
+            ]}
+          >
             {missingCount === 0
               ? "All required documents have been submitted."
               : `${missingCount} required document item${missingCount === 1 ? "" : "s"} still need attention.`}
@@ -545,10 +571,7 @@ export default function RunnerApplicationReviewScreen() {
             { backgroundColor: colors.surface, borderColor: colors.border },
           ]}
         >
-          <SectionHeading
-            title="Personal details"
-            colors={colors}
-          />
+          <SectionHeading title="Personal details" colors={colors} />
 
           <DetailRow
             label="Full name"
@@ -622,7 +645,10 @@ export default function RunnerApplicationReviewScreen() {
 
           <DetailRow
             label="Transport"
-            value={(VEHICLE_LABELS[vehicleType] ?? vehicleType) || "Not selected"}
+            value={
+              (VEHICLE_LABELS[vehicleType] ?? vehicleType) ||
+              "Not selected"
+            }
             colors={colors}
           />
 
@@ -758,7 +784,7 @@ export default function RunnerApplicationReviewScreen() {
                 !hasCategories ? "Select at least one task category." : null,
                 !transportComplete ? "Complete your transport details." : null,
                 !requiredDocumentsComplete
-                  ? "Submit every required document."
+                  ? "Submit every required document. Documents marked rejected or resubmission required must be replaced."
                   : null,
               ]
                 .filter(Boolean)

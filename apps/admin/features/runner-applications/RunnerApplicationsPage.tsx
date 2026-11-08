@@ -1,4 +1,3 @@
-
 "use client";
 
 import Link from "next/link";
@@ -39,6 +38,16 @@ type ApplicationsResponse = {
   applications?: RunnerApplication[];
 };
 
+type CleanupResponse = {
+  ok?: boolean;
+  error?: string;
+  message?: string;
+  processed?: number;
+  deleted?: number;
+  failed?: number;
+  remaining?: number;
+};
+
 const FILTERS: { value: ApplicationStatus; label: string }[] = [
   { value: "submitted", label: "Submitted" },
   { value: "pending", label: "Pending" },
@@ -76,6 +85,8 @@ export default function RunnerApplicationsPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [logoutBusy, setLogoutBusy] = useState(false);
+  const [cleanupBusy, setCleanupBusy] = useState(false);
+  const [cleanupMessage, setCleanupMessage] = useState("");
 
   const loadApplications = useCallback(async () => {
     setLoading(true);
@@ -124,6 +135,79 @@ export default function RunnerApplicationsPage() {
   useEffect(() => {
     void loadApplications();
   }, [loadApplications]);
+
+  async function retryStorageCleanup() {
+    if (cleanupBusy || loading) {
+      return;
+    }
+
+    setCleanupBusy(true);
+    setCleanupMessage("");
+    setError("");
+
+    try {
+      const response = await fetch(
+        "/api/admin/runner-applications/document-storage-cleanup",
+        {
+          method: "POST",
+          credentials: "same-origin",
+          cache: "no-store",
+          headers: {
+            Accept: "application/json",
+          },
+        },
+      );
+
+      const data =
+        (await response.json().catch(() => ({}))) as CleanupResponse;
+
+      if (response.status === 401) {
+        window.location.assign("/admin/login");
+        return;
+      }
+
+      if (!response.ok || data.ok === false) {
+        throw new Error(
+          data.error || "Document storage cleanup could not be retried.",
+        );
+      }
+
+      const summary: string[] = [];
+
+      if (typeof data.processed === "number") {
+        summary.push(`${data.processed} queued item(s) processed`);
+      }
+
+      if (typeof data.deleted === "number") {
+        summary.push(`${data.deleted} file(s) removed`);
+      }
+
+      if (typeof data.failed === "number") {
+        summary.push(`${data.failed} deletion(s) still need attention`);
+      }
+
+      if (typeof data.remaining === "number") {
+        summary.push(`${data.remaining} item(s) remaining`);
+      }
+
+      setCleanupMessage(
+        data.message ||
+          (summary.length > 0
+            ? summary.join(" · ")
+            : "The storage cleanup retry completed. Refresh the list to review the latest document statuses."),
+      );
+
+      await loadApplications();
+    } catch (cause) {
+      setError(
+        cause instanceof Error
+          ? cause.message
+          : "Unable to retry document storage cleanup.",
+      );
+    } finally {
+      setCleanupBusy(false);
+    }
+  }
 
   async function logout() {
     if (logoutBusy) return;
@@ -238,8 +322,19 @@ export default function RunnerApplicationsPage() {
               <button
                 type="button"
                 className="button ghost"
+                onClick={retryStorageCleanup}
+                disabled={cleanupBusy || loading}
+              >
+                {cleanupBusy
+                  ? "Retrying cleanup…"
+                  : "Retry document storage cleanup"}
+              </button>
+
+              <button
+                type="button"
+                className="button ghost"
                 onClick={() => void loadApplications()}
-                disabled={loading}
+                disabled={loading || cleanupBusy}
               >
                 {loading ? "Refreshing…" : "Refresh"}
               </button>
@@ -266,6 +361,12 @@ export default function RunnerApplicationsPage() {
             {error && (
               <div className="alert error" role="alert">
                 {error}
+              </div>
+            )}
+
+            {cleanupMessage && (
+              <div className="alert" role="status">
+                {cleanupMessage}
               </div>
             )}
 
@@ -370,7 +471,7 @@ export default function RunnerApplicationsPage() {
                             <small>
                               {application.pendingDocumentCount} pending
                               {" · "}
-                              {application.rejectedDocumentCount} rejected
+                              {application.rejectedDocumentCount} need attention
                             </small>
                           </td>
 

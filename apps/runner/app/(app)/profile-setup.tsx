@@ -16,6 +16,13 @@ import {
   getRunnerOnboarding,
 } from "@/api";
 import type { RunnerOnboardingData } from "@/api";
+import {
+  getRunnerReviewFeedback,
+} from "@/review";
+import type {
+  RunnerReviewFeedback,
+  RunnerDocumentReview,
+} from "@/review";
 import { useRunnerTheme } from "@/theme";
 
 type ThemeColors = ReturnType<typeof useRunnerTheme>["colors"];
@@ -72,6 +79,72 @@ function getResumeRoute(data: RunnerOnboardingData) {
   return "/(auth)/review" as const;
 }
 
+function hasOutstandingReviewAction(
+  data: RunnerOnboardingData,
+  feedback: RunnerReviewFeedback | null,
+) {
+  if (!feedback || data.runner.verificationStatus === "submitted") {
+    return false;
+  }
+
+  if (feedback.applicationReview?.decision === "rejected") {
+    return true;
+  }
+
+  return feedback.documentReviews.some((review) => {
+    if (
+      review.decision !== "rejected" &&
+      review.decision !== "resubmission_required"
+    ) {
+      return false;
+    }
+
+    if (!review.requirementKey) {
+      return true;
+    }
+
+    const currentDocument = data.documents.find(
+      (document) =>
+        document.requirementKey === review.requirementKey,
+    );
+
+    if (!currentDocument) {
+      return true;
+    }
+
+    const currentStatus = String(currentDocument.reviewStatus);
+
+    return (
+      currentStatus !== "pending" &&
+      currentStatus !== "approved"
+    );
+  });
+}
+
+function formatReviewDate(value: string) {
+  const date = new Date(value);
+
+  if (Number.isNaN(date.getTime())) {
+    return value;
+  }
+
+  return date.toLocaleString();
+}
+
+function getDocumentDecisionLabel(
+  decision: RunnerDocumentReview["decision"],
+) {
+  if (decision === "approved") {
+    return "APPROVED";
+  }
+
+  if (decision === "resubmission_required") {
+    return "RESUBMISSION REQUIRED";
+  }
+
+  return "REJECTED";
+}
+
 function StatusInfoRow({
   label,
   value,
@@ -94,65 +167,243 @@ function StatusInfoRow({
   );
 }
 
+function ReviewReasonCard({
+  feedback,
+  colors,
+}: {
+  feedback: RunnerReviewFeedback | null;
+  colors: ThemeColors;
+}) {
+  if (!feedback) {
+    return null;
+  }
+
+  const applicationReview = feedback.applicationReview;
+  const documentReviews = feedback.documentReviews.slice(0, 10);
+
+  if (!applicationReview && documentReviews.length === 0) {
+    return null;
+  }
+
+  return (
+    <View
+      style={[
+        styles.reviewCard,
+        {
+          backgroundColor: colors.surface,
+          borderColor: colors.border,
+        },
+      ]}
+    >
+      <Text style={[styles.cardTitle, { color: colors.text }]}>
+        Operations review feedback
+      </Text>
+
+      <Text style={[styles.reviewIntro, { color: colors.textMuted }]}>
+        Review decisions and instructions from SaMi Operations appear here.
+      </Text>
+
+      {applicationReview ? (
+        <View
+          style={[
+            styles.applicationReview,
+            { backgroundColor: colors.dangerSoft },
+          ]}
+        >
+          <View style={styles.reviewHeadingRow}>
+            <Text style={[styles.reviewItemTitle, { color: colors.text }]}>
+              Application decision
+            </Text>
+
+            <Text style={[styles.reviewDecision, { color: colors.red }]}>
+              REJECTED
+            </Text>
+          </View>
+
+          <Text style={[styles.reviewReason, { color: colors.text }]}>
+            {applicationReview.reason ||
+              "Your application requires changes before it can be submitted again."}
+          </Text>
+
+          <Text style={[styles.reviewDate, { color: colors.textMuted }]}>
+            Reviewed {formatReviewDate(applicationReview.reviewedAt)}
+          </Text>
+        </View>
+      ) : null}
+
+      {documentReviews.length > 0 ? (
+        <View style={styles.documentReviewList}>
+          <Text style={[styles.reviewSectionTitle, { color: colors.text }]}>
+            Document decisions
+          </Text>
+
+          {documentReviews.map((review) => {
+            const approved = review.decision === "approved";
+
+            return (
+              <View
+                key={review.reviewId}
+                style={[
+                  styles.documentReviewItem,
+                  {
+                    borderColor: colors.border,
+                    backgroundColor: colors.paper,
+                  },
+                ]}
+              >
+                <View style={styles.reviewHeadingRow}>
+                  <Text
+                    style={[
+                      styles.reviewItemTitle,
+                      { color: colors.text },
+                    ]}
+                  >
+                    {review.requirementTitle || "Verification document"}
+                  </Text>
+
+                  <Text
+                    style={[
+                      styles.reviewDecision,
+                      {
+                        color: approved
+                          ? colors.blue
+                          : colors.red,
+                      },
+                    ]}
+                  >
+                    {getDocumentDecisionLabel(review.decision)}
+                  </Text>
+                </View>
+
+                {review.reason ? (
+                  <Text
+                    style={[styles.reviewReason, { color: colors.text }]}
+                  >
+                    {review.reason}
+                  </Text>
+                ) : (
+                  <Text
+                    style={[
+                      styles.reviewReason,
+                      { color: colors.textMuted },
+                    ]}
+                  >
+                    {approved
+                      ? "This document has been approved."
+                      : "Please review this document and submit a replacement."}
+                  </Text>
+                )}
+
+                <Text style={[styles.reviewDate, { color: colors.textMuted }]}>
+                  Reviewed {formatReviewDate(review.reviewedAt)}
+                </Text>
+
+                {!approved && review.fileRemovedFromStorage ? (
+                  <Text
+                    style={[
+                      styles.storageNotice,
+                      { color: colors.textMuted },
+                    ]}
+                  >
+                    {review.deletionPending
+                      ? "The previous file is queued for storage cleanup."
+                      : "The previous file has been removed from storage. Submit a new file to replace it."}
+                  </Text>
+                ) : null}
+              </View>
+            );
+          })}
+        </View>
+      ) : null}
+    </View>
+  );
+}
+
 export default function RunnerApplicationStatusScreen() {
   const router = useRouter();
   const { colors } = useRunnerTheme();
 
   const [data, setData] = useState<RunnerOnboardingData | null>(null);
+  const [feedback, setFeedback] = useState<RunnerReviewFeedback | null>(null);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [feedbackError, setFeedbackError] = useState<string | null>(null);
   const [signingOut, setSigningOut] = useState(false);
 
-  const loadStatus = useCallback(async (refresh = false) => {
-    if (refresh) {
-      setRefreshing(true);
-    } else {
-      setLoading(true);
-    }
-
-    setError(null);
-
-    try {
-      const result = await getRunnerOnboarding();
-      const runner = result.runner;
-
-      if (
-        runner.accountStatus === "active" &&
-        runner.verificationStatus === "approved"
-      ) {
-        router.replace("/(app)");
-        return;
+  const loadStatus = useCallback(
+    async (refresh = false) => {
+      if (refresh) {
+        setRefreshing(true);
+      } else {
+        setLoading(true);
       }
 
-      if (
-        runner.accountStatus === "suspended" ||
-        runner.accountStatus === "closed"
-      ) {
+      setError(null);
+      setFeedbackError(null);
+
+      try {
+        const result = await getRunnerOnboarding();
+        const runner = result.runner;
+
+        let reviewResult: RunnerReviewFeedback | null = null;
+
+        try {
+          reviewResult = await getRunnerReviewFeedback();
+          setFeedback(reviewResult);
+        } catch (cause) {
+          setFeedback(null);
+          setFeedbackError(
+            cause instanceof Error
+              ? cause.message
+              : "Review feedback could not be loaded.",
+          );
+        }
+
+        if (
+          runner.accountStatus === "active" &&
+          runner.verificationStatus === "approved"
+        ) {
+          router.replace("/(app)");
+          return;
+        }
+
+        if (
+          runner.accountStatus === "suspended" ||
+          runner.accountStatus === "closed"
+        ) {
+          setData(result);
+          return;
+        }
+
+        const outstandingReviewAction = hasOutstandingReviewAction(
+          result,
+          reviewResult,
+        );
+
+        if (
+          result.onboardingStatus !== "pending_review" &&
+          runner.verificationStatus !== "submitted" &&
+          !outstandingReviewAction
+        ) {
+          router.replace(getResumeRoute(result));
+          return;
+        }
+
         setData(result);
-        return;
+      } catch (cause) {
+        setError(
+          cause instanceof Error
+            ? cause.message
+            : "Your application status could not be loaded.",
+        );
+      } finally {
+        setLoading(false);
+        setRefreshing(false);
       }
-
-      if (
-        result.onboardingStatus !== "pending_review" &&
-        runner.verificationStatus !== "submitted"
-      ) {
-        router.replace(getResumeRoute(result));
-        return;
-      }
-
-      setData(result);
-    } catch (cause) {
-      setError(
-        cause instanceof Error
-          ? cause.message
-          : "Your application status could not be loaded.",
-      );
-    } finally {
-      setLoading(false);
-      setRefreshing(false);
-    }
-  }, [router]);
+    },
+    [router],
+  );
 
   useFocusEffect(
     useCallback(() => {
@@ -169,11 +420,7 @@ export default function RunnerApplicationStatusScreen() {
     setError(null);
 
     try {
-      // Remove the saved authentication session.
       await clearRunnerSession();
-
-      // Remove the signed-in application history and open
-      // Welcome in explicit signed-out mode.
       router.dismissAll();
 
       router.replace({
@@ -188,9 +435,22 @@ export default function RunnerApplicationStatusScreen() {
     }
   }
 
+  function continueApplication() {
+    if (!data) {
+      return;
+    }
+
+    router.replace(getResumeRoute(data));
+  }
+
   const restricted =
     data?.runner.accountStatus === "suspended" ||
     data?.runner.accountStatus === "closed";
+
+  const outstandingReviewAction =
+    data && feedback
+      ? hasOutstandingReviewAction(data, feedback)
+      : false;
 
   const submittedDocuments =
     data?.documents.filter(
@@ -284,6 +544,26 @@ export default function RunnerApplicationStatusScreen() {
     );
   }
 
+  const statusTitle = restricted
+    ? "Account restricted"
+    : outstandingReviewAction
+      ? "Changes requested"
+      : "Application under review";
+
+  const statusMessage = restricted
+    ? "Your Runner account is currently not available. Contact SaMi Operations for assistance."
+    : outstandingReviewAction
+      ? "SaMi Operations has reviewed your application. Read the feedback below and update the requested information or documents."
+      : "Your application has been submitted successfully. SaMi Operations is reviewing your details and documents.";
+
+  const badgeLabel = restricted
+    ? data.runner.accountStatus === "suspended"
+      ? "SUSPENDED"
+      : "CLOSED"
+    : outstandingReviewAction
+      ? "ACTION REQUIRED"
+      : "PENDING OPERATIONS REVIEW";
+
   return (
     <SafeAreaView
       style={[styles.safeArea, { backgroundColor: colors.paper }]}
@@ -316,19 +596,25 @@ export default function RunnerApplicationStatusScreen() {
           style={[
             styles.statusIcon,
             {
-              backgroundColor: restricted
-                ? colors.dangerSoft
-                : colors.warningSoft,
+              backgroundColor:
+                restricted || outstandingReviewAction
+                  ? colors.dangerSoft
+                  : colors.warningSoft,
             },
           ]}
         >
           <Text
             style={[
               styles.statusIconText,
-              { color: restricted ? colors.red : colors.warning },
+              {
+                color:
+                  restricted || outstandingReviewAction
+                    ? colors.red
+                    : colors.warning,
+              },
             ]}
           >
-            {restricted ? "!" : "…"}
+            {restricted || outstandingReviewAction ? "!" : "…"}
           </Text>
         </View>
 
@@ -337,24 +623,21 @@ export default function RunnerApplicationStatusScreen() {
         </Text>
 
         <Text style={[styles.title, { color: colors.text }]}>
-          {restricted
-            ? "Account restricted"
-            : "Application under review"}
+          {statusTitle}
         </Text>
 
         <Text style={[styles.bodyText, { color: colors.textMuted }]}>
-          {restricted
-            ? "Your Runner account is currently not available. Contact SaMi Operations for assistance."
-            : "Your application has been submitted successfully. SaMi Operations is reviewing your details and documents."}
+          {statusMessage}
         </Text>
 
         <View
           style={[
             styles.statusBadge,
             {
-              backgroundColor: restricted
-                ? colors.dangerSoft
-                : colors.warningSoft,
+              backgroundColor:
+                restricted || outstandingReviewAction
+                  ? colors.dangerSoft
+                  : colors.warningSoft,
             },
           ]}
         >
@@ -362,9 +645,10 @@ export default function RunnerApplicationStatusScreen() {
             style={[
               styles.statusDot,
               {
-                backgroundColor: restricted
-                  ? colors.red
-                  : colors.warning,
+                backgroundColor:
+                  restricted || outstandingReviewAction
+                    ? colors.red
+                    : colors.warning,
               },
             ]}
           />
@@ -372,14 +656,15 @@ export default function RunnerApplicationStatusScreen() {
           <Text
             style={[
               styles.statusBadgeText,
-              { color: restricted ? colors.red : colors.warning },
+              {
+                color:
+                  restricted || outstandingReviewAction
+                    ? colors.red
+                    : colors.warning,
+              },
             ]}
           >
-            {restricted
-              ? data.runner.accountStatus === "suspended"
-                ? "SUSPENDED"
-                : "CLOSED"
-              : "PENDING OPERATIONS REVIEW"}
+            {badgeLabel}
           </Text>
         </View>
 
@@ -427,7 +712,11 @@ export default function RunnerApplicationStatusScreen() {
           />
         </View>
 
-        {!restricted ? (
+        {outstandingReviewAction ? (
+          <ReviewReasonCard feedback={feedback} colors={colors} />
+        ) : null}
+
+        {!restricted && !outstandingReviewAction ? (
           <View
             style={[
               styles.noticeCard,
@@ -446,6 +735,20 @@ export default function RunnerApplicationStatusScreen() {
           </View>
         ) : null}
 
+        {feedbackError ? (
+          <View
+            style={[
+              styles.feedbackErrorCard,
+              { backgroundColor: colors.blueSoft },
+            ]}
+          >
+            <Text style={[styles.feedbackErrorText, { color: colors.textMuted }]}>
+              Review feedback could not be refreshed. Use the refresh button
+              to try again.
+            </Text>
+          </View>
+        ) : null}
+
         {error ? (
           <View
             style={[
@@ -459,19 +762,44 @@ export default function RunnerApplicationStatusScreen() {
           </View>
         ) : null}
 
+        {!restricted && outstandingReviewAction ? (
+          <Pressable
+            onPress={continueApplication}
+            disabled={refreshing || signingOut}
+            style={[
+              styles.primaryButton,
+              { backgroundColor: colors.blue },
+              (refreshing || signingOut) && styles.disabled,
+            ]}
+          >
+            <Text style={styles.primaryButtonText}>
+              Continue application
+            </Text>
+          </Pressable>
+        ) : null}
+
         <Pressable
           onPress={() => void loadStatus(true)}
           disabled={refreshing || signingOut}
           style={[
             styles.primaryButton,
-            { backgroundColor: colors.blue },
+            { backgroundColor: outstandingReviewAction ? colors.surface : colors.blue },
+            outstandingReviewAction && {
+              borderWidth: 1,
+              borderColor: colors.border,
+            },
             (refreshing || signingOut) && styles.disabled,
           ]}
         >
           {refreshing ? (
-            <ActivityIndicator color="#FFFFFF" />
+            <ActivityIndicator color={outstandingReviewAction ? colors.blue : "#FFFFFF"} />
           ) : (
-            <Text style={styles.primaryButtonText}>
+            <Text
+              style={[
+                styles.primaryButtonText,
+                outstandingReviewAction && { color: colors.blue },
+              ]}
+            >
               Refresh application status
             </Text>
           )}
@@ -601,6 +929,64 @@ const styles = StyleSheet.create({
     fontSize: 12,
     fontWeight: "700",
   },
+  reviewCard: {
+    borderWidth: 1,
+    borderRadius: 16,
+    padding: 16,
+    gap: 13,
+  },
+  reviewIntro: {
+    fontSize: 12,
+    lineHeight: 18,
+  },
+  applicationReview: {
+    borderRadius: 12,
+    padding: 13,
+    gap: 9,
+  },
+  reviewHeadingRow: {
+    flexDirection: "row",
+    alignItems: "flex-start",
+    justifyContent: "space-between",
+    gap: 10,
+  },
+  reviewItemTitle: {
+    flex: 1,
+    fontSize: 12,
+    fontWeight: "900",
+  },
+  reviewDecision: {
+    fontSize: 9,
+    fontWeight: "900",
+    letterSpacing: 0.5,
+    textAlign: "right",
+  },
+  reviewReason: {
+    fontSize: 12,
+    lineHeight: 19,
+  },
+  reviewDate: {
+    fontSize: 10,
+    lineHeight: 15,
+  },
+  documentReviewList: {
+    gap: 10,
+  },
+  reviewSectionTitle: {
+    fontSize: 12,
+    fontWeight: "900",
+    marginTop: 2,
+  },
+  documentReviewItem: {
+    borderWidth: 1,
+    borderRadius: 12,
+    padding: 12,
+    gap: 8,
+  },
+  storageNotice: {
+    fontSize: 10,
+    lineHeight: 16,
+  },
   noticeCard: {
     borderRadius: 14,
     padding: 15,
@@ -613,6 +999,14 @@ const styles = StyleSheet.create({
   noticeText: {
     fontSize: 12,
     lineHeight: 19,
+  },
+  feedbackErrorCard: {
+    borderRadius: 12,
+    padding: 12,
+  },
+  feedbackErrorText: {
+    fontSize: 11,
+    lineHeight: 17,
   },
   errorCard: {
     borderRadius: 12,

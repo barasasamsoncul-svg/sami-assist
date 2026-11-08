@@ -1,10 +1,11 @@
-
 "use client";
 
 import Link from "next/link";
 import { useEffect, useState } from "react";
 
 import Brand from "@/components/Brand";
+import RunnerApplicationDecision from "@/apps/admin/features/runner-applications/RunnerApplicationDecision";
+import RunnerDocumentDecision from "@/apps/admin/features/runner-applications/RunnerDocumentDecision";
 
 type RunnerDocument = {
   id: string;
@@ -19,8 +20,9 @@ type RunnerDocument = {
   rejectionReason: string | null;
   submittedAt: string;
   reviewedAt: string | null;
-  fileUrl: string;
+  fileUrl: string | null;
   fileUrlExpiresInSeconds: number;
+  fileRemovedFromStorage: boolean;
 };
 
 type RunnerApplication = {
@@ -148,13 +150,15 @@ export default function RunnerApplicationDetail({
           <div className="product-tag">ADMIN WORKSPACE</div>
         </div>
 
-        <div className="workspace-label">OPERATIONS</div>
+        <div className="workspace-label">WORKSPACE</div>
 
         <nav className="sidebar-nav" aria-label="Admin navigation">
           <Link className="nav-item" href="/admin">
             <span className="nav-glyph">⌂</span>
             <span>Overview</span>
           </Link>
+
+          <div className="workspace-label">OPERATIONS</div>
 
           <Link
             className="nav-item current"
@@ -163,6 +167,13 @@ export default function RunnerApplicationDetail({
           >
             <span className="nav-glyph">♙</span>
             <span>Runner applications</span>
+          </Link>
+
+          <div className="workspace-label">ACCOUNT</div>
+
+          <Link className="nav-item" href="/admin/security">
+            <span className="nav-glyph">⚙</span>
+            <span>Security settings</span>
           </Link>
         </nav>
 
@@ -208,8 +219,8 @@ export default function RunnerApplicationDetail({
               <h1>Application review</h1>
 
               <p>
-                Inspect Runner account information and verification
-                documents.
+                Inspect Runner account information, verify submitted
+                documents and record onboarding decisions.
               </p>
             </div>
 
@@ -379,7 +390,8 @@ export default function RunnerApplicationDetail({
                   <div>
                     <h2>Verification documents</h2>
                     <p>
-                      Review the documents submitted by this Runner.
+                      Review documents individually. Rejected and
+                      replacement-required files are removed from R2.
                     </p>
                   </div>
 
@@ -402,107 +414,99 @@ export default function RunnerApplicationDetail({
                     {application.documents.map((document) => (
                       <article
                         key={document.id}
-                        className="attention-row"
+                        className="rounded-xl border border-slate-200 p-4"
                       >
-                        <div className="attention-mark blue">
-                          ▤
-                        </div>
+                        <div className="attention-row">
+                          <div className="attention-mark blue">
+                            ▤
+                          </div>
 
-                        <div className="attention-copy">
-                          <b>
-                            {document.requirementTitle ||
-                              readable(document.documentType)}
-                          </b>
+                          <div className="attention-copy">
+                            <b>
+                              {document.requirementTitle ||
+                                readable(document.documentType)}
+                            </b>
 
-                          <small>
-                            {document.categoryLabel
-                              ? `${document.categoryLabel} · `
-                              : ""}
-                            {document.required
-                              ? "Required document"
-                              : "Optional document"}
-                          </small>
-
-                          <small>
-                            Submitted: {formatDate(document.submittedAt)}
-                          </small>
-
-                          {document.requirementInstructions && (
                             <small>
-                              Instructions:{" "}
-                              {document.requirementInstructions}
+                              {document.categoryLabel
+                                ? `${document.categoryLabel} · `
+                                : ""}
+                              {document.required
+                                ? "Required document"
+                                : "Optional document"}
                             </small>
-                          )}
 
-                          {document.rejectionReason && (
                             <small>
-                              Rejection reason: {document.rejectionReason}
+                              Submitted: {formatDate(document.submittedAt)}
                             </small>
-                          )}
 
-                          <div>
-                            <span className="timeline-state">
-                              {readable(document.reviewStatus)}
-                            </span>
+                            {document.requirementInstructions && (
+                              <small>
+                                Instructions:{" "}
+                                {document.requirementInstructions}
+                              </small>
+                            )}
+
+                            {document.rejectionReason && (
+                              <small className="text-red-700">
+                                Review reason: {document.rejectionReason}
+                              </small>
+                            )}
+
+                            <div className="mt-2 flex flex-wrap items-center gap-2">
+                              <span className="timeline-state">
+                                {readable(document.reviewStatus)}
+                              </span>
+
+                              {document.reviewedAt && (
+                                <span className="text-xs text-slate-500">
+                                  Reviewed: {formatDate(document.reviewedAt)}
+                                </span>
+                              )}
+                            </div>
+                          </div>
+
+                          <div className="provider-actions">
+                            {document.fileUrl ? (
+                              <a
+                                className="button ghost"
+                                href={document.fileUrl}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                              >
+                                View document ↗
+                              </a>
+                            ) : (
+                              <span className="muted small-copy">
+                                {document.fileRemovedFromStorage
+                                  ? "File removed from R2"
+                                  : "Document unavailable"}
+                              </span>
+                            )}
                           </div>
                         </div>
 
-                        <div className="provider-actions">
-                          {document.fileUrl ? (
-                            <a
-                              className="button ghost"
-                              href={document.fileUrl}
-                              target="_blank"
-                              rel="noopener noreferrer"
-                            >
-                              View document ↗
-                            </a>
-                          ) : (
-                            <span className="muted">
-                              Document unavailable
-                            </span>
-                          )}
-                        </div>
+                        <RunnerDocumentDecision
+                          runnerId={application.id}
+                          documentId={document.id}
+                          reviewStatus={document.reviewStatus}
+                          fileUrl={document.fileUrl}
+                        />
                       </article>
                     ))}
                   </div>
                 )}
 
                 <p className="muted small-copy">
-                  Document links are temporary and expire after{" "}
-                  {Math.round(
-                    (application.documents[0]
-                      ?.fileUrlExpiresInSeconds || 3600) / 60,
-                  )}{" "}
-                  minutes. Reload the application to obtain fresh links.
+                  Document links are temporary and expire after one hour.
+                  Reload the application to obtain fresh links.
                 </p>
               </section>
 
-              <section className="surface-card">
-                <div className="surface-heading">
-                  <div>
-                    <h2>Verification decision</h2>
-                    <p>
-                      Current verification status:
-                    </p>
-                  </div>
-
-                  <span className="timeline-state">
-                    {readable(application.verificationStatus)}
-                  </span>
-                </div>
-
-                <div className="alert alert-neutral">
-                  <span>i</span>
-                  <p>
-                    This review screen currently supports viewing
-                    application details and documents. Approval,
-                    rejection and document-review decisions will be
-                    connected through separate protected Admin
-                    operations.
-                  </p>
-                </div>
-              </section>
+              <RunnerApplicationDecision
+                runnerId={application.id}
+                verificationStatus={application.verificationStatus}
+              />
             </div>
           )}
 

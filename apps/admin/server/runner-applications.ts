@@ -1,4 +1,3 @@
-
 import { NextResponse } from "next/server";
 
 import { authenticateAdmin } from "@/apps/admin/server/auth";
@@ -125,7 +124,10 @@ export async function listRunnerApplications(
            )::int AS pending_document_count,
 
            count(*) FILTER (
-             WHERE review_status = 'rejected'
+             WHERE review_status IN (
+               'rejected',
+               'resubmission_required'
+             )
            )::int AS rejected_document_count,
 
            max(submitted_at) AS latest_document_submitted_at

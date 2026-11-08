@@ -6,9 +6,9 @@ import RunnerApplicationsPage from "@/apps/admin/features/runner-applications/Ru
 export const dynamic = "force-dynamic";
 
 export default async function AdminRunnerApplicationsRoute() {
-  const admin = await authenticateAdmin();
+  const auth = await authenticateAdmin();
 
-  if (!admin) {
+  if (auth.response || !auth.user) {
     redirect("/admin/login");
   }
 

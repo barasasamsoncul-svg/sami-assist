@@ -121,12 +121,18 @@ export type RunnerDocumentRequirement = {
   required: boolean;
 };
 
+export type RunnerDocumentReviewStatus =
+  | "pending"
+  | "approved"
+  | "rejected"
+  | "resubmission_required";
+
 export type RunnerUploadedDocument = {
   id: string;
   documentType: string;
   categoryKey: string | null;
   requirementKey: string | null;
-  reviewStatus: "pending" | "approved" | "rejected";
+  reviewStatus: RunnerDocumentReviewStatus;
   rejectionReason: string | null;
   submittedAt: string;
   reviewedAt: string | null;
@@ -285,7 +291,6 @@ export async function saveRunnerSession(
   await SecureStore.setItemAsync(SESSION_KEY, token);
 }
 
-
 export async function clearRunnerSession(): Promise<void> {
   const token = await getRunnerSession();
 
@@ -328,7 +333,6 @@ export async function clearRunnerSession(): Promise<void> {
     await clearSession();
   }
 }
-
 
 export async function apiRequest<T>(
   path: string,

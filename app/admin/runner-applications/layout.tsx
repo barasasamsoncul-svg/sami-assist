@@ -10,9 +10,9 @@ export default async function AdminRunnerApplicationsLayout({
 }: {
   children: ReactNode;
 }) {
-  const admin = await authenticateAdmin();
+  const auth = await authenticateAdmin();
 
-  if (!admin) {
+  if (!auth.user) {
     redirect("/admin/login");
   }
 

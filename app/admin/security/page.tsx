@@ -7,9 +7,9 @@ import AdminSecurityForm from "@/apps/admin/features/auth/AdminSecurityForm";
 export const dynamic = "force-dynamic";
 
 export default async function AdminSecurityRoute() {
-  const admin = await authenticateAdmin();
+  const auth = await authenticateAdmin();
 
-  if (!admin) {
+  if (auth.response || !auth.user) {
     redirect("/admin/login");
   }
 
@@ -27,6 +27,7 @@ export default async function AdminSecurityRoute() {
           <h1 className="text-2xl font-bold tracking-tight text-slate-900">
             Security settings
           </h1>
+
           <p className="mt-2 text-sm text-slate-600">
             Manage your Admin credentials and current session.
           </p>

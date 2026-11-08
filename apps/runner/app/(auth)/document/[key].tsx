@@ -1,4 +1,3 @@
-
 import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   ActivityIndicator,
@@ -18,6 +17,7 @@ import {
   uploadRunnerDocument,
   uploadRunnerNationalId,
 } from "@/api";
+import type { RunnerUploadedDocument } from "@/api";
 import { useRunnerTheme } from "@/theme";
 
 type PickedFile = {
@@ -34,11 +34,10 @@ type Requirement = {
   required: boolean;
 };
 
-type UploadedDocument = {
-  requirementKey: string | null;
-  reviewStatus: "pending" | "approved" | "rejected";
-  rejectionReason: string | null;
-};
+type UploadedDocument = Pick<
+  RunnerUploadedDocument,
+  "requirementKey" | "reviewStatus" | "rejectionReason"
+>;
 
 const NATIONAL_ID_FRONT_KEY = "identity_national_id_front";
 const NATIONAL_ID_BACK_KEY = "identity_national_id_back";
@@ -76,6 +75,17 @@ function getStatus(
   return document?.reviewStatus ?? null;
 }
 
+function getRejectionReason(
+  documents: UploadedDocument[],
+  requirementKey: string,
+): string | null {
+  const document = documents.find(
+    (item) => item.requirementKey === requirementKey,
+  );
+
+  return document?.rejectionReason ?? null;
+}
+
 function statusLabel(status: UploadedDocument["reviewStatus"] | null) {
   switch (status) {
     case "approved":
@@ -84,6 +94,8 @@ function statusLabel(status: UploadedDocument["reviewStatus"] | null) {
       return "Under review";
     case "rejected":
       return "Rejected — upload again";
+    case "resubmission_required":
+      return "Replacement required";
     default:
       return "Not uploaded";
   }
@@ -290,6 +302,20 @@ export default function RunnerDocumentDetailScreen() {
     ? getStatus(documents, routeKey)
     : null;
 
+  const frontRejectionReason = getRejectionReason(
+    documents,
+    NATIONAL_ID_FRONT_KEY,
+  );
+
+  const backRejectionReason = getRejectionReason(
+    documents,
+    NATIONAL_ID_BACK_KEY,
+  );
+
+  const singleRejectionReason = routeKey
+    ? getRejectionReason(documents, routeKey)
+    : null;
+
   const nationalIdentityLocked =
     ["pending", "approved"].includes(frontStatus ?? "") &&
     ["pending", "approved"].includes(backStatus ?? "");
@@ -431,7 +457,6 @@ export default function RunnerDocumentDetailScreen() {
         });
       }
 
-      // Return to a fresh checklist so upload status is reloaded.
       router.replace("/(auth)/documents");
     } catch (cause) {
       setError(
@@ -563,6 +588,46 @@ export default function RunnerDocumentDetailScreen() {
             <>
               {isNationalIdentity ? (
                 <>
+                  {frontRejectionReason || backRejectionReason ? (
+                    <View
+                      style={[
+                        styles.rejectionCard,
+                        { backgroundColor: colors.dangerSoft },
+                      ]}
+                    >
+                      <Text
+                        style={[
+                          styles.rejectionTitle,
+                          { color: colors.red },
+                        ]}
+                      >
+                        National ID changes requested
+                      </Text>
+
+                      {frontRejectionReason ? (
+                        <Text
+                          style={[
+                            styles.rejectionText,
+                            { color: colors.text },
+                          ]}
+                        >
+                          Front: {frontRejectionReason}
+                        </Text>
+                      ) : null}
+
+                      {backRejectionReason ? (
+                        <Text
+                          style={[
+                            styles.rejectionText,
+                            { color: colors.text },
+                          ]}
+                        >
+                          Back: {backRejectionReason}
+                        </Text>
+                      ) : null}
+                    </View>
+                  ) : null}
+
                   <PickedFileCard
                     title="Front of National ID"
                     description="Capture the side showing your photograph and personal details."
@@ -582,14 +647,43 @@ export default function RunnerDocumentDetailScreen() {
                   />
                 </>
               ) : (
-                <PickedFileCard
-                  title={singleTitle}
-                  description={singleDescription}
-                  file={singleFile}
-                  colors={colors}
-                  onCamera={() => void pickImage("single", "camera")}
-                  onGallery={() => void pickImage("single", "gallery")}
-                />
+                <>
+                  {singleRejectionReason ? (
+                    <View
+                      style={[
+                        styles.rejectionCard,
+                        { backgroundColor: colors.dangerSoft },
+                      ]}
+                    >
+                      <Text
+                        style={[
+                          styles.rejectionTitle,
+                          { color: colors.red },
+                        ]}
+                      >
+                        Changes requested
+                      </Text>
+
+                      <Text
+                        style={[
+                          styles.rejectionText,
+                          { color: colors.text },
+                        ]}
+                      >
+                        {singleRejectionReason}
+                      </Text>
+                    </View>
+                  ) : null}
+
+                  <PickedFileCard
+                    title={singleTitle}
+                    description={singleDescription}
+                    file={singleFile}
+                    colors={colors}
+                    onCamera={() => void pickImage("single", "camera")}
+                    onGallery={() => void pickImage("single", "gallery")}
+                  />
+                </>
               )}
             </>
           )}
@@ -772,6 +866,19 @@ const styles = StyleSheet.create({
   secondaryButtonText: {
     fontSize: 12,
     fontWeight: "700",
+  },
+  rejectionCard: {
+    borderRadius: 14,
+    padding: 14,
+    gap: 8,
+  },
+  rejectionTitle: {
+    fontSize: 13,
+    fontWeight: "900",
+  },
+  rejectionText: {
+    fontSize: 12,
+    lineHeight: 19,
   },
   guidanceCard: {
     borderWidth: 1,

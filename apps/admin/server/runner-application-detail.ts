@@ -1,3 +1,4 @@
+import "server-only";
 
 import { NextResponse } from "next/server";
 
@@ -40,7 +41,7 @@ type DocumentRow = {
   requirement_is_required: boolean | null;
   review_status: string;
   rejection_reason: string | null;
-  storage_key: string;
+  storage_key: string | null;
   submitted_at: string;
   reviewed_at: string | null;
 };
@@ -164,9 +165,13 @@ export async function getRunnerApplicationDetail(
 
     const documents = await Promise.all(
       documentsResult.rows.map(async (document) => {
-        const fileUrl = await createR2ReadUrl(
-          document.storage_key,
-        );
+        // Rejected or replacement-required documents may already
+        // have been removed from R2. Do not attempt to sign a NULL key.
+        let fileUrl: string | null = null;
+
+        if (document.storage_key) {
+          fileUrl = await createR2ReadUrl(document.storage_key);
+        }
 
         return {
           id: document.id,
@@ -183,8 +188,10 @@ export async function getRunnerApplicationDetail(
           submittedAt: document.submitted_at,
           reviewedAt: document.reviewed_at,
           fileUrl,
-          fileUrlExpiresInSeconds:
-            DOCUMENT_URL_EXPIRY_SECONDS,
+          fileUrlExpiresInSeconds: fileUrl
+            ? DOCUMENT_URL_EXPIRY_SECONDS
+            : 0,
+          fileRemovedFromStorage: !document.storage_key,
         };
       }),
     );

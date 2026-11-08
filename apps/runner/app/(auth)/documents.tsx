@@ -1,5 +1,3 @@
-
-
 import { useEffect, useMemo, useState } from "react";
 
 import {
@@ -22,6 +20,15 @@ import {
   type RunnerOnboardingData,
   type RunnerUploadedDocument,
 } from "@/api";
+
+import {
+  getRunnerReviewFeedback,
+} from "@/review";
+
+import type {
+  RunnerReviewFeedback,
+  RunnerDocumentReview,
+} from "@/review";
 
 import { useRunnerTheme } from "@/theme";
 
@@ -51,8 +58,7 @@ function latestDocument(
   requirementKey: string,
 ): RunnerUploadedDocument | undefined {
   return documents.find(
-    (document) =>
-      document.requirementKey === requirementKey,
+    (document) => document.requirementKey === requirementKey,
   );
 }
 
@@ -62,6 +68,17 @@ function isSatisfied(
   return (
     document?.reviewStatus === "pending" ||
     document?.reviewStatus === "approved"
+  );
+}
+
+function isChangesRequested(
+  document: RunnerUploadedDocument | undefined,
+): boolean {
+  const status = String(document?.reviewStatus ?? "");
+
+  return (
+    status === "rejected" ||
+    status === "resubmission_required"
   );
 }
 
@@ -84,14 +101,6 @@ function buildDocumentCards(
   const cards: DocumentCard[] = [];
 
   if (nationalIdRequirements.length > 0) {
-    const front = nationalIdRequirements.find(
-      (item) => item.key === "identity_national_id_front",
-    );
-
-    const back = nationalIdRequirements.find(
-      (item) => item.key === "identity_national_id_back",
-    );
-
     cards.push({
       key: "national_identity",
       title: "National ID",
@@ -102,13 +111,6 @@ function buildDocumentCards(
         (item) => item.required,
       ),
     });
-
-    // Keep the expected two-sided identity flow visible
-    // even if one side was accidentally omitted in the
-    // configurable requirements catalogue. The document
-    // detail page will report the missing requirement.
-    void front;
-    void back;
   }
 
   for (const requirement of otherRequirements) {
@@ -135,19 +137,15 @@ function getDocumentProgress(
   );
 
   const completed = entries.filter(isSatisfied).length;
-  const rejected = entries.some(
-    (document) =>
-      document?.reviewStatus === "rejected",
-  );
+  const changesRequested = entries.some(isChangesRequested);
 
   const allApproved =
     entries.length > 0 &&
     entries.every(
-      (document) =>
-        document?.reviewStatus === "approved",
+      (document) => document?.reviewStatus === "approved",
     );
 
-  if (rejected) {
+  if (changesRequested) {
     return {
       status: "changes_requested",
       label: "Changes requested",
@@ -282,15 +280,57 @@ function statusColors(
   }
 }
 
+function formatReviewDate(value: string) {
+  const date = new Date(value);
+
+  if (Number.isNaN(date.getTime())) {
+    return value;
+  }
+
+  return date.toLocaleString();
+}
+
+function getDecisionLabel(
+  decision: RunnerDocumentReview["decision"],
+) {
+  switch (decision) {
+    case "approved":
+      return "APPROVED";
+
+    case "resubmission_required":
+      return "RESUBMISSION REQUIRED";
+
+    default:
+      return "REJECTED";
+  }
+}
+
+function getCurrentDocumentReview(
+  feedback: RunnerReviewFeedback | null,
+  document: RunnerUploadedDocument | undefined,
+) {
+  if (!feedback || !document) {
+    return undefined;
+  }
+
+  return feedback.documentReviews.find(
+    (review) => review.documentId === document.id,
+  );
+}
+
 export default function RunnerDocumentsScreen() {
   const { colors } = useRunnerTheme();
 
   const [data, setData] =
     useState<RunnerOnboardingData | null>(null);
 
+  const [feedback, setFeedback] =
+    useState<RunnerReviewFeedback | null>(null);
+
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [loadError, setLoadError] = useState("");
+  const [feedbackError, setFeedbackError] = useState("");
 
   const cards = useMemo(
     () =>
@@ -338,6 +378,7 @@ export default function RunnerDocumentsScreen() {
   async function loadDocuments() {
     setLoading(true);
     setLoadError("");
+    setFeedbackError("");
     setError("");
 
     try {
@@ -373,6 +414,18 @@ export default function RunnerDocumentsScreen() {
       }
 
       setData(result);
+
+      try {
+        const reviewResult = await getRunnerReviewFeedback();
+        setFeedback(reviewResult);
+      } catch (cause) {
+        setFeedback(null);
+        setFeedbackError(
+          cause instanceof Error
+            ? cause.message
+            : "Review feedback could not be loaded.",
+        );
+      }
     } catch (cause) {
       setLoadError(
         cause instanceof Error
@@ -752,6 +805,25 @@ export default function RunnerDocumentsScreen() {
                       documentProgress.status ===
                       "changes_requested";
 
+                    const reviewItems = card.requirements
+                      .map((requirement) => {
+                        const document = latestDocument(
+                          data.documents,
+                          requirement.key,
+                        );
+
+                        return getCurrentDocumentReview(
+                          feedback,
+                          document,
+                        );
+                      })
+                      .filter(
+                        (
+                          review,
+                        ): review is RunnerDocumentReview =>
+                          Boolean(review),
+                      );
+
                     return (
                       <Pressable
                         key={card.key}
@@ -854,6 +926,74 @@ export default function RunnerDocumentsScreen() {
                               {documentProgress.label}
                             </Text>
                           </View>
+
+                          {reviewItems.map((review) => {
+                            const approved =
+                              review.decision === "approved";
+
+                            return (
+                              <View
+                                key={review.reviewId}
+                                style={[
+                                  styles.reviewFeedback,
+                                  {
+                                    backgroundColor: approved
+                                      ? colors.blueSoft
+                                      : colors.dangerSoft,
+                                  },
+                                ]}
+                              >
+                                <Text
+                                  style={[
+                                    styles.reviewDecision,
+                                    {
+                                      color: approved
+                                        ? colors.blue
+                                        : colors.red,
+                                    },
+                                  ]}
+                                >
+                                  {getDecisionLabel(review.decision)}
+                                </Text>
+
+                                <Text
+                                  style={[
+                                    styles.reviewReason,
+                                    { color: colors.text },
+                                  ]}
+                                >
+                                  {review.reason ||
+                                    (approved
+                                      ? "This document has been approved."
+                                      : "Please submit a replacement document.")}
+                                </Text>
+
+                                {!approved &&
+                                review.fileRemovedFromStorage ? (
+                                  <Text
+                                    style={[
+                                      styles.storageNotice,
+                                      { color: colors.textMuted },
+                                    ]}
+                                  >
+                                    {review.deletionPending
+                                      ? "The previous file is queued for storage cleanup."
+                                      : "The previous file has been removed. Upload a replacement."}
+                                  </Text>
+                                ) : null}
+
+                                <Text
+                                  style={[
+                                    styles.reviewDate,
+                                    { color: colors.textMuted },
+                                  ]}
+                                >
+                                  Reviewed{" "}
+                                  {formatReviewDate(review.reviewedAt)}
+                                </Text>
+                              </View>
+                            );
+                          })}
                         </View>
 
                         <Ionicons
@@ -866,6 +1006,25 @@ export default function RunnerDocumentsScreen() {
                   })}
                 </View>
               )}
+
+              {feedbackError ? (
+                <View
+                  style={[
+                    styles.feedbackError,
+                    { backgroundColor: colors.blueSoft },
+                  ]}
+                >
+                  <Text
+                    style={[
+                      styles.feedbackErrorText,
+                      { color: colors.textMuted },
+                    ]}
+                  >
+                    Review comments could not be refreshed. Refresh
+                    this checklist to try again.
+                  </Text>
+                </View>
+              ) : null}
 
               <View
                 style={[
@@ -1204,6 +1363,43 @@ const styles = StyleSheet.create({
   statusText: {
     fontSize: 9,
     fontWeight: "900",
+  },
+
+  reviewFeedback: {
+    borderRadius: 10,
+    padding: 10,
+    gap: 6,
+  },
+
+  reviewDecision: {
+    fontSize: 9,
+    fontWeight: "900",
+    letterSpacing: 0.5,
+  },
+
+  reviewReason: {
+    fontSize: 11,
+    lineHeight: 17,
+  },
+
+  storageNotice: {
+    fontSize: 10,
+    lineHeight: 15,
+  },
+
+  reviewDate: {
+    fontSize: 9,
+    lineHeight: 14,
+  },
+
+  feedbackError: {
+    borderRadius: 12,
+    padding: 12,
+  },
+
+  feedbackErrorText: {
+    fontSize: 10,
+    lineHeight: 16,
   },
 
   reviewNote: {
