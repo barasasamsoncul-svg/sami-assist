@@ -1,7 +1,7 @@
 
 import { getCurrentUser } from "@/lib/auth";
-import { query as runnerQuery } from "@/lib/runner/db";
-import { errorResponse } from "@/lib/runner/http";
+import { query as runnerQuery } from "@/apps/runner/server/db";
+import { errorResponse } from "@/apps/runner/server/http";
 
 import { NextResponse } from "next/server";
 

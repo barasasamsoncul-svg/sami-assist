@@ -1,7 +1,7 @@
 "use client";
 
 import Brand, { BrandMark } from "@/components/Brand";
-import ErrandMap, { type LocationPoint } from "@/components/ErrandMap";
+import ErrandMap, { type LocationPoint } from "@/apps/website/features/errands/components/ErrandMap";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 type Role = "customer" | "provider" | "admin";

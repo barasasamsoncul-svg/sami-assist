@@ -1,9 +1,9 @@
 
 import { NextResponse } from "next/server";
 
-import { authenticateRunner } from "@/lib/runner/auth";
-import { databasePool, query } from "@/lib/runner/db";
-import { errorResponse, isRecord } from "@/lib/runner/http";
+import { authenticateRunner } from "@/apps/runner/server/auth";
+import { databasePool, query } from "@/apps/runner/server/db";
+import { errorResponse, isRecord } from "@/apps/runner/server/http";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";

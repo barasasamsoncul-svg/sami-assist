@@ -3,8 +3,8 @@ import "server-only";
 
 import { createHash } from "node:crypto";
 
-import { query } from "@/lib/runner/db";
-import { errorResponse } from "@/lib/runner/http";
+import { query } from "@/apps/runner/server/db";
+import { errorResponse } from "@/apps/runner/server/http";
 
 export type RunnerAccount = {
   id: string;

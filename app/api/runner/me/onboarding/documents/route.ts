@@ -2,14 +2,14 @@
 import { randomUUID } from "node:crypto";
 import { NextResponse } from "next/server";
 
-import { authenticateRunner } from "@/lib/runner/auth";
-import { databasePool } from "@/lib/runner/db";
+import { authenticateRunner } from "@/apps/runner/server/auth";
+import { databasePool } from "@/apps/runner/server/db";
 import {
   deleteR2Object,
   uploadR2Object,
 } from "@/lib/storage/r2";
 
-import { errorResponse } from "@/lib/runner/http";
+import { errorResponse } from "@/apps/runner/server/http";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";

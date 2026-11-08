@@ -32,12 +32,12 @@
     "next-env.d.ts",
     ".next/types/**/*.ts",
     "**/*.ts",
-    "**/*.tsx"
+    "**/*.tsx",
+    ".next/dev/types/**/*.ts"
   ],
   "exclude": [
     "node_modules",
     "apps/mobile",
-    "apps/runner",
-    "apps/runner-api"
+    "apps/runner"
   ]
 }

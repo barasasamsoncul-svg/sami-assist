@@ -4,8 +4,8 @@
 Runner-specific API handlers are deployed as part of the existing root Next.js application:
 
 - Runtime routes: `app/api/runner/**`
-- Runner-only server code: `lib/runner/**`
-- Database migrations: `apps/runner-api/database/migrations/`
+- Runner-only server code: `apps/runner/server/**`
+- Database migrations: `apps/runner/database/migrations/`
 - Neon project: SaMi Runner
 - Neon branch: main
 - Database: `sami_runner`
@@ -17,7 +17,7 @@ There is one Vercel project for the SaMi repository. The Runner API is not deplo
 
 The root application's existing `DATABASE_URL` serves the existing SaMi application and Customer APIs.
 
-Runner endpoints use the dedicated `RUNNER_DATABASE_URL` connection pool in `lib/runner/db.ts`. Runner accounts, OTP challenges, sessions, onboarding documents, availability and Runner jobs are stored in the separate `sami_runner` database.
+Runner endpoints use the dedicated `RUNNER_DATABASE_URL` connection pool in `apps/runner/server/db.ts`. Runner accounts, OTP challenges, sessions, onboarding documents, availability and Runner jobs are stored in the separate `sami_runner` database.
 
 Do not replace `DATABASE_URL` with `RUNNER_DATABASE_URL`.
 
@@ -55,7 +55,7 @@ The email OTP challenge expires after 10 minutes. Requests are limited to one pe
 
 ## Database migrations
 
-Apply all Runner migration files in `apps/runner-api/database/migrations/` to Neon project SaMi Runner, branch `main`, database `sami_runner`, in chronological order.
+Apply all Runner migration files in `apps/runner/database/migrations/` to Neon project SaMi Runner, branch `main`, database `sami_runner`, in chronological order.
 
 Do not apply Runner migrations to the Customer database.
 

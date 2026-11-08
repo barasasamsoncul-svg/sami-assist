@@ -6,9 +6,7 @@ on:
       - main
     paths:
       - "apps/runner/**"
-      - "apps/runner-api/**"
       - "app/api/runner/**"
-      - "lib/runner/**"
       - "tsconfig.json"
       - ".github/workflows/sami-runner-check.yml"
   pull_request:
@@ -16,9 +14,7 @@ on:
       - main
     paths:
       - "apps/runner/**"
-      - "apps/runner-api/**"
       - "app/api/runner/**"
-      - "lib/runner/**"
       - "tsconfig.json"
       - ".github/workflows/sami-runner-check.yml"
   workflow_dispatch:

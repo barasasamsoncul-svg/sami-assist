@@ -1,7 +1,7 @@
 
 import { NextResponse } from "next/server";
 
-import { query } from "@/lib/runner/db";
+import { query } from "@/apps/runner/server/db";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
