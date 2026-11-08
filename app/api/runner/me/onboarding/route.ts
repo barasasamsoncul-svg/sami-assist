@@ -1,9 +1,14 @@
-
 import { NextResponse } from "next/server";
 
 import { authenticateRunner } from "@/apps/runner/server/auth";
-import { databasePool, query } from "@/apps/runner/server/db";
-import { errorResponse, isRecord } from "@/apps/runner/server/http";
+import {
+  databasePool,
+  query,
+} from "@/apps/runner/server/db";
+import {
+  errorResponse,
+  isRecord,
+} from "@/apps/runner/server/http";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -83,9 +88,12 @@ function response(
 export async function GET(request: Request) {
   try {
     const auth = await authenticateRunner(request, {
-  allowRestricted: true,
-});
-    if (auth.response) return auth.response;
+      allowRestricted: true,
+    });
+
+    if (auth.response) {
+      return auth.response;
+    }
 
     const profileResult = await query<OnboardingProfile>(
       `SELECT
@@ -218,7 +226,9 @@ export async function GET(request: Request) {
   } catch (cause) {
     console.error(
       "[SaMi Runner onboarding] Read failed.",
-      cause instanceof Error ? cause.message : "unknown error",
+      cause instanceof Error
+        ? cause.message
+        : "unknown error",
     );
 
     return errorResponse(
@@ -231,75 +241,138 @@ export async function GET(request: Request) {
 /**
  * PUT /api/runner/me/onboarding
  *
- * Saves the service area and transport details used to
- * determine the Runner's document requirements.
+ * Saves service-area and transport details.
+ *
+ * Changes are allowed during initial onboarding and after
+ * a rejection, but not while Operations is reviewing the
+ * application or after it has been approved.
  */
 export async function PUT(request: Request) {
+  const auth = await authenticateRunner(request);
+
+  if (auth.response) {
+    return auth.response;
+  }
+
+  const body: unknown = await request.json().catch(
+    () => null,
+  );
+
+  if (
+    !isRecord(body) ||
+    typeof body.serviceArea !== "string" ||
+    typeof body.vehicleType !== "string"
+  ) {
+    return errorResponse(
+      "Enter your service area and choose your transport type.",
+    );
+  }
+
+  const serviceArea = body.serviceArea
+    .trim()
+    .replace(/\s+/g, " ")
+    .slice(0, 120);
+
+  const vehicleType = body.vehicleType
+    .trim()
+    .toLowerCase();
+
+  const vehicleRegistration =
+    typeof body.vehicleRegistration === "string"
+      ? body.vehicleRegistration
+          .trim()
+          .toUpperCase()
+          .replace(/\s+/g, " ")
+          .slice(0, 30)
+      : "";
+
+  if (serviceArea.length < 2) {
+    return errorResponse(
+      "Enter a valid main service area.",
+    );
+  }
+
+  if (!VEHICLE_TYPES.has(vehicleType)) {
+    return errorResponse(
+      "Choose a valid transport type.",
+    );
+  }
+
+  if (
+    ["motorcycle", "car", "van"].includes(vehicleType) &&
+    vehicleRegistration.length < 3
+  ) {
+    return errorResponse(
+      "Enter the registration number of your vehicle.",
+    );
+  }
+
+  const client = await databasePool().connect();
+  let transactionStarted = false;
+
   try {
-    const auth = await authenticateRunner(request);
-    if (auth.response) return auth.response;
+    await client.query("BEGIN");
+    transactionStarted = true;
 
-    const body: unknown = await request.json().catch(() => null);
+    // Serialize transport changes against document uploads
+    // and Admin decisions using the Runner account row.
+    const accountResult = await client.query<{
+      account_status: string;
+      verification_status: string;
+    }>(
+      `SELECT
+         account_status,
+         verification_status
+       FROM public.runner_accounts
+       WHERE id = $1
+       LIMIT 1
+       FOR UPDATE`,
+      [auth.runner.id],
+    );
 
-    if (
-      !isRecord(body) ||
-      typeof body.serviceArea !== "string" ||
-      typeof body.vehicleType !== "string"
-    ) {
+    const account = accountResult.rows[0];
+
+    if (!account) {
+      await client.query("ROLLBACK");
+      transactionStarted = false;
+
       return errorResponse(
-        "Enter your service area and choose your transport type.",
-      );
-    }
-
-    const serviceArea = body.serviceArea
-      .trim()
-      .replace(/\s+/g, " ")
-      .slice(0, 120);
-
-    const vehicleType = body.vehicleType.trim().toLowerCase();
-
-    const vehicleRegistration =
-      typeof body.vehicleRegistration === "string"
-        ? body.vehicleRegistration
-            .trim()
-            .toUpperCase()
-            .replace(/\s+/g, " ")
-            .slice(0, 30)
-        : "";
-
-    if (serviceArea.length < 2) {
-      return errorResponse(
-        "Enter a valid main service area.",
-      );
-    }
-
-    if (!VEHICLE_TYPES.has(vehicleType)) {
-      return errorResponse(
-        "Choose a valid transport type.",
-      );
-    }
-
-    if (
-      ["motorcycle", "car", "van"].includes(vehicleType) &&
-      vehicleRegistration.length < 3
-    ) {
-      return errorResponse(
-        "Enter the registration number of your vehicle.",
+        "Runner account not found.",
+        404,
       );
     }
 
     if (
       ["suspended", "closed"].includes(
-        auth.runner.account_status,
+        account.account_status,
       )
     ) {
+      await client.query("ROLLBACK");
+      transactionStarted = false;
+
       return errorResponse(
         "This Runner account cannot be updated.",
         403,
       );
     }
 
-    const result = await query<{ runner_id: string }>(
+    if (
+      ["submitted", "approved"].includes(
+        account.verification_status,
+      )
+    ) {
+      await client.query("ROLLBACK");
+      transactionStarted = false;
+
+      return errorResponse(
+        "Your transport details cannot be changed while your application is under review or after approval.",
+        409,
+      );
+    }
+
+    const result = await client.query<{
+      runner_id: string;
+    }>(
       `INSERT INTO public.runner_profiles (
          runner_id,
          service_area,
@@ -324,15 +397,16 @@ export async function PUT(request: Request) {
     );
 
     if (!result.rows[0]) {
+      await client.query("ROLLBACK");
+      transactionStarted = false;
+
       return errorResponse(
         "Your transport details could not be saved.",
         503,
       );
     }
 
-    // Changing vehicle type can change the document
-    // requirements, so return the refreshed list.
-    const categoriesResult = await query<{
+    const categoriesResult = await client.query<{
       category_key: string;
     }>(
       `SELECT category_key
@@ -346,7 +420,7 @@ export async function PUT(request: Request) {
     );
 
     const requirementsResult =
-      await query<RequirementRow>(
+      await client.query<RequirementRow>(
         `SELECT
            requirement_key,
            category_key,
@@ -369,8 +443,14 @@ export async function PUT(request: Request) {
            is_required DESC,
            category_key NULLS FIRST,
            requirement_key`,
-        [categories, vehicleType],
+        [
+          categories,
+          vehicleType,
+        ],
       );
+
+    await client.query("COMMIT");
+    transactionStarted = false;
 
     return response({
       ok: true,
@@ -388,15 +468,25 @@ export async function PUT(request: Request) {
       ),
     });
   } catch (cause) {
+    if (transactionStarted) {
+      await client.query("ROLLBACK").catch(
+        () => undefined,
+      );
+    }
+
     console.error(
       "[SaMi Runner onboarding] Profile update failed.",
-      cause instanceof Error ? cause.message : "unknown error",
+      cause instanceof Error
+        ? cause.message
+        : "unknown error",
     );
 
     return errorResponse(
       "Your transport details could not be saved.",
       503,
     );
+  } finally {
+    client.release();
   }
 }
 
@@ -404,35 +494,74 @@ export async function PUT(request: Request) {
  * POST /api/runner/me/onboarding
  *
  * Submits a completed application for Operations review.
- * Every active required document must have a pending or
- * approved document record before submission is accepted.
+ *
+ * The Runner account is locked before checking the profile
+ * and latest document records. This serializes submission
+ * against document uploads and Admin review transactions.
+ *
+ * Every active required document must have a latest
+ * pending or approved document record.
  */
 export async function POST(request: Request) {
   const auth = await authenticateRunner(request);
-  if (auth.response) return auth.response;
 
-  if (
-    ["suspended", "closed"].includes(
-      auth.runner.account_status,
-    )
-  ) {
-    return errorResponse(
-      "This Runner account cannot submit an application.",
-      403,
-    );
-  }
-
-  if (auth.runner.verification_status === "approved") {
-    return errorResponse(
-      "Your Runner application has already been approved.",
-      409,
-    );
+  if (auth.response) {
+    return auth.response;
   }
 
   const client = await databasePool().connect();
 
   try {
     await client.query("BEGIN");
+
+    // Serialize submission with Runner document uploads
+    // and Admin review decisions.
+    const accountResult = await client.query<{
+      account_status: string;
+      verification_status: string;
+    }>(
+      `SELECT
+         account_status,
+         verification_status
+       FROM public.runner_accounts
+       WHERE id = $1
+       LIMIT 1
+       FOR UPDATE`,
+      [auth.runner.id],
+    );
+
+    const account = accountResult.rows[0];
+
+    if (!account) {
+      await client.query("ROLLBACK");
+
+      return errorResponse(
+        "Runner account not found.",
+        404,
+      );
+    }
+
+    if (
+      ["suspended", "closed"].includes(
+        account.account_status,
+      )
+    ) {
+      await client.query("ROLLBACK");
+
+      return errorResponse(
+        "This Runner account cannot submit an application.",
+        403,
+      );
+    }
+
+    if (account.verification_status === "approved") {
+      await client.query("ROLLBACK");
+
+      return errorResponse(
+        "Your Runner application has already been approved.",
+        409,
+      );
+    }
 
     const profileResult =
       await client.query<{
@@ -501,43 +630,43 @@ export async function POST(request: Request) {
       );
     }
 
- const missingResult =
-  await client.query<{
-    requirement_key: string;
-    title: string;
-  }>(
-    `SELECT
-       r.requirement_key,
-       r.title
-     FROM public.runner_onboarding_document_requirements AS r
-     WHERE r.is_active = true
-       AND r.is_required = true
-       AND (
-         r.category_key IS NULL
-         OR r.category_key = ANY($1::text[])
-       )
-       AND (
-         r.vehicle_type = 'any'
-         OR r.vehicle_type = $2
-       )
-       AND NOT COALESCE(
-         (
-           SELECT d.review_status IN ('pending', 'approved')
-           FROM public.runner_verification_documents AS d
-           WHERE d.runner_id = $3
-             AND d.requirement_key = r.requirement_key
-           ORDER BY d.submitted_at DESC, d.id DESC
-           LIMIT 1
-         ),
-         false
-       )
-     ORDER BY r.requirement_key`,
-    [
-      categories,
-      profile.vehicle_type,
-      auth.runner.id,
-    ],
-  );
+    const missingResult =
+      await client.query<{
+        requirement_key: string;
+        title: string;
+      }>(
+        `SELECT
+           r.requirement_key,
+           r.title
+         FROM public.runner_onboarding_document_requirements AS r
+         WHERE r.is_active = true
+           AND r.is_required = true
+           AND (
+             r.category_key IS NULL
+             OR r.category_key = ANY($1::text[])
+           )
+           AND (
+             r.vehicle_type = 'any'
+             OR r.vehicle_type = $2
+           )
+           AND NOT COALESCE(
+             (
+               SELECT d.review_status IN ('pending', 'approved')
+               FROM public.runner_verification_documents AS d
+               WHERE d.runner_id = $3
+                 AND d.requirement_key = r.requirement_key
+               ORDER BY d.submitted_at DESC, d.id DESC
+               LIMIT 1
+             ),
+             false
+           )
+         ORDER BY r.requirement_key`,
+        [
+          categories,
+          profile.vehicle_type,
+          auth.runner.id,
+        ],
+      );
 
     if (missingResult.rows.length > 0) {
       await client.query("ROLLBACK");
@@ -569,7 +698,9 @@ export async function POST(request: Request) {
        WHERE id = $1
          AND verification_status <> 'approved'
          AND account_status NOT IN ('suspended', 'closed')
-       RETURNING verification_status, account_status`,
+       RETURNING
+         verification_status,
+         account_status`,
       [auth.runner.id],
     );
 
@@ -590,18 +721,20 @@ export async function POST(request: Request) {
         "Your Runner application has been submitted for Operations review.",
       onboardingStatus: "pending_review",
       runner: {
-        accountStatus:
-          submitted.rows[0].account_status,
-        verificationStatus:
-          submitted.rows[0].verification_status,
+        accountStatus: submitted.rows[0].account_status,
+        verificationStatus: submitted.rows[0].verification_status,
       },
     });
   } catch (cause) {
-    await client.query("ROLLBACK").catch(() => undefined);
+    await client.query("ROLLBACK").catch(
+      () => undefined,
+    );
 
     console.error(
       "[SaMi Runner onboarding] Submission failed.",
-      cause instanceof Error ? cause.message : "unknown error",
+      cause instanceof Error
+        ? cause.message
+        : "unknown error",
     );
 
     return errorResponse(

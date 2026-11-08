@@ -21,6 +21,7 @@ import {
   getRunnerOnboarding,
   getRunnerSession,
 } from "@/api";
+import { getRunnerReviewFeedback } from "@/review";
 
 function isDocumentSatisfied(
   reviewStatus: string | null | undefined,
@@ -28,9 +29,9 @@ function isDocumentSatisfied(
   return reviewStatus === "pending" || reviewStatus === "approved";
 }
 
-function getRunnerResumeRoute(data: Awaited<
-  ReturnType<typeof getRunnerOnboarding>
->) {
+function getRunnerResumeRoute(
+  data: Awaited<ReturnType<typeof getRunnerOnboarding>>,
+) {
   const runner = data.runner;
 
   if (
@@ -114,6 +115,33 @@ function getRunnerResumeRoute(data: Awaited<
   return "/(auth)/review" as const;
 }
 
+async function resolveRunnerResumeRoute(
+  data: Awaited<ReturnType<typeof getRunnerOnboarding>>,
+) {
+  if (
+    data.runner.verificationStatus === "rejected" ||
+    data.onboardingStatus === "changes_required"
+  ) {
+    try {
+      const feedback = await getRunnerReviewFeedback();
+
+      if (
+        feedback.applicationReview?.decision === "rejected"
+      ) {
+        return {
+          pathname: "/(app)/profile-setup" as const,
+          params: { mode: "status" },
+        };
+      }
+    } catch {
+      // Keep the normal onboarding route available if
+      // review feedback cannot be reached temporarily.
+    }
+  }
+
+  return getRunnerResumeRoute(data);
+}
+
 const NAVY = "#000535";
 const BLUE = "#2769C7";
 
@@ -133,8 +161,6 @@ export default function IndexScreen() {
     let active = true;
 
     if (forceWelcome) {
-      // Explicit logout must never run the authenticated
-      // startup resolver or redirect back to the dashboard.
       setWelcomeReady(true);
 
       return () => {
@@ -159,7 +185,10 @@ export default function IndexScreen() {
 
         if (!active) return;
 
-        const destination = getRunnerResumeRoute(onboarding);
+        const destination =
+          await resolveRunnerResumeRoute(onboarding);
+
+        if (!active) return;
 
         router.replace(destination);
 
@@ -173,7 +202,9 @@ export default function IndexScreen() {
 
         console.error(
           "[SaMi Runner] Startup onboarding check failed.",
-          cause instanceof Error ? cause.message : "unknown error",
+          cause instanceof Error
+            ? cause.message
+            : "unknown error",
         );
 
         // Preserve the Runner session when the network is
@@ -187,7 +218,9 @@ export default function IndexScreen() {
 
       console.error(
         "[SaMi Runner] Startup failed.",
-        cause instanceof Error ? cause.message : "unknown error",
+        cause instanceof Error
+          ? cause.message
+          : "unknown error",
       );
 
       setWelcomeReady(true);

@@ -1,4 +1,3 @@
-
 import { randomUUID } from "node:crypto";
 import { NextResponse } from "next/server";
 
@@ -8,7 +7,6 @@ import {
   deleteR2Object,
   uploadR2Object,
 } from "@/lib/storage/r2";
-
 import { errorResponse } from "@/apps/runner/server/http";
 
 export const runtime = "nodejs";
@@ -323,9 +321,14 @@ export async function POST(request: Request) {
     );
   }
 
-  if (auth.runner.verification_status === "approved") {
+  if (
+    auth.runner.verification_status === "submitted" ||
+    auth.runner.verification_status === "approved"
+  ) {
     return errorResponse(
-      "Your Runner application is already approved.",
+      auth.runner.verification_status === "approved"
+        ? "Your Runner application is already approved."
+        : "Your application is currently under Operations review. Wait for a review decision before uploading more documents.",
       409,
     );
   }
@@ -429,9 +432,14 @@ export async function POST(request: Request) {
       );
     }
 
-    if (account.verification_status === "approved") {
+    if (
+      account.verification_status === "submitted" ||
+      account.verification_status === "approved"
+    ) {
       return await rejectTransaction(
-        "Your Runner application is already approved.",
+        account.verification_status === "approved"
+          ? "Your Runner application is already approved."
+          : "Your application is currently under Operations review. Wait for a review decision before uploading more documents.",
         409,
       );
     }

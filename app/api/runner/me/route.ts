@@ -1,4 +1,3 @@
-
 import { NextResponse } from "next/server";
 
 import { authenticateRunner } from "@/apps/runner/server/auth";
@@ -50,7 +49,10 @@ function shapeRunner(row: RunnerProfileRow) {
 export async function GET(request: Request) {
   try {
     const auth = await authenticateRunner(request);
-    if (auth.response) return auth.response;
+
+    if (auth.response) {
+      return auth.response;
+    }
 
     const result = await query<RunnerProfileRow>(
       `SELECT
@@ -94,7 +96,9 @@ export async function GET(request: Request) {
   } catch (cause) {
     console.error(
       "[SaMi Runner profile] Read failed.",
-      cause instanceof Error ? cause.message : "unknown error",
+      cause instanceof Error
+        ? cause.message
+        : "unknown error",
     );
 
     return errorResponse(
@@ -105,133 +109,179 @@ export async function GET(request: Request) {
 }
 
 export async function PUT(request: Request) {
-  try {
-    const auth = await authenticateRunner(request);
-    if (auth.response) return auth.response;
+  const auth = await authenticateRunner(request);
 
-    const body: unknown = await request.json().catch(() => null);
+  if (auth.response) {
+    return auth.response;
+  }
+
+  const body: unknown = await request.json().catch(
+    () => null,
+  );
+
+  if (
+    !isRecord(body) ||
+    typeof body.fullName !== "string" ||
+    typeof body.serviceArea !== "string" ||
+    typeof body.vehicleType !== "string"
+  ) {
+    return errorResponse(
+      "Complete the required Runner profile details.",
+    );
+  }
+
+  const fullName = body.fullName
+    .trim()
+    .replace(/\s+/g, " ");
+
+  const serviceArea = body.serviceArea
+    .trim()
+    .replace(/\s+/g, " ")
+    .slice(0, 120);
+
+  const vehicleType = body.vehicleType
+    .trim()
+    .toLowerCase();
+
+  const vehicleRegistration =
+    typeof body.vehicleRegistration === "string"
+      ? body.vehicleRegistration
+          .trim()
+          .toUpperCase()
+          .replace(/\s+/g, " ")
+          .slice(0, 30)
+      : "";
+
+  const allowedVehicles = new Set([
+    "motorcycle",
+    "bicycle",
+    "car",
+    "van",
+    "other",
+  ]);
+
+  if (fullName.length < 2 || fullName.length > 120) {
+    return errorResponse(
+      "Your full name must be between 2 and 120 characters.",
+    );
+  }
+
+  if (serviceArea.length < 2) {
+    return errorResponse(
+      "Enter your main service area.",
+    );
+  }
+
+  if (!allowedVehicles.has(vehicleType)) {
+    return errorResponse(
+      "Choose a valid vehicle type.",
+    );
+  }
+
+  if (
+    ["motorcycle", "car", "van"].includes(vehicleType) &&
+    vehicleRegistration.length < 3
+  ) {
+    return errorResponse(
+      "Enter the registration number of your vehicle.",
+    );
+  }
+
+  const client = await databasePool().connect();
+
+  try {
+    await client.query("BEGIN");
+
+    // Lock the Runner account before changing any details
+    // that influence verification or document requirements.
+    const accountResult = await client.query<{
+      account_status: string;
+      verification_status: string;
+    }>(
+      `SELECT
+         account_status,
+         verification_status
+       FROM public.runner_accounts
+       WHERE id = $1
+       LIMIT 1
+       FOR UPDATE`,
+      [auth.runner.id],
+    );
+
+    const account = accountResult.rows[0];
+
+    if (!account) {
+      await client.query("ROLLBACK");
+
+      return errorResponse(
+        "Runner account not found.",
+        404,
+      );
+    }
 
     if (
-      !isRecord(body) ||
-      typeof body.fullName !== "string" ||
-      typeof body.serviceArea !== "string" ||
-      typeof body.vehicleType !== "string"
+      ["suspended", "closed"].includes(
+        account.account_status,
+      )
     ) {
+      await client.query("ROLLBACK");
+
       return errorResponse(
-        "Complete the required Runner profile details.",
+        "This Runner account cannot be updated.",
+        403,
       );
     }
 
-    const fullName = body.fullName
-      .trim()
-      .replace(/\s+/g, " ");
+    if (
+      ["submitted", "approved"].includes(
+        account.verification_status,
+      )
+    ) {
+      await client.query("ROLLBACK");
 
-    const serviceArea = body.serviceArea
-      .trim()
-      .slice(0, 120);
-
-    const vehicleType = body.vehicleType
-      .trim()
-      .toLowerCase();
-
-    const vehicleRegistration =
-      typeof body.vehicleRegistration === "string"
-        ? body.vehicleRegistration
-            .trim()
-            .toUpperCase()
-            .slice(0, 30)
-        : "";
-
-    const allowedVehicles = new Set([
-      "motorcycle",
-      "bicycle",
-      "car",
-      "van",
-      "other",
-    ]);
-
-    if (fullName.length < 2 || fullName.length > 120) {
       return errorResponse(
-        "Your full name must be between 2 and 120 characters.",
+        "Your profile cannot be changed while your application is under review or after approval. Contact SaMi Operations if your verified details need to change.",
+        409,
       );
     }
 
-    if (serviceArea.length < 2) {
-      return errorResponse(
-        "Enter your main service area.",
-      );
-    }
+    await client.query(
+      `UPDATE public.runner_accounts
+       SET
+         full_name = $2,
+         account_status = 'pending_verification',
+         updated_at = now()
+       WHERE id = $1`,
+      [
+        auth.runner.id,
+        fullName,
+      ],
+    );
 
-    if (!allowedVehicles.has(vehicleType)) {
-      return errorResponse(
-        "Choose a valid vehicle type.",
-      );
-    }
+    await client.query(
+      `INSERT INTO public.runner_profiles (
+         runner_id,
+         service_area,
+         vehicle_type,
+         vehicle_registration,
+         updated_at
+       )
+       VALUES ($1, $2, $3, $4, now())
+       ON CONFLICT (runner_id)
+       DO UPDATE SET
+         service_area = EXCLUDED.service_area,
+         vehicle_type = EXCLUDED.vehicle_type,
+         vehicle_registration = EXCLUDED.vehicle_registration,
+         updated_at = now()`,
+      [
+        auth.runner.id,
+        serviceArea,
+        vehicleType,
+        vehicleRegistration || null,
+      ],
+    );
 
-    // Runner profile writes must always use the isolated
-    // Runner database, never the Customer database.
-    const client = await databasePool().connect();
-
-    try {
-      await client.query("BEGIN");
-
-      const updatedAccount = await client.query(
-        `UPDATE public.runner_accounts
-         SET
-           full_name = $2,
-           account_status = CASE
-             WHEN verification_status = 'approved'
-               THEN 'active'
-             ELSE 'pending_verification'
-           END,
-           updated_at = now()
-         WHERE id = $1
-         RETURNING id`,
-        [
-          auth.runner.id,
-          fullName,
-        ],
-      );
-
-      if (!updatedAccount.rowCount) {
-        await client.query("ROLLBACK");
-
-        return errorResponse(
-          "Your Runner account could not be found.",
-          404,
-        );
-      }
-
-      await client.query(
-        `INSERT INTO public.runner_profiles (
-           runner_id,
-           service_area,
-           vehicle_type,
-           vehicle_registration,
-           updated_at
-         )
-         VALUES ($1, $2, $3, $4, now())
-         ON CONFLICT (runner_id)
-         DO UPDATE SET
-           service_area = EXCLUDED.service_area,
-           vehicle_type = EXCLUDED.vehicle_type,
-           vehicle_registration = EXCLUDED.vehicle_registration,
-           updated_at = now()`,
-        [
-          auth.runner.id,
-          serviceArea,
-          vehicleType,
-          vehicleRegistration || null,
-        ],
-      );
-
-      await client.query("COMMIT");
-    } catch (cause) {
-      await client.query("ROLLBACK").catch(() => undefined);
-      throw cause;
-    } finally {
-      client.release();
-    }
+    await client.query("COMMIT");
 
     return NextResponse.json(
       {
@@ -245,14 +295,22 @@ export async function PUT(request: Request) {
       },
     );
   } catch (cause) {
+    await client.query("ROLLBACK").catch(
+      () => undefined,
+    );
+
     console.error(
       "[SaMi Runner profile] Update failed.",
-      cause instanceof Error ? cause.message : "unknown error",
+      cause instanceof Error
+        ? cause.message
+        : "unknown error",
     );
 
     return errorResponse(
       "Your Runner profile could not be saved.",
       503,
     );
+  } finally {
+    client.release();
   }
 }

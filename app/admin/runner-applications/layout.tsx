@@ -12,7 +12,7 @@ export default async function AdminRunnerApplicationsLayout({
 }) {
   const auth = await authenticateAdmin();
 
-  if (!auth.user) {
+  if (auth.response || !auth.user) {
     redirect("/admin/login");
   }
 
