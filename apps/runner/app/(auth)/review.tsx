@@ -414,7 +414,13 @@ export default function RunnerApplicationReviewScreen() {
           </Pressable>
 
           <Pressable
-            onPress={() => router.replace("/(auth)/documents")}
+            onPress={() => {
+              if (router.canGoBack()) {
+                router.back();
+              } else {
+                router.replace("/(auth)/documents");
+              }
+            }}
             style={styles.backLink}
           >
             <Text style={[styles.backLinkText, { color: colors.blue }]}>
@@ -433,7 +439,13 @@ export default function RunnerApplicationReviewScreen() {
     >
       <View style={styles.header}>
         <Pressable
-          onPress={() => router.replace("/(auth)/documents")}
+          onPress={() => {
+            if (router.canGoBack()) {
+              router.back();
+            } else {
+              router.replace("/(auth)/documents");
+            }
+          }}
           style={styles.backLink}
         >
           <Text style={[styles.backLinkText, { color: colors.blue }]}>

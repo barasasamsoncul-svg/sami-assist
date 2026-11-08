@@ -237,8 +237,8 @@ export default function RunnerTaskSelectionScreen() {
         },
       });
 
-      // Transport details will be completed on their own page.
-      router.replace("/(auth)/transport");
+      // Keep this page in the navigation history.
+      router.push("/(auth)/transport");
     } catch (cause) {
       setError(
         cause instanceof Error

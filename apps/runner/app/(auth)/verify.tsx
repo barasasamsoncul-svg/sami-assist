@@ -1,5 +1,4 @@
-
-import { useState } from "react";
+import { useEffect, useState } from "react";
 
 import {
   ActivityIndicator,
@@ -23,11 +22,15 @@ import { SafeAreaView } from "react-native-safe-area-context";
 import { Ionicons } from "@expo/vector-icons";
 
 import {
+  requestRunnerOtp,
+  requestRunnerRegistrationOtp,
   saveRunnerSession,
   verifyRunnerOtp,
 } from "@/api";
 
 import { useRunnerTheme } from "@/theme";
+
+const OTP_RESEND_COOLDOWN_SECONDS = 60;
 
 export default function VerifyRunnerScreen() {
   const { colors } = useRunnerTheme();
@@ -36,21 +39,60 @@ export default function VerifyRunnerScreen() {
     challengeId?: string;
     destination?: string;
     purpose?: string;
+    fullName?: string;
+    email?: string;
+    phone?: string;
   }>();
 
-  const challengeId = String(params.challengeId || "");
+  const initialChallengeId = String(params.challengeId || "");
 
-  const destination = String(
+  const initialDestination = String(
     params.destination || "your email address",
   );
 
   const isRegistration = params.purpose === "register";
 
+  const fullName = String(params.fullName || "").trim();
+  const email = String(params.email || "").trim().toLowerCase();
+  const phone = String(params.phone || "").trim();
+
+  const [challengeId, setChallengeId] = useState(
+    initialChallengeId,
+  );
+
+  const [destination, setDestination] = useState(
+    initialDestination,
+  );
+
   const [code, setCode] = useState("");
   const [busy, setBusy] = useState(false);
+  const [resending, setResending] = useState(false);
   const [error, setError] = useState("");
+  const [notice, setNotice] = useState("");
+
+  const [resendCountdown, setResendCountdown] = useState(
+    OTP_RESEND_COOLDOWN_SECONDS,
+  );
+
+  useEffect(() => {
+    if (resendCountdown <= 0) {
+      return;
+    }
+
+    const timer = setTimeout(() => {
+      setResendCountdown((remaining) =>
+        Math.max(0, remaining - 1),
+      );
+    }, 1000);
+
+    return () => clearTimeout(timer);
+  }, [resendCountdown]);
 
   async function verify() {
+    if (busy || resending) {
+      return;
+    }
+
     if (!challengeId) {
       setError("Your verification session is missing. Start again.");
       return;
@@ -63,6 +105,7 @@ export default function VerifyRunnerScreen() {
 
     setBusy(true);
     setError("");
+    setNotice("");
 
     try {
       const result = await verifyRunnerOtp(challengeId, code);
@@ -89,6 +132,81 @@ export default function VerifyRunnerScreen() {
       setBusy(false);
     }
   }
+
+  async function resendCode() {
+    if (
+      busy ||
+      resending ||
+      resendCountdown > 0
+    ) {
+      return;
+    }
+
+    if (!email) {
+      setError(
+        "Your email address is missing. Go back and start again.",
+      );
+      return;
+    }
+
+    if (
+      isRegistration &&
+      (!fullName || !phone)
+    ) {
+      setError(
+        "Your registration details are missing. Go back and complete registration again.",
+      );
+      return;
+    }
+
+    setResending(true);
+    setError("");
+    setNotice("");
+
+    try {
+      const result = isRegistration
+        ? await requestRunnerRegistrationOtp({
+            fullName,
+            email,
+            phone,
+          })
+        : await requestRunnerOtp(email);
+
+      if (!result.challengeId) {
+        throw new Error(
+          "A new verification session could not be created.",
+        );
+      }
+
+      setChallengeId(result.challengeId);
+
+      if (result.destination) {
+        setDestination(result.destination);
+      }
+
+      setCode("");
+      setResendCountdown(OTP_RESEND_COOLDOWN_SECONDS);
+
+      setNotice(
+        result.message || "A new verification code has been sent.",
+      );
+    } catch (cause) {
+      setError(
+        cause instanceof Error
+          ? cause.message
+          : "A new verification code could not be sent.",
+      );
+    } finally {
+      setResending(false);
+    }
+  }
+
+  const resendLabel =
+    resendCountdown > 0
+      ? `Resend code in 00:${String(
+          resendCountdown,
+        ).padStart(2, "0")}`
+      : "Resend code";
 
   return (
     <SafeAreaView
@@ -121,7 +239,7 @@ export default function VerifyRunnerScreen() {
           <Pressable
             accessibilityRole="button"
             accessibilityLabel="Go back"
-            disabled={busy}
+            disabled={busy || resending}
             onPress={() => router.back()}
             style={styles.backButton}
           >
@@ -220,6 +338,7 @@ export default function VerifyRunnerScreen() {
                   value.replace(/[^0-9]/g, "").slice(0, 6),
                 );
                 setError("");
+                setNotice("");
               }}
               keyboardType="number-pad"
               textContentType="oneTimeCode"
@@ -228,8 +347,9 @@ export default function VerifyRunnerScreen() {
               placeholder="000000"
               placeholderTextColor={colors.textMuted}
               returnKeyType="done"
+              editable={!busy && !resending}
               onSubmitEditing={() => {
-                if (code.length === 6 && !busy) {
+                if (code.length === 6 && !busy && !resending) {
                   void verify();
                 }
               }}
@@ -240,6 +360,7 @@ export default function VerifyRunnerScreen() {
                   borderColor: colors.border,
                   color: colors.text,
                 },
+                (busy || resending) && styles.disabled,
               ]}
               accessibilityLabel="Six digit email verification code"
             />
@@ -266,15 +387,39 @@ export default function VerifyRunnerScreen() {
               </View>
             ) : null}
 
+            {notice ? (
+              <View
+                style={[
+                  styles.noticeContainer,
+                  { backgroundColor: colors.blueSoft },
+                ]}
+              >
+                <Ionicons
+                  name="checkmark-circle-outline"
+                  size={18}
+                  color={colors.blue}
+                />
+
+                <Text
+                  style={[styles.notice, { color: colors.text }]}
+                >
+                  {notice}
+                </Text>
+              </View>
+            ) : null}
+
             <Pressable
               accessibilityRole="button"
-              disabled={busy}
+              disabled={busy || resending}
               onPress={() => void verify()}
               style={({ pressed }) => [
                 styles.primaryButton,
                 { backgroundColor: colors.blue },
-                busy && styles.disabled,
-                pressed && !busy && styles.pressed,
+                (busy || resending) && styles.disabled,
+                pressed &&
+                  !busy &&
+                  !resending &&
+                  styles.pressed,
               ]}
             >
               {busy ? (
@@ -298,7 +443,55 @@ export default function VerifyRunnerScreen() {
 
             <Pressable
               accessibilityRole="button"
-              disabled={busy}
+              accessibilityLabel={resendLabel}
+              disabled={
+                busy ||
+                resending ||
+                resendCountdown > 0
+              }
+              onPress={() => void resendCode()}
+              style={({ pressed }) => [
+                styles.resendButton,
+                (busy ||
+                  resending ||
+                  resendCountdown > 0) &&
+                  styles.disabled,
+                pressed &&
+                  !busy &&
+                  !resending &&
+                  resendCountdown === 0 &&
+                  styles.pressed,
+              ]}
+            >
+              {resending ? (
+                <ActivityIndicator
+                  size="small"
+                  color={colors.blue}
+                />
+              ) : (
+                <Text
+                  style={[
+                    styles.resendText,
+                    { color: colors.blue },
+                  ]}
+                >
+                  {resendLabel}
+                </Text>
+              )}
+            </Pressable>
+
+            <Text
+              style={[
+                styles.resendHint,
+                { color: colors.textMuted },
+              ]}
+            >
+              You can request up to five codes per hour.
+            </Text>
+
+            <Pressable
+              accessibilityRole="button"
+              disabled={busy || resending}
               onPress={() =>
                 router.replace(
                   isRegistration
@@ -416,6 +609,18 @@ const styles = StyleSheet.create({
     fontSize: 12,
     lineHeight: 18,
   },
+  noticeContainer: {
+    flexDirection: "row",
+    alignItems: "flex-start",
+    borderRadius: 12,
+    padding: 12,
+    gap: 9,
+  },
+  notice: {
+    flex: 1,
+    fontSize: 12,
+    lineHeight: 18,
+  },
   primaryButton: {
     minHeight: 55,
     borderRadius: 14,
@@ -429,6 +634,21 @@ const styles = StyleSheet.create({
     color: "#FFFFFF",
     fontSize: 13,
     fontWeight: "900",
+  },
+  resendButton: {
+    minHeight: 40,
+    alignItems: "center",
+    justifyContent: "center",
+    paddingHorizontal: 12,
+  },
+  resendText: {
+    fontSize: 12,
+    fontWeight: "900",
+  },
+  resendHint: {
+    fontSize: 10,
+    textAlign: "center",
+    marginTop: -12,
   },
   changeEmailButton: {
     alignItems: "center",

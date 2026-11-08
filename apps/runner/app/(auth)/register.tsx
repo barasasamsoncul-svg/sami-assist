@@ -33,6 +33,7 @@ export default function RunnerRegistrationScreen() {
 
   const normalizedName = fullName.trim().replace(/\s+/g, " ");
   const normalizedEmail = email.trim().toLowerCase();
+  const normalizedPhone = phone.trim();
 
   const validName =
     normalizedName.length >= 2 &&
@@ -42,7 +43,7 @@ export default function RunnerRegistrationScreen() {
     normalizedEmail.length <= 254 &&
     /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(normalizedEmail);
 
-  const validPhone = phone.trim().length >= 9;
+  const validPhone = normalizedPhone.length >= 9;
 
   const canSubmit =
     validName &&
@@ -51,6 +52,8 @@ export default function RunnerRegistrationScreen() {
     !submitting;
 
   async function submitRegistration() {
+    if (submitting) return;
+
     setError("");
 
     if (!validName) {
@@ -74,7 +77,7 @@ export default function RunnerRegistrationScreen() {
       const result = await requestRunnerRegistrationOtp({
         fullName: normalizedName,
         email: normalizedEmail,
-        phone: phone.trim(),
+        phone: normalizedPhone,
       });
 
       router.push({
@@ -83,6 +86,9 @@ export default function RunnerRegistrationScreen() {
           challengeId: result.challengeId,
           destination: result.destination,
           purpose: "register",
+          fullName: normalizedName,
+          email: normalizedEmail,
+          phone: normalizedPhone,
         },
       });
     } catch (cause) {
@@ -257,6 +263,7 @@ export default function RunnerRegistrationScreen() {
                   textContentType="name"
                   returnKeyType="next"
                   maxLength={120}
+                  editable={!submitting}
                   style={[
                     styles.input,
                     { color: colors.text },
@@ -307,6 +314,7 @@ export default function RunnerRegistrationScreen() {
                   textContentType="emailAddress"
                   returnKeyType="next"
                   maxLength={254}
+                  editable={!submitting}
                   style={[
                     styles.input,
                     { color: colors.text },
@@ -364,6 +372,7 @@ export default function RunnerRegistrationScreen() {
                   textContentType="telephoneNumber"
                   returnKeyType="done"
                   maxLength={24}
+                  editable={!submitting}
                   style={[
                     styles.input,
                     { color: colors.text },

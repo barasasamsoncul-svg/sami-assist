@@ -1,6 +1,6 @@
-
 import * as SecureStore from "expo-secure-store";
 import { fetch as expoFetch } from "expo/fetch";
+import { File as ExpoFile } from "expo-file-system";
 
 const SESSION_KEY = "sami_runner_access_token";
 
@@ -366,6 +366,16 @@ export async function apiRequest<T>(
    MULTIPART DOCUMENT UPLOAD
 ------------------------------------------ */
 
+/**
+ * Expo SDK 57 uses the standard File/Blob implementation
+ * with expo/fetch. A React Native { uri, name, type }
+ * object cast to Blob is not a real Blob and cannot be
+ * reliably serialized into multipart FormData.
+ *
+ * Convert the selected local URI into an Expo File before
+ * appending it. This is shared by regular documents and
+ * the two-sided National ID submission.
+ */
 function appendRunnerFile(
   formData: FormData,
   fieldName: string,
@@ -375,14 +385,35 @@ function appendRunnerFile(
     throw new Error("Select a document to upload.");
   }
 
-  formData.append(
-    fieldName,
-    {
-      uri: file.uri,
-      name: file.name || "runner-document",
-      type: file.mimeType || "application/octet-stream",
-    } as unknown as Blob,
-  );
+  let nativeFile: ExpoFile;
+
+  try {
+    nativeFile = new ExpoFile(file.uri);
+  } catch {
+    throw new Error(
+      "The selected document could not be opened. Select it again and retry.",
+    );
+  }
+
+  if (!nativeFile.exists) {
+    throw new Error(
+      "The selected document is no longer available. Select it again and retry.",
+    );
+  }
+
+  if (nativeFile.size === 0) {
+    throw new Error("The selected document is empty.");
+  }
+
+  const filename =
+    file.name?.trim() ||
+    nativeFile.name ||
+    "runner-document";
+
+  // Expo File is a real File/Blob compatible part.
+  // Do not manually set the multipart Content-Type header;
+  // expo/fetch must generate the boundary.
+  formData.append(fieldName, nativeFile, filename);
 }
 
 async function uploadRunnerFile<T>(
@@ -406,8 +437,6 @@ async function uploadRunnerFile<T>(
         Accept: "application/json",
         "x-sami-client": "runner",
         Authorization: "Bearer " + token,
-        // Do not set Content-Type here.
-        // Native fetch supplies the multipart boundary.
       },
       body: formData,
     });

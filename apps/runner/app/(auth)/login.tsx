@@ -1,4 +1,5 @@
 
+
 import { useRef, useState } from "react";
 import {
   ActivityIndicator,
@@ -69,6 +70,7 @@ export default function RunnerLoginScreen() {
           purpose: "login",
           challengeId: result.challengeId,
           destination: result.destination,
+          email: normalizedEmail,
         },
       });
     } catch (cause) {
@@ -269,7 +271,7 @@ export default function RunnerLoginScreen() {
                   autoComplete="email"
                   textContentType="emailAddress"
                   returnKeyType="go"
-                  onSubmitEditing={continueWithEmail}
+                  onSubmitEditing={() => void continueWithEmail()}
                   maxLength={254}
                   editable={!busy}
                   selectionColor={colors.blue}
@@ -332,7 +334,7 @@ export default function RunnerLoginScreen() {
                 accessibilityLabel="Continue with email"
                 accessibilityState={{ disabled: busy }}
                 disabled={busy}
-                onPress={continueWithEmail}
+                onPress={() => void continueWithEmail()}
                 style={({ pressed }) => [
                   styles.primaryButton,
                   { backgroundColor: colors.blue },

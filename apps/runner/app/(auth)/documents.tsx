@@ -1,4 +1,5 @@
 
+
 import { useEffect, useMemo, useState } from "react";
 
 import {
@@ -433,9 +434,13 @@ export default function RunnerDocumentsScreen() {
             <Pressable
               accessibilityRole="button"
               accessibilityLabel="Back to transport details"
-              onPress={() =>
-                router.replace("/(auth)/transport")
-              }
+              onPress={() => {
+                if (router.canGoBack()) {
+                  router.back();
+                } else {
+                  router.replace("/(auth)/transport");
+                }
+              }}
               style={[
                 styles.backButton,
                 {

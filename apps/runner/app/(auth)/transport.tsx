@@ -225,7 +225,8 @@ export default function RunnerTransportScreen() {
           : "",
       });
 
-      router.replace("/(auth)/documents");
+      // Keep Transport in the navigation history.
+      router.push("/(auth)/documents");
     } catch (cause) {
       setError(
         cause instanceof Error
@@ -279,7 +280,13 @@ export default function RunnerTransportScreen() {
                 accessibilityRole="button"
                 accessibilityLabel="Go back to task selection"
                 disabled={saving}
-                onPress={() => router.replace("/(auth)/tasks")}
+                onPress={() => {
+                  if (router.canGoBack()) {
+                    router.back();
+                  } else {
+                    router.replace("/(auth)/tasks");
+                  }
+                }}
                 style={[
                   styles.backButton,
                   {

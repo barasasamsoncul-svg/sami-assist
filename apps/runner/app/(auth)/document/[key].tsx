@@ -311,6 +311,15 @@ export default function RunnerDocumentDetailScreen() {
     singleRequirement?.instructions ??
     "Upload a clear, readable image of this document.";
 
+  function goBack() {
+    if (router.canGoBack()) {
+      router.back();
+      return;
+    }
+
+    router.replace("/(auth)/documents");
+  }
+
   const pickImage = async (
     side: "front" | "back" | "single",
     source: "camera" | "gallery",
@@ -422,6 +431,7 @@ export default function RunnerDocumentDetailScreen() {
         });
       }
 
+      // Return to a fresh checklist so upload status is reloaded.
       router.replace("/(auth)/documents");
     } catch (cause) {
       setError(
@@ -454,11 +464,14 @@ export default function RunnerDocumentDetailScreen() {
     >
       <View style={styles.header}>
         <Pressable
-          onPress={() => router.replace("/(auth)/documents")}
+          accessibilityRole="button"
+          accessibilityLabel="Go back"
+          disabled={uploading}
+          onPress={goBack}
           style={styles.backButton}
         >
           <Text style={[styles.backText, { color: colors.blue }]}>
-            ‹  Documents
+            ‹  Back
           </Text>
         </Pressable>
       </View>
@@ -498,10 +511,10 @@ export default function RunnerDocumentDetailScreen() {
           </Text>
 
           <Pressable
-            onPress={() => router.replace("/(auth)/documents")}
+            onPress={goBack}
             style={[styles.primaryButton, { backgroundColor: colors.blue }]}
           >
-            <Text style={styles.primaryButtonText}>Back to checklist</Text>
+            <Text style={styles.primaryButtonText}>Back</Text>
           </Pressable>
         </View>
       ) : (
@@ -617,10 +630,10 @@ export default function RunnerDocumentDetailScreen() {
 
           {locked ? (
             <Pressable
-              onPress={() => router.replace("/(auth)/documents")}
+              onPress={goBack}
               style={[styles.primaryButton, { backgroundColor: colors.blue }]}
             >
-              <Text style={styles.primaryButtonText}>Back to checklist</Text>
+              <Text style={styles.primaryButtonText}>Back</Text>
             </Pressable>
           ) : (
             <Pressable
