@@ -2,6 +2,7 @@
 "use client";
 
 import Brand from "@/components/Brand";
+import Link from "next/link";
 import { FormEvent, useState } from "react";
 
 export default function AdminLoginForm() {
@@ -42,7 +43,7 @@ export default function AdminLoginForm() {
       setError(
         err instanceof Error
           ? err.message
-          : "Unable to sign in. Please try again."
+          : "Unable to sign in. Please try again.",
       );
     } finally {
       setBusy(false);
@@ -109,6 +110,15 @@ export default function AdminLoginForm() {
               >
                 {showPassword ? "Hide password" : "Show password"}
               </button>
+            </div>
+
+            <div>
+              <Link
+                href="/admin/forgot-password"
+                className="muted"
+              >
+                Forgot your password?
+              </Link>
             </div>
 
             {error && (

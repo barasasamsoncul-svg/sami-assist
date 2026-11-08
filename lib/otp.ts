@@ -10,7 +10,8 @@ export type EmailOtpPurpose =
   | "register"
   | "login"
   | "delete_account"
-  | "change_contact";
+  | "change_contact"
+  | "admin_password_reset";
 
 export interface EmailOtpOptions {
   purpose: EmailOtpPurpose;
@@ -194,6 +195,8 @@ export async function sendEmailOtp(
   const isRegistration = options.purpose === "register";
   const isDeletion = options.purpose === "delete_account";
   const isContactChange = options.purpose === "change_contact";
+  const isAdminPasswordReset =
+    options.purpose === "admin_password_reset";
 
   const subject = isRegistration
     ? "Verify your email to join SaMi"
@@ -201,7 +204,9 @@ export async function sendEmailOtp(
       ? "Confirm your SaMi account deletion request"
       : isContactChange
         ? "Verify your new SaMi email address"
-        : "Your SaMi sign-in code";
+        : isAdminPasswordReset
+          ? "Your SaMi Admin password recovery code"
+          : "Your SaMi sign-in code";
 
   const action = isRegistration
     ? "finish creating your SaMi account"
@@ -209,7 +214,9 @@ export async function sendEmailOtp(
       ? "confirm your request to delete your SaMi account"
       : isContactChange
         ? "confirm your new email address"
-        : "sign in to your SaMi account";
+        : isAdminPasswordReset
+          ? "verify your identity and reset your SaMi administrator password"
+          : "sign in to your SaMi account";
 
   const heading = isRegistration
     ? "Welcome to SaMi"
@@ -217,7 +224,9 @@ export async function sendEmailOtp(
       ? "Confirm account deletion"
       : isContactChange
         ? "Verify your new email"
-        : "Your sign-in code";
+        : isAdminPasswordReset
+          ? "Admin password recovery"
+          : "Your sign-in code";
 
   const purposeText = isRegistration
     ? "complete your SaMi account registration"
@@ -225,7 +234,9 @@ export async function sendEmailOtp(
       ? "verify your identity before permanently deleting your account"
       : isContactChange
         ? "verify the new email address you want associated with your SaMi account"
-        : "securely sign in to your SaMi account";
+        : isAdminPasswordReset
+          ? "verify your identity before changing your administrator password"
+          : "securely sign in to your SaMi account";
 
   const eyebrow = isRegistration
     ? "WELCOME TO SAMI"
@@ -233,9 +244,18 @@ export async function sendEmailOtp(
       ? "ACCOUNT DELETION"
       : isContactChange
         ? "CONTACT VERIFICATION"
-        : "SECURE SIGN IN";
+        : isAdminPasswordReset
+          ? "ADMIN ACCOUNT RECOVERY"
+          : "SECURE SIGN IN";
+
+  const codeEntryInstruction = isAdminPasswordReset
+    ? "Only enter this code on the official SaMi Admin password recovery screen."
+    : "Only enter it in the SaMi app to continue.";
 
   const safeCode = escapeEmailHtml(code);
+  const safeCodeEntryInstruction = escapeEmailHtml(
+    codeEntryInstruction,
+  );
 
   const textBody =
     greeting +
@@ -294,7 +314,9 @@ export async function sendEmailOtp(
     '<table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%" style="margin:28px 0 0;"><tr>' +
     '<td style="padding:16px 17px;background:#F5F8FE;border-left:3px solid #3478E5;border-radius:8px;">' +
     '<p style="margin:0 0 5px;color:#000535;font-size:13px;line-height:19px;font-weight:700;">Keep this code private</p>' +
-    '<p style="margin:0;color:#657087;font-size:13px;line-height:21px;">SaMi will never ask you to share this code. Only enter it in the SaMi app to continue.</p>' +
+    '<p style="margin:0;color:#657087;font-size:13px;line-height:21px;">SaMi will never ask you to share this code. ' +
+    safeCodeEntryInstruction +
+    "</p>" +
     "</td></tr></table>" +
     '<p style="margin:21px 0 0;color:#7B8495;font-size:12px;line-height:21px;">Did not request this code? You can ignore this email. No changes will be made to your account.</p>' +
     "</td></tr>" +
