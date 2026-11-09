@@ -23,11 +23,43 @@ export default ({ config }: ConfigContext): ExpoConfig => {
     throw new Error("SaMi Runner must use its runner-production update channel.");
   }
 
+  // Google Maps key is supplied through the Runner EAS production environment.
+  const googleMapsApiKey = process.env.GOOGLE_MAPS_API_KEY?.trim();
+
+  // Fail the native EAS build rather than produce another APK without the key.
+  if (process.env.EAS_BUILD === "true" && !googleMapsApiKey) {
+    throw new Error(
+      "GOOGLE_MAPS_API_KEY is missing from the SaMi Runner EAS build environment."
+    );
+  }
+
+  // Preserve existing plugins and avoid duplicate react-native-maps entries.
+  const plugins: NonNullable<ExpoConfig["plugins"]> = (
+    config.plugins ?? []
+  ).filter((plugin) => {
+    if (typeof plugin === "string") {
+      return plugin !== "react-native-maps";
+    }
+
+    return plugin[0] !== "react-native-maps";
+  });
+
+  // Configure Google Maps for Android when the EAS key is available.
+  if (googleMapsApiKey) {
+    plugins.push([
+      "react-native-maps",
+      {
+        androidGoogleMapsApiKey: googleMapsApiKey,
+      },
+    ]);
+  }
+
   return {
     ...config,
     name: "SaMi Runner",
     slug: "sami-runner",
     owner: config.owner ?? "sami-assist",
+    plugins,
     runtimeVersion: {
       policy: "fingerprint",
     },
