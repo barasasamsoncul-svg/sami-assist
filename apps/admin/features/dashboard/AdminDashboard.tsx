@@ -9,11 +9,24 @@ type AdminDashboardProps = {
   };
 };
 
-export default function AdminDashboard({
-  user,
-}: AdminDashboardProps) {
+function getInitials(fullName: string): string {
+  return fullName
+    .split(" ")
+    .filter(Boolean)
+    .slice(0, 2)
+    .map((part) => part[0]?.toUpperCase() ?? "")
+    .join("");
+}
+
+export default function AdminDashboard({ user }: AdminDashboardProps) {
+  const initials = getInitials(user.full_name);
+
   return (
     <div className="app-shell">
+      <a href="#main-content" className="skip-link">
+        Skip to main content
+      </a>
+
       <aside className="app-sidebar">
         <div className="sidebar-brand">
           <Brand />
@@ -23,45 +36,30 @@ export default function AdminDashboard({
         <div className="workspace-label">WORKSPACE</div>
 
         <nav className="sidebar-nav" aria-label="Admin navigation">
-          <Link
-            className="nav-item current"
-            href="/admin"
-            aria-current="page"
-          >
-            <span className="nav-glyph">⌂</span>
+          <Link className="nav-item current" href="/admin" aria-current="page">
+            <span className="nav-glyph" aria-hidden="true">⌂</span>
             <span>Overview</span>
           </Link>
 
           <div className="workspace-label">OPERATIONS</div>
 
-          <Link
-            className="nav-item"
-            href="/admin/runner-applications"
-          >
-            <span className="nav-glyph">♙</span>
+          <Link className="nav-item" href="/admin/runner-applications">
+            <span className="nav-glyph" aria-hidden="true">♙</span>
             <span>Runner applications</span>
           </Link>
 
           <div className="workspace-label">ACCOUNT</div>
 
-          <Link
-            className="nav-item"
-            href="/admin/security"
-          >
-            <span className="nav-glyph">⚙</span>
+          <Link className="nav-item" href="/admin/security">
+            <span className="nav-glyph" aria-hidden="true">⚙</span>
             <span>Security settings</span>
           </Link>
         </nav>
 
         <div className="sidebar-bottom">
           <div className="sidebar-profile">
-            <div className="avatar">
-              {user.full_name
-                .split(" ")
-                .filter(Boolean)
-                .slice(0, 2)
-                .map((part) => part[0]?.toUpperCase())
-                .join("")}
+            <div className="avatar" aria-hidden="true">
+              {initials}
             </div>
 
             <div className="sidebar-profile-copy">
@@ -74,30 +72,28 @@ export default function AdminDashboard({
 
       <div className="app-main">
         <header className="app-topbar">
-          <div className="breadcrumbs">
+          <nav className="breadcrumbs" aria-label="Breadcrumb">
             <strong>Admin</strong>
-            <b>/</b>
-            <span>Overview</span>
-          </div>
+            <span aria-hidden="true">/</span>
+            <span aria-current="page">Overview</span>
+          </nav>
 
           <div className="topbar-actions">
             <span className="account-pill">
-              <i />
+              <i aria-hidden="true" />
               Administrator session
             </span>
           </div>
         </header>
 
-        <main className="page-content">
+        <main id="main-content" className="page-content">
           <section className="welcome-banner">
             <div className="welcome-copy">
               <span className="welcome-badge">
                 SAMI ADMINISTRATION
               </span>
 
-              <h2>
-                Welcome back, {user.full_name}.
-              </h2>
+              <h1>Welcome back, {user.full_name}.</h1>
 
               <p>
                 Your central workspace for overseeing SaMi operations,
@@ -123,13 +119,11 @@ export default function AdminDashboard({
             </div>
           </section>
 
-          <div className="page-heading" style={{ marginTop: 30 }}>
+          <div className="page-heading page-heading-spaced">
             <div>
-              <div className="section-kicker">
-                MANAGEMENT
-              </div>
+              <div className="section-kicker">MANAGEMENT</div>
 
-              <h1>Your workspace</h1>
+              <h2>Your workspace</h2>
 
               <p>
                 Access the operational areas assigned to your
@@ -142,31 +136,34 @@ export default function AdminDashboard({
             <section className="surface-card">
               <div className="surface-heading">
                 <div>
-                  <h2>Runner management</h2>
+                  <h3>Runner management</h3>
                   <p>
                     Manage Runner onboarding and verification.
                   </p>
                 </div>
 
-                <span className="soft-count">01</span>
+                <span className="soft-count" aria-hidden="true">
+                  01
+                </span>
               </div>
 
               <div className="attention-row">
-                <div className="attention-mark blue">
+                <div className="attention-mark blue" aria-hidden="true">
                   ♙
                 </div>
 
                 <div className="attention-copy">
                   <b>Runner applications</b>
                   <small>
-                    Review registrations, submitted documents
-                    and verification records.
+                    Review registrations, submitted documents and
+                    verification records.
                   </small>
                 </div>
 
                 <Link
                   className="button ghost"
                   href="/admin/runner-applications"
+                  aria-label="Open Runner applications"
                 >
                   Open
                   <span aria-hidden="true">→</span>
@@ -177,10 +174,8 @@ export default function AdminDashboard({
             <section className="surface-card">
               <div className="surface-heading">
                 <div>
-                  <h2>Administrator account</h2>
-                  <p>
-                    Currently authenticated administrator.
-                  </p>
+                  <h3>Administrator account</h3>
+                  <p>Currently authenticated administrator.</p>
                 </div>
               </div>
 
@@ -207,10 +202,7 @@ export default function AdminDashboard({
               </div>
 
               <div className="mt-5">
-                <Link
-                  className="button ghost"
-                  href="/admin/security"
-                >
+                <Link className="button ghost" href="/admin/security">
                   Manage account security
                   <span aria-hidden="true">→</span>
                 </Link>

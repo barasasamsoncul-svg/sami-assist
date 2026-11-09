@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 
 import Brand from "@/components/Brand";
 import RunnerApplicationDecision from "@/apps/admin/features/runner-applications/RunnerApplicationDecision";
@@ -56,7 +56,6 @@ type Props = {
 
 function readable(value: string | null | undefined) {
   if (!value) return "Not provided";
-
   return value
     .replaceAll("_", " ")
     .replace(/\b\w/g, (letter) => letter.toUpperCase());
@@ -64,35 +63,66 @@ function readable(value: string | null | undefined) {
 
 function formatDate(value: string | null) {
   if (!value) return "Not available";
-
   const date = new Date(value);
-
-  if (Number.isNaN(date.getTime())) {
-    return "Not available";
-  }
-
+  if (Number.isNaN(date.getTime())) return "Not available";
   return new Intl.DateTimeFormat("en-KE", {
     dateStyle: "medium",
     timeStyle: "short",
   }).format(date);
 }
 
-export default function RunnerApplicationDetail({
-  runnerId,
-}: Props) {
-  const [application, setApplication] =
-    useState<RunnerApplication | null>(null);
+function getInitials(fullName: string | null): string {
+  if (!fullName) return "R";
+  return fullName
+    .split(" ")
+    .filter(Boolean)
+    .slice(0, 2)
+    .map((part) => part[0]?.toUpperCase() ?? "")
+    .join("");
+}
 
+function Detail({
+  label,
+  value,
+}: {
+  label: string;
+  value: string;
+}) {
+  return (
+    <div>
+      <small>{label}</small>
+      <b>{value}</b>
+    </div>
+  );
+}
+
+export default function RunnerApplicationDetail({ runnerId }: Props) {
+  const [application, setApplication] = useState<RunnerApplication | null>(
+    null,
+  );
   const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState("");
+  const [refreshTick, setRefreshTick] = useState(0);
+
+  const activeRef = useRef(true);
 
   useEffect(() => {
-    let active = true;
+    activeRef.current = true;
+    return () => {
+      activeRef.current = false;
+    };
+  }, []);
+
+  useEffect(() => {
+    const isRefresh = application !== null && refreshTick > 0;
+
+    if (isRefresh) setRefreshing(true);
+    else setLoading(true);
+
+    setError("");
 
     async function loadApplication() {
-      setLoading(true);
-      setError("");
-
       try {
         const response = await fetch(
           `/api/admin/runner-applications/${encodeURIComponent(runnerId)}`,
@@ -117,11 +147,11 @@ export default function RunnerApplicationDetail({
           );
         }
 
-        if (active) {
+        if (activeRef.current) {
           setApplication(data.application);
         }
       } catch (cause) {
-        if (active) {
+        if (activeRef.current) {
           setError(
             cause instanceof Error
               ? cause.message
@@ -129,21 +159,31 @@ export default function RunnerApplicationDetail({
           );
         }
       } finally {
-        if (active) {
+        if (activeRef.current) {
           setLoading(false);
+          setRefreshing(false);
         }
       }
     }
 
     void loadApplication();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [runnerId, refreshTick]);
 
-    return () => {
-      active = false;
-    };
-  }, [runnerId]);
+  const refresh = useCallback(() => {
+    setRefreshTick((t) => t + 1);
+  }, []);
+
+  const showInitialLoading = loading && !application && !error;
+  const showErrorState = !loading && error && !application;
+  const showContent = !!application;
 
   return (
     <div className="app-shell">
+      <a href="#main-content" className="skip-link">
+        Skip to main content
+      </a>
+
       <aside className="app-sidebar">
         <div className="sidebar-brand">
           <Brand />
@@ -154,7 +194,9 @@ export default function RunnerApplicationDetail({
 
         <nav className="sidebar-nav" aria-label="Admin navigation">
           <Link className="nav-item" href="/admin">
-            <span className="nav-glyph">⌂</span>
+            <span className="nav-glyph" aria-hidden="true">
+              ⌂
+            </span>
             <span>Overview</span>
           </Link>
 
@@ -165,22 +207,27 @@ export default function RunnerApplicationDetail({
             href="/admin/runner-applications"
             aria-current="page"
           >
-            <span className="nav-glyph">♙</span>
+            <span className="nav-glyph" aria-hidden="true">
+              ♙
+            </span>
             <span>Runner applications</span>
           </Link>
 
           <div className="workspace-label">ACCOUNT</div>
 
           <Link className="nav-item" href="/admin/security">
-            <span className="nav-glyph">⚙</span>
+            <span className="nav-glyph" aria-hidden="true">
+              ⚙
+            </span>
             <span>Security settings</span>
           </Link>
         </nav>
 
         <div className="sidebar-bottom">
           <div className="sidebar-profile">
-            <div className="avatar">SA</div>
-
+            <div className="avatar" aria-hidden="true">
+              SA
+            </div>
             <div className="sidebar-profile-copy">
               <b>SaMi Administrator</b>
               <small>Admin workspace</small>
@@ -191,33 +238,29 @@ export default function RunnerApplicationDetail({
 
       <div className="app-main">
         <header className="app-topbar">
-          <div className="breadcrumbs">
+          <nav className="breadcrumbs" aria-label="Breadcrumb">
             <Link href="/admin">Admin</Link>
-            <b>/</b>
+            <span aria-hidden="true">/</span>
             <Link href="/admin/runner-applications">
               Runner applications
             </Link>
-            <b>/</b>
-            <strong>Application details</strong>
-          </div>
+            <span aria-hidden="true">/</span>
+            <strong aria-current="page">Application details</strong>
+          </nav>
 
           <div className="topbar-actions">
             <span className="account-pill">
-              <i />
+              <i aria-hidden="true" />
               Admin session
             </span>
           </div>
         </header>
 
-        <main className="page-content">
+        <main id="main-content" className="page-content">
           <div className="page-heading">
             <div>
-              <div className="section-kicker">
-                RUNNER MANAGEMENT
-              </div>
-
+              <div className="section-kicker">RUNNER MANAGEMENT</div>
               <h1>Application review</h1>
-
               <p>
                 Inspect Runner account information, verify submitted
                 documents and record onboarding decisions.
@@ -225,28 +268,40 @@ export default function RunnerApplicationDetail({
             </div>
 
             <div className="page-heading-actions">
+              <button
+                type="button"
+                onClick={refresh}
+                disabled={refreshing || loading}
+                className="button ghost"
+                aria-busy={refreshing}
+              >
+                {refreshing ? "Refreshing…" : "Refresh"}
+              </button>
               <Link
                 href="/admin/runner-applications"
                 className="button ghost"
               >
-                ← All applications
+                <span aria-hidden="true">←</span> All applications
               </Link>
             </div>
           </div>
 
-          {loading && (
-            <div className="empty-state">
-              <span className="mini-spinner" />
+          {showInitialLoading ? (
+            <div
+              className="empty-state"
+              role="status"
+              aria-live="polite"
+            >
+              <span className="mini-spinner" aria-hidden="true" />
               <p>Loading application details…</p>
             </div>
-          )}
+          ) : null}
 
-          {!loading && error && (
+          {showErrorState ? (
             <div className="surface-card">
               <div className="alert error" role="alert">
                 {error}
               </div>
-
               <p>
                 <Link
                   href="/admin/runner-applications"
@@ -256,40 +311,43 @@ export default function RunnerApplicationDetail({
                 </Link>
               </p>
             </div>
-          )}
+          ) : null}
 
-          {!loading && !error && application && (
+          {showContent && application ? (
             <div className="view-stack">
-              <section className="provider-profile-hero">
-                <div className="profile-avatar-large">
-                  {(application.fullName || "R")
-                    .split(" ")
-                    .filter(Boolean)
-                    .slice(0, 2)
-                    .map((part) => part[0]?.toUpperCase())
-                    .join("")}
+              {error ? (
+                <div className="alert error" role="alert" aria-live="polite">
+                  {error}
+                </div>
+              ) : null}
+
+              {/* ── Profile hero ───────────────────────────────────── */}
+              <section
+                className="provider-profile-hero"
+                aria-labelledby="profile-hero-heading"
+              >
+                <div className="profile-avatar-large" aria-hidden="true">
+                  {getInitials(application.fullName)}
                 </div>
 
                 <div className="profile-hero-copy">
-                  <div className="section-kicker">
-                    RUNNER PROFILE
-                  </div>
+                  <div className="section-kicker">RUNNER PROFILE</div>
 
-                  <h2>
+                  <h2 id="profile-hero-heading">
                     {application.fullName || "Unnamed Runner"}
                   </h2>
 
                   <p>
-                    {application.email || "No email provided"}
+                    {application.email || "Not provided"}
                     {" · "}
                     {application.phone}
                   </p>
 
                   <div className="profile-badges">
                     <span className="timeline-state">
+                      Verification:{" "}
                       {readable(application.verificationStatus)}
                     </span>
-
                     <span className="timeline-state">
                       Account: {readable(application.accountStatus)}
                     </span>
@@ -297,72 +355,71 @@ export default function RunnerApplicationDetail({
                 </div>
               </section>
 
-              <section className="surface-card">
+              {/* ── Personal and account information ──────────────── */}
+              <section
+                className="surface-card"
+                aria-labelledby="personal-heading"
+              >
                 <div className="surface-heading">
                   <div>
-                    <h2>Personal and account information</h2>
+                    <h2 id="personal-heading">
+                      Personal and account information
+                    </h2>
                     <p>
-                      Identity and registration information supplied
-                      by this Runner.
+                      Identity and registration information supplied by
+                      this Runner.
                     </p>
                   </div>
                 </div>
 
                 <div className="detail-info-grid">
-                  <div>
-                    <small>Full name</small>
-                    <b>{application.fullName || "Not provided"}</b>
-                  </div>
-
-                  <div>
-                    <small>Email address</small>
-                    <b>{application.email || "Not provided"}</b>
-                  </div>
-
-                  <div>
-                    <small>Phone number</small>
-                    <b>{application.phone}</b>
-                  </div>
-
-                  <div>
-                    <small>Service area</small>
-                    <b>{application.serviceArea || "Not provided"}</b>
-                  </div>
-
-                  <div>
-                    <small>Vehicle type</small>
-                    <b>{readable(application.vehicleType)}</b>
-                  </div>
-
-                  <div>
-                    <small>Vehicle registration</small>
-                    <b>
-                      {application.vehicleRegistration || "Not provided"}
-                    </b>
-                  </div>
-
-                  <div>
-                    <small>Application created</small>
-                    <b>{formatDate(application.createdAt)}</b>
-                  </div>
-
-                  <div>
-                    <small>Last updated</small>
-                    <b>{formatDate(application.updatedAt)}</b>
-                  </div>
+                  <Detail
+                    label="Full name"
+                    value={application.fullName || "Not provided"}
+                  />
+                  <Detail
+                    label="Email address"
+                    value={application.email || "Not provided"}
+                  />
+                  <Detail label="Phone number" value={application.phone} />
+                  <Detail
+                    label="Service area"
+                    value={application.serviceArea || "Not provided"}
+                  />
+                  <Detail
+                    label="Vehicle type"
+                    value={readable(application.vehicleType)}
+                  />
+                  <Detail
+                    label="Vehicle registration"
+                    value={application.vehicleRegistration || "Not provided"}
+                  />
+                  <Detail
+                    label="Application created"
+                    value={formatDate(application.createdAt)}
+                  />
+                  <Detail
+                    label="Last updated"
+                    value={formatDate(application.updatedAt)}
+                  />
                 </div>
               </section>
 
-              <section className="surface-card">
+              {/* ── Selected service categories ───────────────────── */}
+              <section
+                className="surface-card"
+                aria-labelledby="categories-heading"
+              >
                 <div className="surface-heading">
                   <div>
-                    <h2>Selected service categories</h2>
+                    <h2 id="categories-heading">
+                      Selected service categories
+                    </h2>
                     <p>
                       Services this Runner selected during registration.
                     </p>
                   </div>
-
-                  <span className="soft-count">
+                  <span className="soft-count" aria-hidden="true">
                     {application.selectedCategories.length}
                   </span>
                 </div>
@@ -374,10 +431,7 @@ export default function RunnerApplicationDetail({
                 ) : (
                   <div className="profile-badges">
                     {application.selectedCategories.map((category) => (
-                      <span
-                        key={category.key}
-                        className="priority-label"
-                      >
+                      <span key={category.key} className="priority-label">
                         {category.label || readable(category.key)}
                       </span>
                     ))}
@@ -385,24 +439,31 @@ export default function RunnerApplicationDetail({
                 )}
               </section>
 
-              <section className="surface-card">
+              {/* ── Verification documents ────────────────────────── */}
+              <section
+                className="surface-card"
+                aria-labelledby="documents-heading"
+              >
                 <div className="surface-heading">
                   <div>
-                    <h2>Verification documents</h2>
+                    <h2 id="documents-heading">
+                      Verification documents
+                    </h2>
                     <p>
-                      Review documents individually. Rejected and
+                      Review each document individually. Rejected and
                       replacement-required files are removed from R2.
                     </p>
                   </div>
-
-                  <span className="soft-count">
+                  <span className="soft-count" aria-hidden="true">
                     {application.documents.length}
                   </span>
                 </div>
 
                 {application.documents.length === 0 ? (
                   <div className="empty-state">
-                    <div className="empty-icon">▤</div>
+                    <div className="empty-icon" aria-hidden="true">
+                      ▤
+                    </div>
                     <h3>No documents submitted</h3>
                     <p>
                       This Runner has not submitted verification
@@ -411,104 +472,128 @@ export default function RunnerApplicationDetail({
                   </div>
                 ) : (
                   <div className="attention-list">
-                    {application.documents.map((document) => (
-                      <article
-                        key={document.id}
-                        className="rounded-xl border border-slate-200 p-4"
-                      >
-                        <div className="attention-row">
-                          <div className="attention-mark blue">
-                            ▤
-                          </div>
+                    {application.documents.map((document) => {
+                      const documentTitle =
+                        document.requirementTitle ||
+                        readable(document.documentType);
 
-                          <div className="attention-copy">
-                            <b>
-                              {document.requirementTitle ||
-                                readable(document.documentType)}
-                            </b>
+                      const metaLine = [
+                        document.categoryLabel,
+                        document.required
+                          ? "Required document"
+                          : "Optional document",
+                      ]
+                        .filter(Boolean)
+                        .join(" · ");
 
-                            <small>
-                              {document.categoryLabel
-                                ? `${document.categoryLabel} · `
-                                : ""}
-                              {document.required
-                                ? "Required document"
-                                : "Optional document"}
-                            </small>
+                      return (
+                        <article
+                          key={document.id}
+                          className="rounded-xl border border-slate-200 p-4"
+                          aria-labelledby={`doc-heading-${document.id}`}
+                        >
+                          <div className="attention-row">
+                            <div
+                              className="attention-mark blue"
+                              aria-hidden="true"
+                            >
+                              ▤
+                            </div>
 
-                            <small>
-                              Submitted: {formatDate(document.submittedAt)}
-                            </small>
+                            <div className="attention-copy">
+                              <h3 id={`doc-heading-${document.id}`}>
+                                {documentTitle}
+                              </h3>
 
-                            {document.requirementInstructions && (
+                              {metaLine ? <small>{metaLine}</small> : null}
+
                               <small>
-                                Instructions:{" "}
-                                {document.requirementInstructions}
+                                Submitted: {formatDate(document.submittedAt)}
+                                {document.reviewedAt
+                                  ? ` · Reviewed: ${formatDate(document.reviewedAt)}`
+                                  : null}
                               </small>
-                            )}
 
-                            {document.rejectionReason && (
-                              <small className="text-red-700">
-                                Review reason: {document.rejectionReason}
-                              </small>
-                            )}
+                              {document.requirementInstructions ? (
+                                <small>
+                                  Instructions:{" "}
+                                  {document.requirementInstructions}
+                                </small>
+                              ) : null}
 
-                            <div className="mt-2 flex flex-wrap items-center gap-2">
-                              <span className="timeline-state">
-                                {readable(document.reviewStatus)}
-                              </span>
+                              {document.rejectionReason ? (
+                                <small className="text-red-700">
+                                  Review reason: {document.rejectionReason}
+                                </small>
+                              ) : null}
 
-                              {document.reviewedAt && (
-                                <span className="text-xs text-slate-500">
-                                  Reviewed: {formatDate(document.reviewedAt)}
+                              <div className="mt-2 flex flex-wrap items-center gap-2">
+                                <span className="timeline-state">
+                                  {readable(document.reviewStatus)}
+                                </span>
+
+                                {document.required === false ? (
+                                  <span className="timeline-state">
+                                    Optional
+                                  </span>
+                                ) : null}
+                              </div>
+                            </div>
+
+                            <div className="provider-actions">
+                              {document.fileUrl ? (
+                                <div className="flex flex-col items-end gap-1">
+                                  <a
+                                    className="button ghost"
+                                    href={document.fileUrl}
+                                    target="_blank"
+                                    rel="noopener noreferrer"
+                                    aria-label={`View ${documentTitle} in a new tab`}
+                                  >
+                                    View document{" "}
+                                    <span aria-hidden="true">↗</span>
+                                  </a>
+                                  <span className="text-xs text-slate-500">
+                                    Link expires in{" "}
+                                    {Math.max(
+                                      1,
+                                      Math.round(
+                                        document.fileUrlExpiresInSeconds / 60,
+                                      ),
+                                    )}{" "}
+                                    min
+                                  </span>
+                                </div>
+                              ) : (
+                                <span className="muted small-copy">
+                                  {document.fileRemovedFromStorage
+                                    ? "File removed from R2"
+                                    : "Document unavailable"}
                                 </span>
                               )}
                             </div>
                           </div>
 
-                          <div className="provider-actions">
-                            {document.fileUrl ? (
-                              <a
-                                className="button ghost"
-                                href={document.fileUrl}
-                                target="_blank"
-                                rel="noopener noreferrer"
-                              >
-                                View document ↗
-                              </a>
-                            ) : (
-                              <span className="muted small-copy">
-                                {document.fileRemovedFromStorage
-                                  ? "File removed from R2"
-                                  : "Document unavailable"}
-                              </span>
-                            )}
-                          </div>
-                        </div>
-
-                        <RunnerDocumentDecision
-                          runnerId={application.id}
-                          documentId={document.id}
-                          reviewStatus={document.reviewStatus}
-                          fileUrl={document.fileUrl}
-                        />
-                      </article>
-                    ))}
+                          <RunnerDocumentDecision
+                            runnerId={application.id}
+                            documentId={document.id}
+                            reviewStatus={document.reviewStatus}
+                            fileUrl={document.fileUrl}
+                          />
+                        </article>
+                      );
+                    })}
                   </div>
                 )}
-
-                <p className="muted small-copy">
-                  Document links are temporary and expire after one hour.
-                  Reload the application to obtain fresh links.
-                </p>
               </section>
 
+              {/* ── Application decision ──────────────────────────── */}
               <RunnerApplicationDecision
                 runnerId={application.id}
                 verificationStatus={application.verificationStatus}
               />
             </div>
-          )}
+          ) : null}
 
           <footer className="app-footer">
             <span>SaMi Administration</span>

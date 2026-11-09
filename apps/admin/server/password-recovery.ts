@@ -10,6 +10,7 @@ import {
   maskOtpDestination,
   sendEmailOtp,
 } from "@/lib/otp";
+import { isSameOrigin } from "@/apps/admin/server/auth";
 import { databasePool } from "@/lib/db";
 
 const OTP_EXPIRY_SECONDS = 10 * 60;
@@ -77,12 +78,6 @@ function hashValue(value: string) {
   return createHash("sha256")
     .update(value)
     .digest("hex");
-}
-
-function isSameOrigin(request: Request) {
-  const origin = request.headers.get("origin");
-
-  return !origin || origin === new URL(request.url).origin;
 }
 
 /**

@@ -4,6 +4,7 @@ import "server-only";
 import bcrypt from "bcryptjs";
 import { NextResponse } from "next/server";
 
+import { isSameOrigin } from "@/apps/admin/server/auth";
 import { databasePool } from "@/lib/db";
 import { verifyEmailOtp } from "@/lib/otp";
 
@@ -49,12 +50,6 @@ function successResponse(message: string) {
       },
     },
   );
-}
-
-function isSameOrigin(request: Request) {
-  const origin = request.headers.get("origin");
-
-  return !origin || origin === new URL(request.url).origin;
 }
 
 function isValidChallengeId(value: string) {

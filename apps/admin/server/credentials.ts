@@ -6,7 +6,10 @@ import { cookies } from "next/headers";
 import { createHash, randomBytes } from "node:crypto";
 import { NextResponse } from "next/server";
 
-import { authenticateAdmin } from "@/apps/admin/server/auth";
+import {
+  authenticateAdmin,
+  isSameOrigin,
+} from "@/apps/admin/server/auth";
 import { databasePool, query } from "@/lib/db";
 
 const ADMIN_SESSION_COOKIE = "sami_admin_session";
@@ -29,12 +32,6 @@ function errorResponse(message: string, status = 400) {
       },
     },
   );
-}
-
-function isSameOrigin(request: Request) {
-  const origin = request.headers.get("origin");
-
-  return !origin || origin === new URL(request.url).origin;
 }
 
 async function countFailedAttempts(identifierHash: string) {

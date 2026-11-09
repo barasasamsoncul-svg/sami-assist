@@ -1,3 +1,4 @@
+
 import { readdir, readFile } from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -20,8 +21,15 @@ const MIGRATIONS_DIR = path.join(
 
 const MIGRATION_LOCK_ID = "73420520261107";
 
+// These two migrations have a strict dependency:
+// initial-schema creates runner_accounts, which email-auth modifies.
+const MIGRATION_PRIORITY = new Map([
+  ["2026-11-07-runner-initial-schema.sql", 0],
+  ["2026-11-07-runner-email-auth.sql", 1],
+]);
+
 async function migrateRunnerDatabase() {
-    const configuredConnectionString =
+  const configuredConnectionString =
     process.env.RUNNER_DATABASE_MIGRATION_URL?.trim();
 
   if (!configuredConnectionString) {
@@ -82,9 +90,33 @@ async function migrateRunnerDatabase() {
 
     const files = (await readdir(MIGRATIONS_DIR))
       .filter((file) => file.endsWith(".sql"))
-      .sort();
+      .sort((a, b) => {
+        const priorityA = MIGRATION_PRIORITY.get(a);
+        const priorityB = MIGRATION_PRIORITY.get(b);
+
+        // Run explicitly ordered prerequisite migrations first.
+        if (priorityA !== undefined && priorityB !== undefined) {
+          return priorityA - priorityB;
+        }
+
+        if (priorityA !== undefined) {
+          return -1;
+        }
+
+        if (priorityB !== undefined) {
+          return 1;
+        }
+
+        // Preserve automatic alphabetical ordering for all others.
+        return a.localeCompare(b);
+      });
 
     console.log(`Runner migrations found: ${files.length}`);
+    console.log("Runner migration execution order:");
+
+    for (const file of files) {
+      console.log(`  ${file}`);
+    }
 
     let applied = 0;
     let skipped = 0;
