@@ -1,6 +1,9 @@
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 
 import {
+  ActivityIndicator,
+  Animated,
+  Easing,
   ImageBackground,
   Pressable,
   StatusBar,
@@ -15,7 +18,11 @@ import {
 } from "expo-router";
 
 import * as SplashScreen from "expo-splash-screen";
-import { SafeAreaView } from "react-native-safe-area-context";
+import { Ionicons } from "@expo/vector-icons";
+import {
+  SafeAreaView,
+  useSafeAreaInsets,
+} from "react-native-safe-area-context";
 
 import {
   getRunnerOnboarding,
@@ -144,11 +151,13 @@ async function resolveRunnerResumeRoute(
 
 const NAVY = "#000535";
 const BLUE = "#2769C7";
+const BLUE_SOFT = "#9CC6FF";
 
 export default function IndexScreen() {
   const params = useLocalSearchParams<{
     signedOut?: string | string[];
   }>();
+  const insets = useSafeAreaInsets();
 
   const forceWelcome =
     params.signedOut === "1" ||
@@ -156,6 +165,13 @@ export default function IndexScreen() {
       params.signedOut[0] === "1");
 
   const [welcomeReady, setWelcomeReady] = useState(forceWelcome);
+
+  // Entrance animations
+  const brandOpacity = useRef(new Animated.Value(0)).current;
+  const welcomeOpacity = useRef(new Animated.Value(0)).current;
+  const welcomeY = useRef(new Animated.Value(14)).current;
+  const actionsOpacity = useRef(new Animated.Value(0)).current;
+  const actionsY = useRef(new Animated.Value(18)).current;
 
   useEffect(() => {
     let active = true;
@@ -200,12 +216,14 @@ export default function IndexScreen() {
       } catch (cause) {
         if (!active) return;
 
-        console.error(
-          "[SaMi Runner] Startup onboarding check failed.",
-          cause instanceof Error
-            ? cause.message
-            : "unknown error",
-        );
+        if (__DEV__) {
+          console.error(
+            "[SaMi Runner] Startup onboarding check failed.",
+            cause instanceof Error
+              ? cause.message
+              : "unknown error",
+          );
+        }
 
         // Preserve the Runner session when the network is
         // temporarily unavailable. Never assume approval.
@@ -216,12 +234,14 @@ export default function IndexScreen() {
     void bootstrap().catch((cause) => {
       if (!active) return;
 
-      console.error(
-        "[SaMi Runner] Startup failed.",
-        cause instanceof Error
-          ? cause.message
-          : "unknown error",
-      );
+      if (__DEV__) {
+        console.error(
+          "[SaMi Runner] Startup failed.",
+          cause instanceof Error
+            ? cause.message
+            : "unknown error",
+        );
+      }
 
       setWelcomeReady(true);
     });
@@ -231,22 +251,84 @@ export default function IndexScreen() {
     };
   }, [forceWelcome]);
 
-  function hideNativeSplash() {
-    void SplashScreen.hideAsync().catch(
-      () => undefined,
-    );
-  }
+  // Once the welcome screen is ready, play the entrance animations
+  // in sequence: brand → welcome copy → actions.
+  useEffect(() => {
+    if (!welcomeReady) return;
 
-  function getStarted() {
+    Animated.sequence([
+      Animated.timing(brandOpacity, {
+        toValue: 1,
+        duration: 360,
+        easing: Easing.out(Easing.cubic),
+        useNativeDriver: true,
+      }),
+      Animated.parallel([
+        Animated.timing(welcomeOpacity, {
+          toValue: 1,
+          duration: 420,
+          easing: Easing.out(Easing.cubic),
+          useNativeDriver: true,
+        }),
+        Animated.timing(welcomeY, {
+          toValue: 0,
+          duration: 420,
+          easing: Easing.out(Easing.cubic),
+          useNativeDriver: true,
+        }),
+      ]),
+      Animated.parallel([
+        Animated.timing(actionsOpacity, {
+          toValue: 1,
+          duration: 380,
+          easing: Easing.out(Easing.cubic),
+          useNativeDriver: true,
+        }),
+        Animated.timing(actionsY, {
+          toValue: 0,
+          duration: 380,
+          easing: Easing.out(Easing.cubic),
+          useNativeDriver: true,
+        }),
+      ]),
+    ]).start();
+  }, [
+    welcomeReady,
+    brandOpacity,
+    welcomeOpacity,
+    welcomeY,
+    actionsOpacity,
+    actionsY,
+  ]);
+
+  const hideNativeSplash = useCallback(() => {
+    void SplashScreen.hideAsync().catch(() => undefined);
+  }, []);
+
+  const getStarted = useCallback(() => {
     router.replace("/(auth)/register");
-  }
+  }, []);
 
-  function signIn() {
+  const signIn = useCallback(() => {
     router.replace("/(auth)/login");
-  }
+  }, []);
 
   if (!welcomeReady) {
-    return <View style={styles.loadingScreen} />;
+    return (
+      <View style={styles.loadingScreen}>
+        <StatusBar
+          barStyle="light-content"
+          backgroundColor={NAVY}
+        />
+        <View
+          accessibilityRole="progressbar"
+          accessibilityLabel="Checking your session"
+          style={styles.loadingInner}
+        >
+          <ActivityIndicator size="large" color={BLUE_SOFT} />
+        </View>
+      </View>
+    );
   }
 
   return (
@@ -260,7 +342,6 @@ export default function IndexScreen() {
         translucent
         backgroundColor="transparent"
         barStyle="light-content"
-        hidden={false}
       />
 
       <View style={styles.overlay} />
@@ -269,37 +350,68 @@ export default function IndexScreen() {
         edges={["top", "bottom"]}
         style={styles.safeArea}
       >
-        <View style={styles.content}>
-          <View style={styles.brand}>
+        <View
+          style={[
+            styles.content,
+            { paddingBottom: insets.bottom + 20 },
+          ]}
+        >
+          {/* Brand */}
+          <Animated.View
+            style={[styles.brand, { opacity: brandOpacity }]}
+          >
             <Text style={styles.brandName}>
-              SaMi <Text style={styles.brandAccent}>Runner</Text>
+              SaMi{" "}
+              <Text style={styles.brandAccent}>Runner</Text>
             </Text>
-
             <Text style={styles.brandTagline}>
               CONSIDER IT DONE
             </Text>
-          </View>
+          </Animated.View>
 
-          <View style={styles.welcome}>
+          {/* Welcome copy */}
+          <Animated.View
+            style={[
+              styles.welcome,
+              {
+                opacity: welcomeOpacity,
+                transform: [{ translateY: welcomeY }],
+              },
+            ]}
+          >
             <Text style={styles.eyebrow}>
               YOUR NEXT RUN STARTS HERE
             </Text>
 
-            <Text style={styles.title}>
+            <Text
+              accessibilityRole="header"
+              style={styles.title}
+            >
               Welcome to{"\n"}SaMi Runner
             </Text>
 
             <Text style={styles.subtitle}>
-              Run errands, deliver with care and
-              help customers in your community.
+              Run errands, deliver with care and help customers in
+              your community.
             </Text>
-          </View>
+          </Animated.View>
 
-          <View style={styles.actions}>
+          {/* Actions */}
+          <Animated.View
+            style={[
+              styles.actions,
+              {
+                opacity: actionsOpacity,
+                transform: [{ translateY: actionsY }],
+              },
+            ]}
+          >
             <Pressable
               accessibilityRole="button"
               accessibilityLabel="Get started"
+              accessibilityHint="Opens the Runner registration form"
               onPress={getStarted}
+              hitSlop={4}
               style={({ pressed }) => [
                 styles.primaryButton,
                 pressed && styles.pressed,
@@ -308,14 +420,20 @@ export default function IndexScreen() {
               <Text style={styles.primaryButtonText}>
                 Get started
               </Text>
-
-              <Text style={styles.arrow}>→</Text>
+              <Ionicons
+                name="arrow-forward"
+                size={20}
+                color="#FFFFFF"
+                style={styles.arrowIcon}
+              />
             </Pressable>
 
             <Pressable
               accessibilityRole="button"
               accessibilityLabel="Sign in"
+              accessibilityHint="Sign in to an existing Runner account"
               onPress={signIn}
+              hitSlop={4}
               style={({ pressed }) => [
                 styles.secondaryButton,
                 pressed && styles.pressed,
@@ -329,7 +447,7 @@ export default function IndexScreen() {
             <Text style={styles.footer}>
               SaMi Runner · Consider it done.
             </Text>
-          </View>
+          </Animated.View>
         </View>
       </SafeAreaView>
     </ImageBackground>
@@ -340,6 +458,13 @@ const styles = StyleSheet.create({
   loadingScreen: {
     flex: 1,
     backgroundColor: NAVY,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+
+  loadingInner: {
+    alignItems: "center",
+    justifyContent: "center",
   },
 
   background: {
@@ -349,7 +474,7 @@ const styles = StyleSheet.create({
 
   overlay: {
     ...StyleSheet.absoluteFill,
-    backgroundColor: "rgba(0, 5, 53, 0.48)",
+    backgroundColor: "rgba(0, 5, 53, 0.52)",
   },
 
   safeArea: {
@@ -359,14 +484,14 @@ const styles = StyleSheet.create({
   content: {
     flex: 1,
     justifyContent: "space-between",
-    paddingHorizontal: 26,
-    paddingTop: 22,
-    paddingBottom: 18,
+    paddingHorizontal: 24,
+    paddingTop: 18,
   },
 
+  // Brand
   brand: {
     alignItems: "center",
-    gap: 5,
+    gap: 6,
   },
 
   brandName: {
@@ -378,23 +503,25 @@ const styles = StyleSheet.create({
   },
 
   brandAccent: {
-    color: "#9CC6FF",
+    color: BLUE_SOFT,
   },
 
   brandTagline: {
     color: "#FFFFFF",
-    fontSize: 9,
-    fontWeight: "800",
-    letterSpacing: 3,
+    fontSize: 10.5,
+    fontWeight: "900",
+    letterSpacing: 2.8,
+    opacity: 0.92,
   },
 
+  // Welcome copy
   welcome: {
-    gap: 13,
+    gap: 14,
   },
 
   eyebrow: {
-    color: "#9CC6FF",
-    fontSize: 11,
+    color: BLUE_SOFT,
+    fontSize: 11.5,
     fontWeight: "900",
     letterSpacing: 1.8,
   },
@@ -409,45 +536,43 @@ const styles = StyleSheet.create({
 
   subtitle: {
     color: "#F0F3FA",
-    fontSize: 15,
+    fontSize: 15.5,
     lineHeight: 24,
     maxWidth: 330,
   },
 
+  // Actions
   actions: {
     gap: 14,
   },
 
   primaryButton: {
-    minHeight: 59,
+    minHeight: 60,
     borderRadius: 17,
     backgroundColor: BLUE,
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "center",
-    position: "relative",
   },
 
   primaryButtonText: {
     color: "#FFFFFF",
     fontSize: 16,
     fontWeight: "900",
+    letterSpacing: -0.1,
   },
 
-  arrow: {
+  arrowIcon: {
     position: "absolute",
-    right: 22,
-    color: "#FFFFFF",
-    fontSize: 25,
-    fontWeight: "700",
+    right: 20,
   },
 
   secondaryButton: {
-    minHeight: 59,
+    minHeight: 60,
     borderRadius: 17,
     borderWidth: 1.5,
-    borderColor: "#FFFFFF",
-    backgroundColor: "rgba(0, 5, 53, 0.28)",
+    borderColor: "rgba(255,255,255,0.9)",
+    backgroundColor: "rgba(0, 5, 53, 0.32)",
     alignItems: "center",
     justifyContent: "center",
   },
@@ -456,16 +581,20 @@ const styles = StyleSheet.create({
     color: "#FFFFFF",
     fontSize: 16,
     fontWeight: "900",
+    letterSpacing: -0.1,
   },
 
   pressed: {
-    opacity: 0.78,
+    opacity: 0.85,
+    transform: [{ scale: 0.985 }],
   },
 
   footer: {
-    color: "rgba(255,255,255,0.75)",
-    fontSize: 11,
+    color: "rgba(255,255,255,0.72)",
+    fontSize: 11.5,
+    fontWeight: "600",
     textAlign: "center",
-    marginTop: 5,
+    marginTop: 6,
+    letterSpacing: 0.1,
   },
 });

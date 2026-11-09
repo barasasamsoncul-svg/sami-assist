@@ -1,6 +1,7 @@
-import { useCallback, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import {
   ActivityIndicator,
+  Platform,
   Pressable,
   ScrollView,
   StatusBar,
@@ -10,15 +11,14 @@ import {
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { useFocusEffect, useRouter } from "expo-router";
+import { Ionicons } from "@expo/vector-icons";
 
 import {
   clearRunnerSession,
   getRunnerOnboarding,
 } from "@/api";
 import type { RunnerOnboardingData } from "@/api";
-import {
-  getRunnerReviewFeedback,
-} from "@/review";
+import { getRunnerReviewFeedback } from "@/review";
 import type {
   RunnerReviewFeedback,
   RunnerDocumentReview,
@@ -26,6 +26,10 @@ import type {
 import { useRunnerTheme } from "@/theme";
 
 type ThemeColors = ReturnType<typeof useRunnerTheme>["colors"];
+type IoniconName = keyof typeof Ionicons.glyphMap;
+
+const BACK_SIZE = 44;
+const MAX_REVIEWS_SHOWN = 10;
 
 function getResumeRoute(data: RunnerOnboardingData) {
   const runner = data.runner;
@@ -37,25 +41,20 @@ function getResumeRoute(data: RunnerOnboardingData) {
   const vehicleType = runner.vehicleType ?? "";
   const serviceArea = runner.serviceArea?.trim() ?? "";
 
-  const requiresRegistration = [
-    "motorcycle",
-    "car",
-    "van",
-  ].includes(vehicleType);
+  const requiresRegistration = ["motorcycle", "car", "van"].includes(
+    vehicleType,
+  );
 
   const transportComplete =
     serviceArea.length >= 2 &&
     Boolean(vehicleType) &&
-    (!requiresRegistration ||
-      Boolean(runner.vehicleRegistration?.trim()));
+    (!requiresRegistration || Boolean(runner.vehicleRegistration?.trim()));
 
   if (!transportComplete) {
     return "/(auth)/transport" as const;
   }
 
-  const requiredDocuments = data.requirements.filter(
-    (item) => item.required,
-  );
+  const requiredDocuments = data.requirements.filter((item) => item.required);
 
   if (requiredDocuments.length === 0) {
     return "/(auth)/documents" as const;
@@ -104,8 +103,7 @@ function hasOutstandingReviewAction(
     }
 
     const currentDocument = data.documents.find(
-      (document) =>
-        document.requirementKey === review.requirementKey,
+      (document) => document.requirementKey === review.requirementKey,
     );
 
     if (!currentDocument) {
@@ -114,34 +112,21 @@ function hasOutstandingReviewAction(
 
     const currentStatus = String(currentDocument.reviewStatus);
 
-    return (
-      currentStatus !== "pending" &&
-      currentStatus !== "approved"
-    );
+    return currentStatus !== "pending" && currentStatus !== "approved";
   });
 }
 
 function formatReviewDate(value: string) {
   const date = new Date(value);
-
-  if (Number.isNaN(date.getTime())) {
-    return value;
-  }
-
+  if (Number.isNaN(date.getTime())) return value;
   return date.toLocaleString();
 }
 
 function getDocumentDecisionLabel(
   decision: RunnerDocumentReview["decision"],
 ) {
-  if (decision === "approved") {
-    return "APPROVED";
-  }
-
-  if (decision === "resubmission_required") {
-    return "RESUBMISSION REQUIRED";
-  }
-
+  if (decision === "approved") return "APPROVED";
+  if (decision === "resubmission_required") return "RESUBMISSION REQUIRED";
   return "REJECTED";
 }
 
@@ -159,8 +144,10 @@ function StatusInfoRow({
       <Text style={[styles.infoLabel, { color: colors.textMuted }]}>
         {label}
       </Text>
-
-      <Text style={[styles.infoValue, { color: colors.text }]}>
+      <Text
+        style={[styles.infoValue, { color: colors.text }]}
+        numberOfLines={2}
+      >
         {value}
       </Text>
     </View>
@@ -174,12 +161,12 @@ function ReviewReasonCard({
   feedback: RunnerReviewFeedback | null;
   colors: ThemeColors;
 }) {
-  if (!feedback) {
-    return null;
-  }
+  if (!feedback) return null;
 
   const applicationReview = feedback.applicationReview;
-  const documentReviews = feedback.documentReviews.slice(0, 10);
+  const allDocumentReviews = feedback.documentReviews;
+  const documentReviews = allDocumentReviews.slice(0, MAX_REVIEWS_SHOWN);
+  const capped = allDocumentReviews.length > MAX_REVIEWS_SHOWN;
 
   if (!applicationReview && documentReviews.length === 0) {
     return null;
@@ -195,12 +182,28 @@ function ReviewReasonCard({
         },
       ]}
     >
-      <Text style={[styles.cardTitle, { color: colors.text }]}>
-        Operations review feedback
-      </Text>
+      <View style={styles.reviewCardHeading}>
+        <View
+          style={[
+            styles.reviewCardIcon,
+            { backgroundColor: colors.dangerSoft },
+          ]}
+        >
+          <Ionicons
+            name="chatbox-ellipses-outline"
+            size={18}
+            color={colors.red}
+          />
+        </View>
+
+        <Text style={[styles.cardTitle, { color: colors.text }]}>
+          Operations review feedback
+        </Text>
+      </View>
 
       <Text style={[styles.reviewIntro, { color: colors.textMuted }]}>
-        Review decisions and instructions from SaMi Operations appear here.
+        Review decisions and instructions from SaMi Operations appear
+        here.
       </Text>
 
       {applicationReview ? (
@@ -211,11 +214,15 @@ function ReviewReasonCard({
           ]}
         >
           <View style={styles.reviewHeadingRow}>
-            <Text style={[styles.reviewItemTitle, { color: colors.text }]}>
+            <Text
+              style={[styles.reviewItemTitle, { color: colors.text }]}
+            >
               Application decision
             </Text>
 
-            <Text style={[styles.reviewDecision, { color: colors.red }]}>
+            <Text
+              style={[styles.reviewDecision, { color: colors.red }]}
+            >
               REJECTED
             </Text>
           </View>
@@ -225,7 +232,9 @@ function ReviewReasonCard({
               "Your application requires changes before it can be submitted again."}
           </Text>
 
-          <Text style={[styles.reviewDate, { color: colors.textMuted }]}>
+          <Text
+            style={[styles.reviewDate, { color: colors.textMuted }]}
+          >
             Reviewed {formatReviewDate(applicationReview.reviewedAt)}
           </Text>
         </View>
@@ -233,7 +242,9 @@ function ReviewReasonCard({
 
       {documentReviews.length > 0 ? (
         <View style={styles.documentReviewList}>
-          <Text style={[styles.reviewSectionTitle, { color: colors.text }]}>
+          <Text
+            style={[styles.reviewSectionTitle, { color: colors.text }]}
+          >
             Document decisions
           </Text>
 
@@ -257,27 +268,49 @@ function ReviewReasonCard({
                       styles.reviewItemTitle,
                       { color: colors.text },
                     ]}
+                    numberOfLines={2}
                   >
                     {review.requirementTitle || "Verification document"}
                   </Text>
 
-                  <Text
+                  <View
                     style={[
-                      styles.reviewDecision,
+                      styles.reviewDecisionPill,
                       {
-                        color: approved
-                          ? colors.blue
-                          : colors.red,
+                        backgroundColor: approved
+                          ? colors.blueSoft
+                          : colors.dangerSoft,
                       },
                     ]}
                   >
-                    {getDocumentDecisionLabel(review.decision)}
-                  </Text>
+                    <Ionicons
+                      name={
+                        approved
+                          ? "checkmark-circle"
+                          : "alert-circle"
+                      }
+                      size={12}
+                      color={approved ? colors.blue : colors.red}
+                    />
+                    <Text
+                      style={[
+                        styles.reviewDecision,
+                        {
+                          color: approved ? colors.blue : colors.red,
+                        },
+                      ]}
+                    >
+                      {getDocumentDecisionLabel(review.decision)}
+                    </Text>
+                  </View>
                 </View>
 
                 {review.reason ? (
                   <Text
-                    style={[styles.reviewReason, { color: colors.text }]}
+                    style={[
+                      styles.reviewReason,
+                      { color: colors.text },
+                    ]}
                   >
                     {review.reason}
                   </Text>
@@ -294,7 +327,12 @@ function ReviewReasonCard({
                   </Text>
                 )}
 
-                <Text style={[styles.reviewDate, { color: colors.textMuted }]}>
+                <Text
+                  style={[
+                    styles.reviewDate,
+                    { color: colors.textMuted },
+                  ]}
+                >
                   Reviewed {formatReviewDate(review.reviewedAt)}
                 </Text>
 
@@ -313,6 +351,18 @@ function ReviewReasonCard({
               </View>
             );
           })}
+
+          {capped ? (
+            <Text
+              style={[
+                styles.truncationNotice,
+                { color: colors.textMuted },
+              ]}
+            >
+              Showing {MAX_REVIEWS_SHOWN} of {allDocumentReviews.length}{" "}
+              document reviews.
+            </Text>
+          ) : null}
         </View>
       ) : null}
     </View>
@@ -324,12 +374,23 @@ export default function RunnerApplicationStatusScreen() {
   const { colors } = useRunnerTheme();
 
   const [data, setData] = useState<RunnerOnboardingData | null>(null);
-  const [feedback, setFeedback] = useState<RunnerReviewFeedback | null>(null);
+  const [feedback, setFeedback] = useState<RunnerReviewFeedback | null>(
+    null,
+  );
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [feedbackError, setFeedbackError] = useState<string | null>(null);
   const [signingOut, setSigningOut] = useState(false);
+
+  const scrollRef = useRef<ScrollView>(null);
+  const mountedRef = useRef(true);
+
+  useEffect(() => {
+    return () => {
+      mountedRef.current = false;
+    };
+  }, []);
 
   const loadStatus = useCallback(
     async (refresh = false) => {
@@ -344,14 +405,21 @@ export default function RunnerApplicationStatusScreen() {
 
       try {
         const result = await getRunnerOnboarding();
+
+        if (!mountedRef.current) return;
+
         const runner = result.runner;
 
         let reviewResult: RunnerReviewFeedback | null = null;
 
         try {
           reviewResult = await getRunnerReviewFeedback();
+
+          if (!mountedRef.current) return;
+
           setFeedback(reviewResult);
         } catch (cause) {
+          if (!mountedRef.current) return;
           setFeedback(null);
           setFeedbackError(
             cause instanceof Error
@@ -392,14 +460,17 @@ export default function RunnerApplicationStatusScreen() {
 
         setData(result);
       } catch (cause) {
+        if (!mountedRef.current) return;
         setError(
           cause instanceof Error
             ? cause.message
             : "Your application status could not be loaded.",
         );
       } finally {
-        setLoading(false);
-        setRefreshing(false);
+        if (mountedRef.current) {
+          setLoading(false);
+          setRefreshing(false);
+        }
       }
     },
     [router],
@@ -411,10 +482,17 @@ export default function RunnerApplicationStatusScreen() {
     }, [loadStatus]),
   );
 
+  // Auto-scroll to error when it appears.
+  useEffect(() => {
+    if (!error) return;
+    const frame = requestAnimationFrame(() => {
+      scrollRef.current?.scrollToEnd({ animated: true });
+    });
+    return () => cancelAnimationFrame(frame);
+  }, [error]);
+
   async function signOut() {
-    if (signingOut || refreshing) {
-      return;
-    }
+    if (signingOut || refreshing) return;
 
     setSigningOut(true);
     setError(null);
@@ -425,21 +503,18 @@ export default function RunnerApplicationStatusScreen() {
 
       router.replace({
         pathname: "/",
-        params: {
-          signedOut: "1",
-        },
+        params: { signedOut: "1" },
       });
     } catch {
-      setError("Could not sign out. Please try again.");
-      setSigningOut(false);
+      if (mountedRef.current) {
+        setError("Could not sign out. Please try again.");
+        setSigningOut(false);
+      }
     }
   }
 
   function continueApplication() {
-    if (!data) {
-      return;
-    }
-
+    if (!data) return;
     router.replace(getResumeRoute(data));
   }
 
@@ -448,9 +523,7 @@ export default function RunnerApplicationStatusScreen() {
     data?.runner.accountStatus === "closed";
 
   const outstandingReviewAction =
-    data && feedback
-      ? hasOutstandingReviewAction(data, feedback)
-      : false;
+    data && feedback ? hasOutstandingReviewAction(data, feedback) : false;
 
   const submittedDocuments =
     data?.documents.filter(
@@ -458,6 +531,8 @@ export default function RunnerApplicationStatusScreen() {
         item.reviewStatus === "pending" ||
         item.reviewStatus === "approved",
     ).length ?? 0;
+
+  const isDarkPaper = colors.paper === "#080F1D";
 
   if (loading && !data) {
     return (
@@ -467,17 +542,19 @@ export default function RunnerApplicationStatusScreen() {
       >
         <StatusBar
           backgroundColor={colors.paper}
-          barStyle={
-            colors.paper === "#080F1D"
-              ? "light-content"
-              : "dark-content"
-          }
+          barStyle={isDarkPaper ? "light-content" : "dark-content"}
         />
 
-        <View style={styles.center}>
+        <View
+          style={styles.center}
+          accessibilityRole="progressbar"
+          accessibilityLabel="Checking your application status"
+        >
           <ActivityIndicator size="large" color={colors.blue} />
 
-          <Text style={[styles.loadingText, { color: colors.textMuted }]}>
+          <Text
+            style={[styles.loadingText, { color: colors.textMuted }]}
+          >
             Checking your application status…
           </Text>
         </View>
@@ -493,48 +570,76 @@ export default function RunnerApplicationStatusScreen() {
       >
         <StatusBar
           backgroundColor={colors.paper}
-          barStyle={
-            colors.paper === "#080F1D"
-              ? "light-content"
-              : "dark-content"
-          }
+          barStyle={isDarkPaper ? "light-content" : "dark-content"}
         />
 
         <View style={styles.center}>
-          <Text style={[styles.title, { color: colors.text }]}>
+          <View
+            style={[
+              styles.centerIconWrap,
+              { backgroundColor: colors.dangerSoft },
+            ]}
+          >
+            <Ionicons
+              name="alert-circle-outline"
+              size={26}
+              color={colors.red}
+            />
+          </View>
+
+          <Text style={[styles.centerTitle, { color: colors.text }]}>
             Status unavailable
           </Text>
 
-          <Text style={[styles.bodyText, { color: colors.textMuted }]}>
+          <Text
+            style={[styles.centerBody, { color: colors.textMuted }]}
+            numberOfLines={4}
+          >
             {error || "Your application status could not be loaded."}
           </Text>
 
           <Pressable
+            accessibilityRole="button"
+            accessibilityLabel="Try again"
             onPress={() => void loadStatus(true)}
             disabled={refreshing || signingOut}
-            style={[
+            style={({ pressed }) => [
               styles.primaryButton,
               { backgroundColor: colors.blue },
+              (refreshing || signingOut) && styles.disabled,
+              pressed && !refreshing && !signingOut && styles.pressed,
             ]}
           >
             {refreshing ? (
-              <ActivityIndicator color="#FFFFFF" />
+              <ActivityIndicator color="#FFFFFF" size="small" />
             ) : (
-              <Text style={styles.primaryButtonText}>
-                Try again
-              </Text>
+              <Text style={styles.primaryButtonText}>Try again</Text>
             )}
           </Pressable>
 
           <Pressable
+            accessibilityRole="button"
+            accessibilityLabel="Sign out"
             onPress={() => void signOut()}
             disabled={signingOut || refreshing}
-            style={styles.signOutButton}
+            hitSlop={10}
+            style={({ pressed }) => [
+              styles.signOutButton,
+              {
+                opacity: pressed
+                  ? 0.55
+                  : signingOut || refreshing
+                    ? 0.5
+                    : 1,
+              },
+            ]}
           >
             {signingOut ? (
-              <ActivityIndicator color={colors.blue} />
+              <ActivityIndicator color={colors.blue} size="small" />
             ) : (
-              <Text style={[styles.signOutText, { color: colors.blue }]}>
+              <Text
+                style={[styles.signOutText, { color: colors.blue }]}
+              >
                 Sign out
               </Text>
             )}
@@ -564,6 +669,19 @@ export default function RunnerApplicationStatusScreen() {
       ? "ACTION REQUIRED"
       : "PENDING OPERATIONS REVIEW";
 
+  const warning = restricted || outstandingReviewAction;
+
+  const statusIcon: IoniconName = restricted
+    ? data.runner.accountStatus === "closed"
+      ? "lock-closed"
+      : "ban"
+    : outstandingReviewAction
+      ? "alert-circle"
+      : "time";
+
+  const statusIconColor = warning ? colors.red : colors.warning;
+  const statusIconBg = warning ? colors.dangerSoft : colors.warningSoft;
+
   return (
     <SafeAreaView
       style={[styles.safeArea, { backgroundColor: colors.paper }]}
@@ -571,51 +689,39 @@ export default function RunnerApplicationStatusScreen() {
     >
       <StatusBar
         backgroundColor={colors.paper}
-        barStyle={
-          colors.paper === "#080F1D"
-            ? "light-content"
-            : "dark-content"
-        }
+        barStyle={isDarkPaper ? "light-content" : "dark-content"}
       />
 
       <ScrollView
+        ref={scrollRef}
         contentContainerStyle={styles.content}
         showsVerticalScrollIndicator={false}
+        keyboardShouldPersistTaps="handled"
       >
+        {/* Brand */}
         <View style={styles.brand}>
           <Text style={[styles.brandName, { color: colors.navy }]}>
             SaMi <Text style={{ color: colors.blue }}>Runner</Text>
           </Text>
-
-          <Text style={[styles.brandTagline, { color: colors.textMuted }]}>
+          <Text
+            style={[
+              styles.brandTagline,
+              { color: colors.textMuted },
+            ]}
+          >
             CONSIDER IT DONE
           </Text>
         </View>
 
+        {/* Status icon */}
         <View
-          style={[
-            styles.statusIcon,
-            {
-              backgroundColor:
-                restricted || outstandingReviewAction
-                  ? colors.dangerSoft
-                  : colors.warningSoft,
-            },
-          ]}
+          style={[styles.statusIcon, { backgroundColor: statusIconBg }]}
         >
-          <Text
-            style={[
-              styles.statusIconText,
-              {
-                color:
-                  restricted || outstandingReviewAction
-                    ? colors.red
-                    : colors.warning,
-              },
-            ]}
-          >
-            {restricted || outstandingReviewAction ? "!" : "…"}
-          </Text>
+          <Ionicons
+            name={statusIcon}
+            size={38}
+            color={statusIconColor}
+          />
         </View>
 
         <Text style={[styles.eyebrow, { color: colors.blue }]}>
@@ -630,44 +736,28 @@ export default function RunnerApplicationStatusScreen() {
           {statusMessage}
         </Text>
 
+        {/* Status badge */}
         <View
-          style={[
-            styles.statusBadge,
-            {
-              backgroundColor:
-                restricted || outstandingReviewAction
-                  ? colors.dangerSoft
-                  : colors.warningSoft,
-            },
-          ]}
+          style={[styles.statusBadge, { backgroundColor: statusIconBg }]}
         >
           <View
             style={[
               styles.statusDot,
-              {
-                backgroundColor:
-                  restricted || outstandingReviewAction
-                    ? colors.red
-                    : colors.warning,
-              },
+              { backgroundColor: statusIconColor },
             ]}
           />
 
           <Text
             style={[
               styles.statusBadgeText,
-              {
-                color:
-                  restricted || outstandingReviewAction
-                    ? colors.red
-                    : colors.warning,
-              },
+              { color: statusIconColor },
             ]}
           >
             {badgeLabel}
           </Text>
         </View>
 
+        {/* Details card */}
         <View
           style={[
             styles.detailsCard,
@@ -677,9 +767,24 @@ export default function RunnerApplicationStatusScreen() {
             },
           ]}
         >
-          <Text style={[styles.cardTitle, { color: colors.text }]}>
-            Application details
-          </Text>
+          <View style={styles.detailsHeading}>
+            <View
+              style={[
+                styles.detailsHeadingIcon,
+                { backgroundColor: colors.blueSoft },
+              ]}
+            >
+              <Ionicons
+                name="person-circle-outline"
+                size={16}
+                color={colors.blue}
+              />
+            </View>
+
+            <Text style={[styles.cardTitle, { color: colors.text }]}>
+              Application details
+            </Text>
+          </View>
 
           <StatusInfoRow
             label="Full name"
@@ -707,15 +812,19 @@ export default function RunnerApplicationStatusScreen() {
 
           <StatusInfoRow
             label="Tasks selected"
-            value={String(data.runner.selectedCategories.length)}
+            value={String(
+              data.runner.selectedCategories?.length ?? 0,
+            )}
             colors={colors}
           />
         </View>
 
+        {/* Review feedback */}
         {outstandingReviewAction ? (
           <ReviewReasonCard feedback={feedback} colors={colors} />
         ) : null}
 
+        {/* What happens next */}
         {!restricted && !outstandingReviewAction ? (
           <View
             style={[
@@ -723,18 +832,30 @@ export default function RunnerApplicationStatusScreen() {
               { backgroundColor: colors.blueSoft },
             ]}
           >
-            <Text style={[styles.noticeTitle, { color: colors.text }]}>
-              What happens next?
-            </Text>
+            <View style={styles.noticeHeading}>
+              <Ionicons
+                name="hourglass-outline"
+                size={18}
+                color={colors.blue}
+              />
+              <Text
+                style={[styles.noticeTitle, { color: colors.text }]}
+              >
+                What happens next?
+              </Text>
+            </View>
 
-            <Text style={[styles.noticeText, { color: colors.textMuted }]}>
-              Operations will review your application. Once approved, you
-              will be able to access the Runner workspace and receive
-              eligible errands.
+            <Text
+              style={[styles.noticeText, { color: colors.textMuted }]}
+            >
+              Operations will review your application. Once approved,
+              you will be able to access the Runner workspace and
+              receive eligible errands.
             </Text>
           </View>
         ) : null}
 
+        {/* Feedback error */}
         {feedbackError ? (
           <View
             style={[
@@ -742,76 +863,134 @@ export default function RunnerApplicationStatusScreen() {
               { backgroundColor: colors.blueSoft },
             ]}
           >
-            <Text style={[styles.feedbackErrorText, { color: colors.textMuted }]}>
-              Review feedback could not be refreshed. Use the refresh button
-              to try again.
+            <Ionicons
+              name="information-circle-outline"
+              size={18}
+              color={colors.blue}
+            />
+            <Text
+              style={[
+                styles.feedbackErrorText,
+                { color: colors.textMuted },
+              ]}
+            >
+              Review feedback could not be refreshed. Use the refresh
+              button to try again.
             </Text>
           </View>
         ) : null}
 
+        {/* Error */}
         {error ? (
           <View
+            accessibilityRole="alert"
+            accessibilityLiveRegion="polite"
             style={[
               styles.errorCard,
               { backgroundColor: colors.dangerSoft },
             ]}
           >
+            <Ionicons
+              name="alert-circle-outline"
+              size={18}
+              color={colors.red}
+            />
             <Text style={[styles.errorText, { color: colors.red }]}>
               {error}
             </Text>
           </View>
         ) : null}
 
+        {/* Continue application */}
         {!restricted && outstandingReviewAction ? (
           <Pressable
-            onPress={continueApplication}
+            accessibilityRole="button"
+            accessibilityLabel="Continue application"
+            accessibilityHint="Opens the next step that needs your attention"
             disabled={refreshing || signingOut}
-            style={[
+            onPress={continueApplication}
+            style={({ pressed }) => [
               styles.primaryButton,
               { backgroundColor: colors.blue },
               (refreshing || signingOut) && styles.disabled,
+              pressed && !refreshing && !signingOut && styles.pressed,
             ]}
           >
             <Text style={styles.primaryButtonText}>
               Continue application
             </Text>
+            <Ionicons
+              name="arrow-forward"
+              size={19}
+              color="#FFFFFF"
+            />
           </Pressable>
         ) : null}
 
+        {/* Refresh */}
         <Pressable
-          onPress={() => void loadStatus(true)}
+          accessibilityRole="button"
+          accessibilityLabel="Refresh application status"
+          accessibilityState={{ busy: refreshing, disabled: signingOut }}
           disabled={refreshing || signingOut}
-          style={[
+          onPress={() => void loadStatus(true)}
+          style={({ pressed }) => [
             styles.primaryButton,
-            { backgroundColor: outstandingReviewAction ? colors.surface : colors.blue },
-            outstandingReviewAction && {
-              borderWidth: 1,
+            {
+              backgroundColor: outstandingReviewAction
+                ? colors.surface
+                : colors.blue,
+              borderWidth: outstandingReviewAction ? 1 : 0,
               borderColor: colors.border,
             },
             (refreshing || signingOut) && styles.disabled,
+            pressed && !refreshing && !signingOut && styles.pressed,
           ]}
         >
           {refreshing ? (
-            <ActivityIndicator color={outstandingReviewAction ? colors.blue : "#FFFFFF"} />
+            <ActivityIndicator
+              size="small"
+              color={outstandingReviewAction ? colors.blue : "#FFFFFF"}
+            />
           ) : (
-            <Text
-              style={[
-                styles.primaryButtonText,
-                outstandingReviewAction && { color: colors.blue },
-              ]}
-            >
-              Refresh application status
-            </Text>
+            <>
+              <Ionicons
+                name="refresh-outline"
+                size={18}
+                color={outstandingReviewAction ? colors.blue : "#FFFFFF"}
+              />
+              <Text
+                style={[
+                  styles.primaryButtonText,
+                  outstandingReviewAction && { color: colors.blue },
+                ]}
+              >
+                Refresh application status
+              </Text>
+            </>
           )}
         </Pressable>
 
+        {/* Sign out */}
         <Pressable
-          onPress={() => void signOut()}
+          accessibilityRole="button"
+          accessibilityLabel="Sign out"
           disabled={signingOut || refreshing}
-          style={styles.signOutButton}
+          onPress={() => void signOut()}
+          hitSlop={10}
+          style={({ pressed }) => [
+            styles.signOutButton,
+            {
+              opacity: pressed
+                ? 0.55
+                : signingOut || refreshing
+                  ? 0.5
+                  : 1,
+            },
+          ]}
         >
           {signingOut ? (
-            <ActivityIndicator color={colors.blue} />
+            <ActivityIndicator color={colors.blue} size="small" />
           ) : (
             <Text style={[styles.signOutText, { color: colors.blue }]}>
               Sign out
@@ -824,231 +1003,381 @@ export default function RunnerApplicationStatusScreen() {
 }
 
 const styles = StyleSheet.create({
-  safeArea: {
-    flex: 1,
-  },
+  safeArea: { flex: 1 },
+
   content: {
     flexGrow: 1,
-    paddingHorizontal: 23,
-    paddingTop: 28,
-    paddingBottom: 36,
+    paddingHorizontal: 20,
+    paddingTop: 20,
+    paddingBottom: 40,
     alignItems: "stretch",
-    gap: 17,
+    gap: 16,
   },
+
+  // Brand
   brand: {
     alignItems: "center",
     gap: 4,
-    marginBottom: 18,
+    marginBottom: 16,
   },
+
   brandName: {
     fontSize: 25,
     fontWeight: "900",
     fontStyle: "italic",
     letterSpacing: -0.8,
   },
+
   brandTagline: {
     fontSize: 8,
-    fontWeight: "800",
+    fontWeight: "900",
     letterSpacing: 2.5,
   },
+
+  // Status icon
   statusIcon: {
     alignSelf: "center",
-    width: 76,
-    height: 76,
-    borderRadius: 25,
+    width: 78,
+    height: 78,
+    borderRadius: 26,
     alignItems: "center",
     justifyContent: "center",
+    ...Platform.select({
+      ios: {
+        shadowOpacity: 0.08,
+        shadowRadius: 8,
+        shadowOffset: { width: 0, height: 4 },
+      },
+      android: { elevation: 1 },
+      default: {},
+    }),
   },
-  statusIconText: {
-    fontSize: 37,
-    fontWeight: "900",
-  },
+
+  // Eyebrow / title / body
   eyebrow: {
     textAlign: "center",
-    fontSize: 10,
+    fontSize: 11,
     fontWeight: "900",
-    letterSpacing: 1.5,
-    marginTop: 5,
+    letterSpacing: 1.4,
+    marginTop: 4,
   },
+
   title: {
-    fontSize: 27,
+    fontSize: 28,
+    lineHeight: 36,
     fontWeight: "900",
     textAlign: "center",
-    letterSpacing: -0.5,
+    letterSpacing: -0.6,
   },
+
   bodyText: {
-    fontSize: 13,
+    fontSize: 13.5,
     lineHeight: 21,
     textAlign: "center",
   },
+
+  // Status badge
   statusBadge: {
     alignSelf: "center",
     flexDirection: "row",
     alignItems: "center",
     gap: 8,
     borderRadius: 30,
-    paddingHorizontal: 14,
-    paddingVertical: 10,
-    marginVertical: 3,
+    paddingHorizontal: 15,
+    paddingVertical: 9,
+    marginVertical: 2,
+    maxWidth: "100%",
   },
+
   statusDot: {
     width: 7,
     height: 7,
     borderRadius: 4,
   },
+
   statusBadgeText: {
-    fontSize: 9,
+    fontSize: 11,
     fontWeight: "900",
-    letterSpacing: 0.7,
+    letterSpacing: 0.8,
+    flexShrink: 1,
   },
+
+  // Details card
   detailsCard: {
     borderWidth: 1,
     borderRadius: 16,
     padding: 16,
-    gap: 15,
-    marginTop: 5,
+    gap: 14,
+    marginTop: 4,
   },
+
+  detailsHeading: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 10,
+  },
+
+  detailsHeadingIcon: {
+    width: 28,
+    height: 28,
+    borderRadius: 8,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+
   cardTitle: {
-    fontSize: 15,
+    fontSize: 15.5,
     fontWeight: "900",
-    marginBottom: 2,
+    flexShrink: 1,
   },
+
   infoRow: {
     flexDirection: "row",
     alignItems: "flex-start",
     justifyContent: "space-between",
     gap: 12,
   },
+
   infoLabel: {
     flex: 1,
-    fontSize: 11,
+    fontSize: 12.5,
+    lineHeight: 18,
   },
+
   infoValue: {
     flex: 1.5,
     textAlign: "right",
-    fontSize: 12,
+    fontSize: 12.5,
+    lineHeight: 18,
     fontWeight: "700",
   },
+
+  // Review card
   reviewCard: {
     borderWidth: 1,
     borderRadius: 16,
     padding: 16,
     gap: 13,
   },
+
+  reviewCardHeading: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 10,
+  },
+
+  reviewCardIcon: {
+    width: 28,
+    height: 28,
+    borderRadius: 8,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+
   reviewIntro: {
-    fontSize: 12,
+    fontSize: 12.5,
     lineHeight: 18,
   },
+
   applicationReview: {
     borderRadius: 12,
     padding: 13,
     gap: 9,
   },
+
   reviewHeadingRow: {
     flexDirection: "row",
     alignItems: "flex-start",
     justifyContent: "space-between",
     gap: 10,
   },
+
   reviewItemTitle: {
     flex: 1,
-    fontSize: 12,
+    fontSize: 13,
     fontWeight: "900",
+    lineHeight: 18,
   },
+
   reviewDecision: {
-    fontSize: 9,
+    fontSize: 10.5,
     fontWeight: "900",
     letterSpacing: 0.5,
-    textAlign: "right",
   },
+
+  reviewDecisionPill: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 4,
+    borderRadius: 8,
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+  },
+
   reviewReason: {
-    fontSize: 12,
+    fontSize: 12.5,
     lineHeight: 19,
   },
+
   reviewDate: {
-    fontSize: 10,
+    fontSize: 11,
     lineHeight: 15,
   },
+
   documentReviewList: {
     gap: 10,
   },
+
   reviewSectionTitle: {
-    fontSize: 12,
+    fontSize: 13.5,
     fontWeight: "900",
     marginTop: 2,
   },
+
   documentReviewItem: {
     borderWidth: 1,
     borderRadius: 12,
     padding: 12,
     gap: 8,
   },
+
   storageNotice: {
-    fontSize: 10,
+    fontSize: 11.5,
     lineHeight: 16,
   },
+
+  truncationNotice: {
+    fontSize: 11.5,
+    lineHeight: 16,
+    textAlign: "center",
+    fontStyle: "italic",
+    marginTop: 2,
+  },
+
+  // Notice card
   noticeCard: {
     borderRadius: 14,
     padding: 15,
-    gap: 7,
+    gap: 8,
   },
+
+  noticeHeading: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+  },
+
   noticeTitle: {
-    fontSize: 14,
+    fontSize: 14.5,
     fontWeight: "900",
+    flexShrink: 1,
   },
+
   noticeText: {
-    fontSize: 12,
+    fontSize: 12.5,
     lineHeight: 19,
   },
+
+  // Feedback error
   feedbackErrorCard: {
     borderRadius: 12,
     padding: 12,
+    flexDirection: "row",
+    alignItems: "flex-start",
+    gap: 9,
   },
+
   feedbackErrorText: {
-    fontSize: 11,
-    lineHeight: 17,
-  },
-  errorCard: {
-    borderRadius: 12,
-    padding: 12,
-  },
-  errorText: {
+    flex: 1,
     fontSize: 12,
     lineHeight: 18,
   },
+
+  // Error
+  errorCard: {
+    borderRadius: 12,
+    padding: 12,
+    flexDirection: "row",
+    alignItems: "flex-start",
+    gap: 9,
+  },
+
+  errorText: {
+    flex: 1,
+    fontSize: 12.5,
+    lineHeight: 18,
+  },
+
+  // Primary button
   primaryButton: {
-    minHeight: 54,
-    borderRadius: 14,
+    minHeight: 58,
+    borderRadius: 15,
     alignItems: "center",
     justifyContent: "center",
     paddingHorizontal: 16,
-    marginTop: 5,
+    marginTop: 4,
+    flexDirection: "row",
+    gap: 9,
   },
+
   primaryButtonText: {
     color: "#FFFFFF",
-    fontSize: 14,
+    fontSize: 15,
     fontWeight: "900",
+    letterSpacing: -0.2,
   },
+
+  // Sign out
   signOutButton: {
-    minHeight: 42,
+    minHeight: 44,
     alignItems: "center",
     justifyContent: "center",
   },
+
   signOutText: {
-    fontSize: 12,
+    fontSize: 13.5,
     fontWeight: "800",
   },
+
+  // Center states
   center: {
     flex: 1,
     alignItems: "center",
     justifyContent: "center",
     paddingHorizontal: 28,
-    gap: 15,
+    gap: 14,
   },
+
+  centerIconWrap: {
+    width: 56,
+    height: 56,
+    borderRadius: 18,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+
+  centerTitle: {
+    fontSize: 20,
+    fontWeight: "900",
+    letterSpacing: -0.3,
+    textAlign: "center",
+  },
+
+  centerBody: {
+    fontSize: 13.5,
+    lineHeight: 20,
+    textAlign: "center",
+  },
+
   loadingText: {
     fontSize: 13,
+    lineHeight: 20,
   },
-  disabled: {
-    opacity: 0.6,
+
+  disabled: { opacity: 0.45 },
+
+  pressed: {
+    opacity: 0.85,
+    transform: [{ scale: 0.985 }],
   },
 });

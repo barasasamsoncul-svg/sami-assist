@@ -1,8 +1,8 @@
-
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 
 import {
   ActivityIndicator,
+  Platform,
   Pressable,
   ScrollView,
   StatusBar,
@@ -129,14 +129,18 @@ const CUSTOMER_CATEGORIES: TaskCategory[] = [
   },
 ];
 
+const BACK_SIZE = 44;
+
 export default function RunnerTaskSelectionScreen() {
   const { colors } = useRunnerTheme();
 
-  const [availableCategories, setAvailableCategories] =
-    useState<TaskCategory[]>([]);
+  const [availableCategories, setAvailableCategories] = useState<
+    TaskCategory[]
+  >([]);
 
-  const [selectedCategories, setSelectedCategories] =
-    useState<string[]>([]);
+  const [selectedCategories, setSelectedCategories] = useState<string[]>(
+    [],
+  );
 
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -144,7 +148,16 @@ export default function RunnerTaskSelectionScreen() {
   const [error, setError] = useState("");
   const [loadError, setLoadError] = useState("");
 
-  async function loadTaskCategories() {
+  const scrollRef = useRef<ScrollView>(null);
+  const mountedRef = useRef(true);
+
+  useEffect(() => {
+    return () => {
+      mountedRef.current = false;
+    };
+  }, []);
+
+  const loadTaskCategories = useCallback(async () => {
     setLoading(true);
     setLoadError("");
     setError("");
@@ -158,16 +171,13 @@ export default function RunnerTaskSelectionScreen() {
       const activeKeys = new Set(
         (catalogue.categories || [])
           .map((category) => category.key)
-          .filter(
-            (key): key is string =>
-              typeof key === "string",
-          ),
+          .filter((key): key is string => typeof key === "string"),
       );
 
       // Keep Customer's exact task catalogue and order.
       // Only show categories enabled in the Runner database.
-      const activeOptions = CUSTOMER_CATEGORIES.filter(
-        (category) => activeKeys.has(category.key),
+      const activeOptions = CUSTOMER_CATEGORIES.filter((category) =>
+        activeKeys.has(category.key),
       );
 
       if (activeOptions.length === 0) {
@@ -176,37 +186,47 @@ export default function RunnerTaskSelectionScreen() {
         );
       }
 
+      if (!mountedRef.current) return;
+
       setAvailableCategories(activeOptions);
 
-      const savedSelection =
-        onboarding.runner.selectedCategories || [];
+      const savedSelection = onboarding.runner.selectedCategories || [];
 
       setSelectedCategories(
-        savedSelection.filter((key) =>
-          activeKeys.has(key),
-        ),
+        savedSelection.filter((key) => activeKeys.has(key)),
       );
     } catch (cause) {
+      if (!mountedRef.current) return;
       setLoadError(
         cause instanceof Error
           ? cause.message
           : "Task categories could not be loaded.",
       );
     } finally {
-      setLoading(false);
+      if (mountedRef.current) {
+        setLoading(false);
+      }
     }
-  }
+  }, []);
 
   useEffect(() => {
     void loadTaskCategories();
-  }, []);
+  }, [loadTaskCategories]);
+
+  // When a validation or save error appears, scroll it into view.
+  useEffect(() => {
+    if (!error) return;
+    const frame = requestAnimationFrame(() => {
+      scrollRef.current?.scrollToEnd({ animated: true });
+    });
+    return () => cancelAnimationFrame(frame);
+  }, [error]);
 
   function toggleCategory(key: string) {
     setSelectedCategories((current) => {
       if (current.includes(key)) {
         return current.filter((item) => item !== key);
       }
-
       return [...current, key];
     });
 
@@ -214,10 +234,10 @@ export default function RunnerTaskSelectionScreen() {
   }
 
   async function saveTaskSelection() {
+    if (saving) return;
+
     if (selectedCategories.length === 0) {
-      setError(
-        "Select at least one type of errand you can perform.",
-      );
+      setError("Select at least one type of errand you can perform.");
       return;
     }
 
@@ -237,75 +257,74 @@ export default function RunnerTaskSelectionScreen() {
         },
       });
 
+      if (!mountedRef.current) return;
+
       // Keep this page in the navigation history.
       router.push("/(auth)/transport");
     } catch (cause) {
+      if (!mountedRef.current) return;
       setError(
         cause instanceof Error
           ? cause.message
           : "Your task selection could not be saved. Please try again.",
       );
     } finally {
-      setSaving(false);
+      if (mountedRef.current) {
+        setSaving(false);
+      }
     }
   }
 
   const selectedCount = selectedCategories.length;
+  const saveDisabled =
+    loading || Boolean(loadError) || selectedCount === 0 || saving;
+
+  const isDarkPaper = colors.paper === "#080F1D";
 
   return (
     <SafeAreaView
       edges={["top", "bottom"]}
-      style={[
-        styles.safeArea,
-        { backgroundColor: colors.paper },
-      ]}
+      style={[styles.safeArea, { backgroundColor: colors.paper }]}
     >
       <StatusBar
-        barStyle={
-          colors.paper === "#080F1D"
-            ? "light-content"
-            : "dark-content"
-        }
+        barStyle={isDarkPaper ? "light-content" : "dark-content"}
         backgroundColor={colors.paper}
       />
 
       <View style={styles.container}>
         <ScrollView
+          ref={scrollRef}
           contentContainerStyle={styles.scrollContent}
           showsVerticalScrollIndicator={false}
+          keyboardShouldPersistTaps="handled"
         >
+          {/* Header */}
           <View style={styles.header}>
             <Pressable
               accessibilityRole="button"
               accessibilityLabel="Go back"
               disabled={saving}
               onPress={() => router.back()}
-              style={[
+              hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}
+              style={({ pressed }) => [
                 styles.backButton,
                 {
                   backgroundColor: colors.surface,
                   borderColor: colors.border,
+                  opacity: pressed ? 0.6 : saving ? 0.5 : 1,
                 },
               ]}
             >
               <Ionicons
                 name="chevron-back"
-                size={21}
+                size={22}
                 color={colors.text}
               />
             </Pressable>
 
             <View style={styles.brand}>
-              <Text
-                style={[
-                  styles.brandName,
-                  { color: colors.navy },
-                ]}
-              >
-                SaMi{" "}
-                <Text style={{ color: colors.blue }}>
-                  Runner
-                </Text>
+              <Text style={[styles.brandName, { color: colors.navy }]}>
+                SaMi <Text style={{ color: colors.blue }}>Runner</Text>
               </Text>
 
               <Text
@@ -321,6 +340,56 @@ export default function RunnerTaskSelectionScreen() {
             <View style={styles.headerSpacer} />
           </View>
 
+          {/* Progress — this is step 1 of 3 */}
+          <View style={styles.progressSection}>
+            <View
+              style={[
+                styles.progressTrack,
+                { backgroundColor: colors.border },
+              ]}
+            >
+              <View
+                style={[
+                  styles.progressFill,
+                  { backgroundColor: colors.blue },
+                ]}
+              />
+            </View>
+
+            <View style={styles.progressMeta}>
+              <Text
+                style={[
+                  styles.progressText,
+                  { color: colors.textMuted },
+                ]}
+              >
+                STEP 1 OF 3 · TASK CATEGORIES
+              </Text>
+
+              <View style={styles.progressDots}>
+                <View
+                  style={[
+                    styles.stepDotCurrent,
+                    { backgroundColor: colors.blue },
+                  ]}
+                />
+                <View
+                  style={[
+                    styles.stepDot,
+                    { backgroundColor: colors.border },
+                  ]}
+                />
+                <View
+                  style={[
+                    styles.stepDot,
+                    { backgroundColor: colors.border },
+                  ]}
+                />
+              </View>
+            </View>
+          </View>
+
+          {/* Intro */}
           <View style={styles.intro}>
             <View
               style={[
@@ -335,37 +404,24 @@ export default function RunnerTaskSelectionScreen() {
               />
             </View>
 
-            <Text
-              style={[
-                styles.eyebrow,
-                { color: colors.blue },
-              ]}
-            >
+            <Text style={[styles.eyebrow, { color: colors.blue }]}>
               YOUR RUNNER SERVICES
             </Text>
 
-            <Text
-              style={[
-                styles.title,
-                { color: colors.text },
-              ]}
-            >
+            <Text style={[styles.title, { color: colors.text }]}>
               Which tasks can you perform?
             </Text>
 
             <Text
-              style={[
-                styles.subtitle,
-                { color: colors.textMuted },
-              ]}
+              style={[styles.subtitle, { color: colors.textMuted }]}
             >
-              Choose every type of errand you are
-              comfortable handling. Customers will be
-              able to request services from the categories
-              you select.
+              Choose every type of errand you are comfortable handling.
+              Customers will be able to request services from the
+              categories you select.
             </Text>
           </View>
 
+          {/* Selection summary */}
           <View
             style={[
               styles.selectionSummary,
@@ -378,19 +434,20 @@ export default function RunnerTaskSelectionScreen() {
             <View style={styles.summaryIcon}>
               <Ionicons
                 name="layers-outline"
-                size={19}
+                size={21}
                 color={colors.blue}
               />
             </View>
 
             <View style={styles.summaryCopy}>
               <Text
-                style={[
-                  styles.summaryTitle,
-                  { color: colors.text },
-                ]}
+                style={[styles.summaryTitle, { color: colors.text }]}
               >
-                {selectedCount} task types selected
+                {selectedCount === 0
+                  ? "No task types selected"
+                  : `${selectedCount} task ${
+                      selectedCount === 1 ? "type" : "types"
+                    } selected`}
               </Text>
 
               <Text
@@ -399,17 +456,21 @@ export default function RunnerTaskSelectionScreen() {
                   { color: colors.textMuted },
                 ]}
               >
-                You can select more than one.
+                {selectedCount === 0
+                  ? "Select at least one to continue."
+                  : "Tap a selected card to remove it."}
               </Text>
             </View>
           </View>
 
+          {/* Body */}
           {loading ? (
-            <View style={styles.loadingState}>
-              <ActivityIndicator
-                size="large"
-                color={colors.blue}
-              />
+            <View
+              style={styles.loadingState}
+              accessibilityRole="progressbar"
+              accessibilityLabel="Loading task categories"
+            >
+              <ActivityIndicator size="large" color={colors.blue} />
 
               <Text
                 style={[
@@ -444,14 +505,16 @@ export default function RunnerTaskSelectionScreen() {
 
               <Pressable
                 accessibilityRole="button"
+                accessibilityLabel="Retry loading categories"
+                hitSlop={10}
                 onPress={() => void loadTaskCategories()}
-                style={styles.retryButton}
+                style={({ pressed }) => [
+                  styles.retryButton,
+                  { opacity: pressed ? 0.55 : 1 },
+                ]}
               >
                 <Text
-                  style={[
-                    styles.retryText,
-                    { color: colors.blue },
-                  ]}
+                  style={[styles.retryText, { color: colors.blue }]}
                 >
                   Retry
                 </Text>
@@ -460,21 +523,18 @@ export default function RunnerTaskSelectionScreen() {
           ) : (
             <View style={styles.categoryGrid}>
               {availableCategories.map((category) => {
-                const selected =
-                  selectedCategories.includes(category.key);
+                const selected = selectedCategories.includes(
+                  category.key,
+                );
 
                 return (
                   <Pressable
                     key={category.key}
                     accessibilityRole="checkbox"
-                    accessibilityState={{
-                      checked: selected,
-                    }}
-                    accessibilityLabel={category.title}
-                    onPress={() =>
-                      toggleCategory(category.key)
-                    }
-                    style={[
+                    accessibilityState={{ checked: selected }}
+                    accessibilityLabel={`${category.title}. ${category.description}`}
+                    onPress={() => toggleCategory(category.key)}
+                    style={({ pressed }) => [
                       styles.categoryCard,
                       {
                         backgroundColor: selected
@@ -483,7 +543,20 @@ export default function RunnerTaskSelectionScreen() {
                         borderColor: selected
                           ? colors.blue
                           : colors.border,
+                        opacity: pressed ? 0.88 : 1,
+                        transform: [{ scale: pressed ? 0.985 : 1 }],
                       },
+                      selected &&
+                        Platform.select({
+                          ios: {
+                            shadowColor: colors.blue,
+                            shadowOpacity: 0.12,
+                            shadowRadius: 6,
+                            shadowOffset: { width: 0, height: 3 },
+                          },
+                          android: { elevation: 2 },
+                          default: {},
+                        }),
                     ]}
                   >
                     <View
@@ -499,15 +572,12 @@ export default function RunnerTaskSelectionScreen() {
                       <Ionicons
                         name={category.icon}
                         size={23}
-                        color={
-                          selected
-                            ? "#FFFFFF"
-                            : colors.blue
-                        }
+                        color={selected ? "#FFFFFF" : colors.blue}
                       />
                     </View>
 
                     <Text
+                      numberOfLines={2}
                       style={[
                         styles.categoryTitle,
                         { color: colors.text },
@@ -517,6 +587,7 @@ export default function RunnerTaskSelectionScreen() {
                     </Text>
 
                     <Text
+                      numberOfLines={3}
                       style={[
                         styles.categoryDescription,
                         { color: colors.textMuted },
@@ -552,9 +623,11 @@ export default function RunnerTaskSelectionScreen() {
             </View>
           )}
 
+          {/* Validation error */}
           {error ? (
             <View
               accessibilityRole="alert"
+              accessibilityLiveRegion="polite"
               style={[
                 styles.errorContainer,
                 { backgroundColor: colors.dangerSoft },
@@ -566,17 +639,13 @@ export default function RunnerTaskSelectionScreen() {
                 color={colors.red}
               />
 
-              <Text
-                style={[
-                  styles.errorText,
-                  { color: colors.red },
-                ]}
-              >
+              <Text style={[styles.errorText, { color: colors.red }]}>
                 {error}
               </Text>
             </View>
           ) : null}
 
+          {/* Note */}
           <View style={styles.note}>
             <Ionicons
               name="information-circle-outline"
@@ -585,19 +654,16 @@ export default function RunnerTaskSelectionScreen() {
             />
 
             <Text
-              style={[
-                styles.noteText,
-                { color: colors.textMuted },
-              ]}
+              style={[styles.noteText, { color: colors.textMuted }]}
             >
-              Your selections determine which
-              category-specific documents may be required
-              later. Shared identity documents will only
+              Your selections determine which category-specific documents
+              may be required later. Shared identity documents will only
               be requested once.
             </Text>
           </View>
         </ScrollView>
 
+        {/* Bottom bar */}
         <View
           style={[
             styles.bottomBar,
@@ -609,25 +675,15 @@ export default function RunnerTaskSelectionScreen() {
         >
           <Pressable
             accessibilityRole="button"
-            disabled={
-              loading ||
-              Boolean(loadError) ||
-              selectedCount === 0 ||
-              saving
-            }
+            accessibilityLabel="Save and continue"
+            accessibilityHint="Saves your task selection and opens the transport step"
+            disabled={saveDisabled}
             onPress={() => void saveTaskSelection()}
             style={({ pressed }) => [
               styles.primaryButton,
               { backgroundColor: colors.blue },
-              (loading ||
-                Boolean(loadError) ||
-                selectedCount === 0 ||
-                saving) &&
-                styles.disabled,
-              pressed &&
-                !saving &&
-                selectedCount > 0 &&
-                styles.pressed,
+              saveDisabled && styles.disabled,
+              pressed && !saveDisabled && styles.pressed,
             ]}
           >
             {saving ? (
@@ -648,10 +704,7 @@ export default function RunnerTaskSelectionScreen() {
           </Pressable>
 
           <Text
-            style={[
-              styles.bottomHint,
-              { color: colors.textMuted },
-            ]}
+            style={[styles.bottomHint, { color: colors.textMuted }]}
           >
             Select at least one task category to continue.
           </Text>
@@ -662,32 +715,28 @@ export default function RunnerTaskSelectionScreen() {
 }
 
 const styles = StyleSheet.create({
-  safeArea: {
-    flex: 1,
-  },
-
-  container: {
-    flex: 1,
-  },
+  safeArea: { flex: 1 },
+  container: { flex: 1 },
 
   scrollContent: {
-    paddingHorizontal: 22,
+    paddingHorizontal: 20,
     paddingTop: 12,
-    paddingBottom: 28,
-    gap: 23,
+    paddingBottom: 32,
+    gap: 22,
   },
 
+  // Header
   header: {
-    minHeight: 46,
+    minHeight: BACK_SIZE,
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
   },
 
   backButton: {
-    width: 42,
-    height: 42,
-    borderRadius: 13,
+    width: BACK_SIZE,
+    height: BACK_SIZE,
+    borderRadius: 14,
     borderWidth: 1,
     alignItems: "center",
     justifyContent: "center",
@@ -706,18 +755,60 @@ const styles = StyleSheet.create({
   },
 
   brandTagline: {
-    fontSize: 7,
+    fontSize: 8,
     fontWeight: "900",
     letterSpacing: 2,
   },
 
-  headerSpacer: {
-    width: 42,
+  headerSpacer: { width: BACK_SIZE },
+
+  // Progress
+  progressSection: { gap: 10 },
+
+  progressTrack: {
+    height: 6,
+    borderRadius: 6,
+    overflow: "hidden",
   },
 
-  intro: {
-    gap: 10,
+  progressFill: {
+    width: "33.33%",
+    height: "100%",
+    borderRadius: 6,
   },
+
+  progressMeta: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+  },
+
+  progressText: {
+    fontSize: 10.5,
+    fontWeight: "900",
+    letterSpacing: 1.2,
+  },
+
+  progressDots: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 5,
+  },
+
+  stepDot: {
+    width: 6,
+    height: 6,
+    borderRadius: 3,
+  },
+
+  stepDotCurrent: {
+    width: 16,
+    height: 6,
+    borderRadius: 3,
+  },
+
+  // Intro
+  intro: { gap: 10 },
 
   iconWrap: {
     width: 54,
@@ -729,55 +820,56 @@ const styles = StyleSheet.create({
   },
 
   eyebrow: {
-    fontSize: 10,
+    fontSize: 11,
     fontWeight: "900",
-    letterSpacing: 1.5,
+    letterSpacing: 1.4,
   },
 
   title: {
-    fontSize: 27,
-    lineHeight: 35,
+    fontSize: 28,
+    lineHeight: 36,
     fontWeight: "900",
     letterSpacing: -0.7,
   },
 
   subtitle: {
-    fontSize: 13,
+    fontSize: 13.5,
     lineHeight: 21,
   },
 
+  // Selection summary
   selectionSummary: {
-    minHeight: 70,
+    minHeight: 76,
     borderWidth: 1,
-    borderRadius: 15,
+    borderRadius: 16,
     paddingHorizontal: 14,
+    paddingVertical: 12,
     flexDirection: "row",
     alignItems: "center",
     gap: 12,
   },
 
   summaryIcon: {
-    width: 39,
-    height: 39,
+    width: 40,
+    height: 40,
     borderRadius: 12,
     alignItems: "center",
     justifyContent: "center",
   },
 
-  summaryCopy: {
-    flex: 1,
-    gap: 4,
-  },
+  summaryCopy: { flex: 1, gap: 4 },
 
   summaryTitle: {
-    fontSize: 12,
+    fontSize: 13,
     fontWeight: "900",
   },
 
   summarySubtitle: {
-    fontSize: 10,
+    fontSize: 11.5,
+    lineHeight: 16,
   },
 
+  // Loading + load error
   loadingState: {
     minHeight: 180,
     alignItems: "center",
@@ -785,60 +877,7 @@ const styles = StyleSheet.create({
     gap: 12,
   },
 
-  loadingText: {
-    fontSize: 12,
-  },
-
-  categoryGrid: {
-    flexDirection: "row",
-    flexWrap: "wrap",
-    justifyContent: "space-between",
-    rowGap: 12,
-  },
-
-  categoryCard: {
-    width: "48.5%",
-    minHeight: 164,
-    borderWidth: 1,
-    borderRadius: 16,
-    padding: 13,
-    gap: 8,
-    position: "relative",
-  },
-
-  categoryIcon: {
-    width: 43,
-    height: 43,
-    borderRadius: 13,
-    alignItems: "center",
-    justifyContent: "center",
-    marginBottom: 2,
-  },
-
-  categoryTitle: {
-    fontSize: 12,
-    lineHeight: 16,
-    fontWeight: "900",
-    paddingRight: 6,
-  },
-
-  categoryDescription: {
-    fontSize: 10,
-    lineHeight: 15,
-    paddingRight: 2,
-  },
-
-  checkbox: {
-    width: 21,
-    height: 21,
-    borderWidth: 1.5,
-    borderRadius: 7,
-    alignItems: "center",
-    justifyContent: "center",
-    position: "absolute",
-    top: 12,
-    right: 12,
-  },
+  loadingText: { fontSize: 12.5 },
 
   loadError: {
     borderRadius: 14,
@@ -850,19 +889,70 @@ const styles = StyleSheet.create({
 
   loadErrorText: {
     flex: 1,
-    fontSize: 11,
-    lineHeight: 17,
+    fontSize: 12,
+    lineHeight: 18,
   },
 
-  retryButton: {
-    padding: 5,
-  },
+  retryButton: { padding: 6 },
 
   retryText: {
-    fontSize: 11,
+    fontSize: 12,
     fontWeight: "900",
   },
 
+  // Category grid
+  categoryGrid: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    justifyContent: "space-between",
+    rowGap: 12,
+  },
+
+  categoryCard: {
+    width: "48%",
+    minHeight: 164,
+    borderWidth: 1,
+    borderRadius: 16,
+    padding: 14,
+    gap: 6,
+    position: "relative",
+  },
+
+  categoryIcon: {
+    width: 44,
+    height: 44,
+    borderRadius: 13,
+    alignItems: "center",
+    justifyContent: "center",
+    marginBottom: 4,
+  },
+
+  categoryTitle: {
+    fontSize: 13.5,
+    lineHeight: 18,
+    fontWeight: "900",
+    paddingRight: 24,
+  },
+
+  categoryDescription: {
+    fontSize: 11.5,
+    lineHeight: 16,
+    paddingRight: 2,
+  },
+
+  checkbox: {
+    width: 22,
+    height: 22,
+    borderWidth: 1.5,
+    borderRadius: 7,
+    alignItems: "center",
+    justifyContent: "center",
+    position: "absolute",
+    top: 12,
+    right: 12,
+  },
+
+  // Error + note
   errorContainer: {
     borderRadius: 12,
     padding: 12,
@@ -873,8 +963,8 @@ const styles = StyleSheet.create({
 
   errorText: {
     flex: 1,
-    fontSize: 11,
-    lineHeight: 17,
+    fontSize: 12.5,
+    lineHeight: 18,
   },
 
   note: {
@@ -886,12 +976,13 @@ const styles = StyleSheet.create({
 
   noteText: {
     flex: 1,
-    fontSize: 10,
-    lineHeight: 16,
+    fontSize: 11.5,
+    lineHeight: 17,
   },
 
+  // Bottom bar
   bottomBar: {
-    paddingHorizontal: 22,
+    paddingHorizontal: 20,
     paddingTop: 13,
     paddingBottom: 10,
     borderTopWidth: 1,
@@ -899,7 +990,7 @@ const styles = StyleSheet.create({
   },
 
   primaryButton: {
-    minHeight: 56,
+    minHeight: 58,
     borderRadius: 15,
     flexDirection: "row",
     alignItems: "center",
@@ -909,20 +1000,23 @@ const styles = StyleSheet.create({
 
   primaryButtonText: {
     color: "#FFFFFF",
-    fontSize: 14,
+    fontSize: 15,
     fontWeight: "900",
+    letterSpacing: -0.2,
   },
 
   bottomHint: {
-    fontSize: 9,
+    fontSize: 11.5,
+    lineHeight: 16,
     textAlign: "center",
+    maxWidth: 340,
+    alignSelf: "center",
   },
 
-  disabled: {
-    opacity: 0.45,
-  },
+  disabled: { opacity: 0.45 },
 
   pressed: {
-    opacity: 0.82,
+    opacity: 0.85,
+    transform: [{ scale: 0.985 }],
   },
 });

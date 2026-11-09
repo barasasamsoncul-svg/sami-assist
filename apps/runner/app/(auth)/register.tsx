@@ -1,5 +1,4 @@
-
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
 import {
   ActivityIndicator,
@@ -21,6 +20,8 @@ import { SafeAreaView } from "react-native-safe-area-context";
 import { requestRunnerRegistrationOtp } from "@/api";
 import { useRunnerTheme } from "@/theme";
 
+const BACK_SIZE = 44;
+
 export default function RunnerRegistrationScreen() {
   const { colors } = useRunnerTheme();
 
@@ -30,14 +31,27 @@ export default function RunnerRegistrationScreen() {
 
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState("");
+  const [focusedField, setFocusedField] = useState<
+    "name" | "email" | "phone" | null
+  >(null);
+
+  const nameRef = useRef<TextInput>(null);
+  const emailRef = useRef<TextInput>(null);
+  const phoneRef = useRef<TextInput>(null);
+  const mountedRef = useRef(true);
+
+  useEffect(() => {
+    return () => {
+      mountedRef.current = false;
+    };
+  }, []);
 
   const normalizedName = fullName.trim().replace(/\s+/g, " ");
   const normalizedEmail = email.trim().toLowerCase();
   const normalizedPhone = phone.trim();
 
   const validName =
-    normalizedName.length >= 2 &&
-    normalizedName.length <= 120;
+    normalizedName.length >= 2 && normalizedName.length <= 120;
 
   const validEmail =
     normalizedEmail.length <= 254 &&
@@ -46,10 +60,21 @@ export default function RunnerRegistrationScreen() {
   const validPhone = normalizedPhone.length >= 9;
 
   const canSubmit =
-    validName &&
-    validEmail &&
-    validPhone &&
-    !submitting;
+    validName && validEmail && validPhone && !submitting;
+
+  function glow(focused: boolean) {
+    if (!focused) return {};
+    return Platform.select({
+      ios: {
+        shadowColor: colors.blue,
+        shadowOpacity: 0.16,
+        shadowRadius: 6,
+        shadowOffset: { width: 0, height: 2 },
+      },
+      android: { elevation: 1 },
+      default: {},
+    });
+  }
 
   async function submitRegistration() {
     if (submitting) return;
@@ -58,16 +83,19 @@ export default function RunnerRegistrationScreen() {
 
     if (!validName) {
       setError("Enter your full name.");
+      nameRef.current?.focus();
       return;
     }
 
     if (!validEmail) {
       setError("Enter a valid email address.");
+      emailRef.current?.focus();
       return;
     }
 
     if (!validPhone) {
       setError("Enter your mobile phone number.");
+      phoneRef.current?.focus();
       return;
     }
 
@@ -79,6 +107,8 @@ export default function RunnerRegistrationScreen() {
         email: normalizedEmail,
         phone: normalizedPhone,
       });
+
+      if (!mountedRef.current) return;
 
       router.push({
         pathname: "/(auth)/verify",
@@ -92,77 +122,70 @@ export default function RunnerRegistrationScreen() {
         },
       });
     } catch (cause) {
+      if (!mountedRef.current) return;
       setError(
         cause instanceof Error
           ? cause.message
           : "Registration could not be started. Please try again.",
       );
     } finally {
-      setSubmitting(false);
+      if (mountedRef.current) {
+        setSubmitting(false);
+      }
     }
   }
+
+  const isDarkPaper = colors.paper === "#080F1D";
 
   return (
     <SafeAreaView
       edges={["top", "bottom"]}
-      style={[
-        styles.safeArea,
-        { backgroundColor: colors.paper },
-      ]}
+      style={[styles.safeArea, { backgroundColor: colors.paper }]}
     >
       <StatusBar
-        barStyle={
-          colors.paper === "#080F1D"
-            ? "light-content"
-            : "dark-content"
-        }
+        barStyle={isDarkPaper ? "light-content" : "dark-content"}
         backgroundColor={colors.paper}
       />
 
       <KeyboardAvoidingView
         style={styles.keyboardContainer}
-        behavior={
-          Platform.OS === "ios" ? "padding" : "height"
-        }
+        behavior={Platform.OS === "ios" ? "padding" : "height"}
         keyboardVerticalOffset={Platform.OS === "ios" ? 8 : 0}
       >
         <ScrollView
           contentContainerStyle={styles.scrollContent}
           keyboardShouldPersistTaps="handled"
-          automaticallyAdjustKeyboardInsets
           showsVerticalScrollIndicator={false}
         >
+          {/* Header */}
           <View style={styles.header}>
             <Pressable
               accessibilityRole="button"
               accessibilityLabel="Go back"
+              disabled={submitting}
               onPress={() => router.back()}
-              style={[
+              hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}
+              style={({ pressed }) => [
                 styles.backButton,
                 {
                   backgroundColor: colors.surface,
                   borderColor: colors.border,
+                  opacity: pressed ? 0.6 : submitting ? 0.5 : 1,
                 },
               ]}
             >
               <Ionicons
                 name="chevron-back"
-                size={21}
+                size={22}
                 color={colors.text}
               />
             </Pressable>
 
             <View style={styles.brand}>
               <Text
-                style={[
-                  styles.brandName,
-                  { color: colors.navy },
-                ]}
+                style={[styles.brandName, { color: colors.navy }]}
               >
-                SaMi{" "}
-                <Text style={{ color: colors.blue }}>
-                  Runner
-                </Text>
+                SaMi <Text style={{ color: colors.blue }}>Runner</Text>
               </Text>
 
               <Text
@@ -178,6 +201,7 @@ export default function RunnerRegistrationScreen() {
             <View style={styles.headerSpacer} />
           </View>
 
+          {/* Intro */}
           <View style={styles.intro}>
             <View
               style={[
@@ -192,44 +216,28 @@ export default function RunnerRegistrationScreen() {
               />
             </View>
 
-            <Text
-              style={[
-                styles.eyebrow,
-                { color: colors.blue },
-              ]}
-            >
+            <Text style={[styles.eyebrow, { color: colors.blue }]}>
               BECOME A SAMI RUNNER
             </Text>
 
-            <Text
-              style={[
-                styles.title,
-                { color: colors.text },
-              ]}
-            >
+            <Text style={[styles.title, { color: colors.text }]}>
               Create your account.
             </Text>
 
             <Text
-              style={[
-                styles.subtitle,
-                { color: colors.textMuted },
-              ]}
+              style={[styles.subtitle, { color: colors.textMuted }]}
             >
-              Enter your details below to get started.
-              We will verify your email before moving
-              you to the next registration step.
+              Enter your details below to get started. We will verify
+              your email before moving you to the next registration
+              step.
             </Text>
           </View>
 
+          {/* Form */}
           <View style={styles.form}>
+            {/* Full name */}
             <View style={styles.fieldGroup}>
-              <Text
-                style={[
-                  styles.label,
-                  { color: colors.text },
-                ]}
-              >
+              <Text style={[styles.label, { color: colors.text }]}>
                 Full name
                 <Text style={{ color: colors.red }}> *</Text>
               </Text>
@@ -239,22 +247,35 @@ export default function RunnerRegistrationScreen() {
                   styles.inputContainer,
                   {
                     backgroundColor: colors.surface,
-                    borderColor: colors.border,
+                    borderColor:
+                      focusedField === "name"
+                        ? colors.blue
+                        : colors.border,
                   },
+                  glow(focusedField === "name"),
                 ]}
               >
                 <Ionicons
                   name="person-outline"
                   size={19}
-                  color={colors.textMuted}
+                  color={
+                    focusedField === "name"
+                      ? colors.blue
+                      : colors.textMuted
+                  }
                 />
 
                 <TextInput
+                  ref={nameRef}
                   value={fullName}
                   onChangeText={(value) => {
                     setFullName(value);
                     setError("");
                   }}
+                  onFocus={() => setFocusedField("name")}
+                  onBlur={() => setFocusedField(null)}
+                  onSubmitEditing={() => emailRef.current?.focus()}
+                  blurOnSubmit={false}
                   placeholder="Enter your full name"
                   placeholderTextColor={colors.textMuted}
                   autoCapitalize="words"
@@ -264,22 +285,17 @@ export default function RunnerRegistrationScreen() {
                   returnKeyType="next"
                   maxLength={120}
                   editable={!submitting}
-                  style={[
-                    styles.input,
-                    { color: colors.text },
-                  ]}
+                  selectionColor={colors.blue}
+                  cursorColor={colors.blue}
+                  style={[styles.input, { color: colors.text }]}
                   accessibilityLabel="Full name"
                 />
               </View>
             </View>
 
+            {/* Email */}
             <View style={styles.fieldGroup}>
-              <Text
-                style={[
-                  styles.label,
-                  { color: colors.text },
-                ]}
-              >
+              <Text style={[styles.label, { color: colors.text }]}>
                 Email address
                 <Text style={{ color: colors.red }}> *</Text>
               </Text>
@@ -289,22 +305,35 @@ export default function RunnerRegistrationScreen() {
                   styles.inputContainer,
                   {
                     backgroundColor: colors.surface,
-                    borderColor: colors.border,
+                    borderColor:
+                      focusedField === "email"
+                        ? colors.blue
+                        : colors.border,
                   },
+                  glow(focusedField === "email"),
                 ]}
               >
                 <Ionicons
                   name="mail-outline"
                   size={19}
-                  color={colors.textMuted}
+                  color={
+                    focusedField === "email"
+                      ? colors.blue
+                      : colors.textMuted
+                  }
                 />
 
                 <TextInput
+                  ref={emailRef}
                   value={email}
                   onChangeText={(value) => {
                     setEmail(value);
                     setError("");
                   }}
+                  onFocus={() => setFocusedField("email")}
+                  onBlur={() => setFocusedField(null)}
+                  onSubmitEditing={() => phoneRef.current?.focus()}
+                  blurOnSubmit={false}
                   placeholder="you@example.com"
                   placeholderTextColor={colors.textMuted}
                   keyboardType="email-address"
@@ -315,10 +344,9 @@ export default function RunnerRegistrationScreen() {
                   returnKeyType="next"
                   maxLength={254}
                   editable={!submitting}
-                  style={[
-                    styles.input,
-                    { color: colors.text },
-                  ]}
+                  selectionColor={colors.blue}
+                  cursorColor={colors.blue}
+                  style={[styles.input, { color: colors.text }]}
                   accessibilityLabel="Email address"
                 />
               </View>
@@ -333,13 +361,9 @@ export default function RunnerRegistrationScreen() {
               </Text>
             </View>
 
+            {/* Phone */}
             <View style={styles.fieldGroup}>
-              <Text
-                style={[
-                  styles.label,
-                  { color: colors.text },
-                ]}
-              >
+              <Text style={[styles.label, { color: colors.text }]}>
                 Phone number
                 <Text style={{ color: colors.red }}> *</Text>
               </Text>
@@ -349,21 +373,35 @@ export default function RunnerRegistrationScreen() {
                   styles.inputContainer,
                   {
                     backgroundColor: colors.surface,
-                    borderColor: colors.border,
+                    borderColor:
+                      focusedField === "phone"
+                        ? colors.blue
+                        : colors.border,
                   },
+                  glow(focusedField === "phone"),
                 ]}
               >
                 <Ionicons
                   name="call-outline"
                   size={19}
-                  color={colors.textMuted}
+                  color={
+                    focusedField === "phone"
+                      ? colors.blue
+                      : colors.textMuted
+                  }
                 />
 
                 <TextInput
+                  ref={phoneRef}
                   value={phone}
                   onChangeText={(value) => {
                     setPhone(value);
                     setError("");
+                  }}
+                  onFocus={() => setFocusedField("phone")}
+                  onBlur={() => setFocusedField(null)}
+                  onSubmitEditing={() => {
+                    if (canSubmit) void submitRegistration();
                   }}
                   placeholder="+254 712 345 678"
                   placeholderTextColor={colors.textMuted}
@@ -373,10 +411,9 @@ export default function RunnerRegistrationScreen() {
                   returnKeyType="done"
                   maxLength={24}
                   editable={!submitting}
-                  style={[
-                    styles.input,
-                    { color: colors.text },
-                  ]}
+                  selectionColor={colors.blue}
+                  cursorColor={colors.blue}
+                  style={[styles.input, { color: colors.text }]}
                   accessibilityLabel="Phone number"
                 />
               </View>
@@ -387,15 +424,17 @@ export default function RunnerRegistrationScreen() {
                   { color: colors.textMuted },
                 ]}
               >
-                Use a Kenyan mobile number. You can enter
-                it with or without the +254 prefix.
+                Use a Kenyan mobile number. You can enter it with or
+                without the +254 prefix.
               </Text>
             </View>
           </View>
 
+          {/* Error */}
           {error ? (
             <View
               accessibilityRole="alert"
+              accessibilityLiveRegion="polite"
               style={[
                 styles.errorContainer,
                 { backgroundColor: colors.dangerSoft },
@@ -408,19 +447,20 @@ export default function RunnerRegistrationScreen() {
               />
 
               <Text
-                style={[
-                  styles.errorText,
-                  { color: colors.red },
-                ]}
+                style={[styles.errorText, { color: colors.red }]}
               >
                 {error}
               </Text>
             </View>
           ) : null}
 
+          {/* Footer */}
           <View style={styles.footer}>
             <Pressable
               accessibilityRole="button"
+              accessibilityLabel="Submit registration"
+              accessibilityHint="Sends a verification code to your email address"
+              accessibilityState={{ busy: submitting, disabled: !canSubmit }}
               disabled={!canSubmit}
               onPress={() => void submitRegistration()}
               style={({ pressed }) => [
@@ -434,10 +474,7 @@ export default function RunnerRegistrationScreen() {
                 <ActivityIndicator color="#FFFFFF" />
               ) : (
                 <>
-                  <Text style={styles.submitButtonText}>
-                    Submit
-                  </Text>
-
+                  <Text style={styles.submitButtonText}>Submit</Text>
                   <Ionicons
                     name="arrow-forward"
                     size={19}
@@ -459,16 +496,16 @@ export default function RunnerRegistrationScreen() {
 
               <Pressable
                 accessibilityRole="button"
+                accessibilityLabel="Sign in to an existing Runner account"
                 disabled={submitting}
-                onPress={() =>
-                  router.replace("/(auth)/login")
-                }
+                hitSlop={10}
+                onPress={() => router.replace("/(auth)/login")}
+                style={({ pressed }) => ({
+                  opacity: pressed ? 0.6 : submitting ? 0.5 : 1,
+                })}
               >
                 <Text
-                  style={[
-                    styles.signInLink,
-                    { color: colors.blue },
-                  ]}
+                  style={[styles.signInLink, { color: colors.blue }]}
                 >
                   Sign in
                 </Text>
@@ -481,10 +518,9 @@ export default function RunnerRegistrationScreen() {
                 { color: colors.textMuted },
               ]}
             >
-              Your details are used to create and manage
-              your SaMi Runner account. Task selection
-              and verification documents are completed
-              in separate steps.
+              Your details are used to create and manage your SaMi
+              Runner account. Task selection and verification documents
+              are completed in separate steps.
             </Text>
           </View>
         </ScrollView>
@@ -494,33 +530,29 @@ export default function RunnerRegistrationScreen() {
 }
 
 const styles = StyleSheet.create({
-  safeArea: {
-    flex: 1,
-  },
-
-  keyboardContainer: {
-    flex: 1,
-  },
+  safeArea: { flex: 1 },
+  keyboardContainer: { flex: 1 },
 
   scrollContent: {
     flexGrow: 1,
-    paddingHorizontal: 24,
+    paddingHorizontal: 20,
     paddingTop: 12,
-    paddingBottom: 32,
-    gap: 28,
+    paddingBottom: 36,
+    gap: 22,
   },
 
+  // Header
   header: {
-    minHeight: 46,
+    minHeight: BACK_SIZE,
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
   },
 
   backButton: {
-    width: 42,
-    height: 42,
-    borderRadius: 13,
+    width: BACK_SIZE,
+    height: BACK_SIZE,
+    borderRadius: 14,
     borderWidth: 1,
     alignItems: "center",
     justifyContent: "center",
@@ -539,18 +571,15 @@ const styles = StyleSheet.create({
   },
 
   brandTagline: {
-    fontSize: 7,
+    fontSize: 8,
     fontWeight: "900",
     letterSpacing: 2,
   },
 
-  headerSpacer: {
-    width: 42,
-  },
+  headerSpacer: { width: BACK_SIZE },
 
-  intro: {
-    gap: 11,
-  },
+  // Intro
+  intro: { gap: 10 },
 
   iconWrap: {
     width: 54,
@@ -558,66 +587,64 @@ const styles = StyleSheet.create({
     borderRadius: 17,
     alignItems: "center",
     justifyContent: "center",
-    marginBottom: 3,
+    marginBottom: 2,
   },
 
   eyebrow: {
-    fontSize: 10,
+    fontSize: 11,
     fontWeight: "900",
-    letterSpacing: 1.5,
+    letterSpacing: 1.4,
   },
 
   title: {
-    fontSize: 30,
-    lineHeight: 38,
+    fontSize: 28,
+    lineHeight: 36,
     fontWeight: "900",
-    letterSpacing: -0.8,
+    letterSpacing: -0.7,
   },
 
   subtitle: {
-    fontSize: 13,
+    fontSize: 13.5,
     lineHeight: 21,
     maxWidth: 340,
   },
 
-  form: {
-    gap: 23,
-  },
+  // Form
+  form: { gap: 22 },
 
-  fieldGroup: {
-    gap: 9,
-  },
+  fieldGroup: { gap: 9 },
 
   label: {
-    fontSize: 12,
+    fontSize: 13,
     fontWeight: "800",
   },
 
   inputContainer: {
     minHeight: 58,
-    borderRadius: 15,
+    borderRadius: 14,
     borderWidth: 1,
     flexDirection: "row",
     alignItems: "center",
-    paddingHorizontal: 15,
-    gap: 12,
+    paddingHorizontal: 14,
+    gap: 11,
   },
 
   input: {
     flex: 1,
     minHeight: 56,
-    paddingVertical: 11,
-    fontSize: 14,
+    paddingVertical: 10,
+    fontSize: 15,
   },
 
   fieldHint: {
-    fontSize: 10,
-    lineHeight: 16,
+    fontSize: 11.5,
+    lineHeight: 17,
   },
 
+  // Error
   errorContainer: {
-    borderRadius: 13,
-    padding: 13,
+    borderRadius: 12,
+    padding: 12,
     flexDirection: "row",
     alignItems: "flex-start",
     gap: 9,
@@ -625,17 +652,18 @@ const styles = StyleSheet.create({
 
   errorText: {
     flex: 1,
-    fontSize: 11,
-    lineHeight: 17,
+    fontSize: 12.5,
+    lineHeight: 18,
   },
 
+  // Footer
   footer: {
     gap: 17,
     paddingTop: 2,
   },
 
   submitButton: {
-    minHeight: 57,
+    minHeight: 58,
     borderRadius: 15,
     alignItems: "center",
     justifyContent: "center",
@@ -645,8 +673,9 @@ const styles = StyleSheet.create({
 
   submitButtonText: {
     color: "#FFFFFF",
-    fontSize: 14,
+    fontSize: 15,
     fontWeight: "900",
+    letterSpacing: -0.2,
   },
 
   signInRow: {
@@ -658,26 +687,25 @@ const styles = StyleSheet.create({
   },
 
   signInPrompt: {
-    fontSize: 11,
+    fontSize: 13,
   },
 
   signInLink: {
-    fontSize: 11,
+    fontSize: 13,
     fontWeight: "900",
   },
 
   footerNote: {
-    fontSize: 10,
+    fontSize: 11.5,
     lineHeight: 16,
     textAlign: "center",
     paddingHorizontal: 8,
   },
 
-  disabled: {
-    opacity: 0.45,
-  },
+  disabled: { opacity: 0.45 },
 
   pressed: {
-    opacity: 0.82,
+    opacity: 0.85,
+    transform: [{ scale: 0.985 }],
   },
 });

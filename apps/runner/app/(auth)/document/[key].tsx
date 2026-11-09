@@ -1,9 +1,17 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import {
   ActivityIndicator,
   Image,
+  Platform,
   Pressable,
   ScrollView,
+  StatusBar,
   StyleSheet,
   Text,
   View,
@@ -11,6 +19,7 @@ import {
 import { SafeAreaView } from "react-native-safe-area-context";
 import * as ImagePicker from "expo-image-picker";
 import { useLocalSearchParams, useRouter } from "expo-router";
+import { Ionicons } from "@expo/vector-icons";
 
 import {
   getRunnerOnboarding,
@@ -19,6 +28,8 @@ import {
 } from "@/api";
 import type { RunnerUploadedDocument } from "@/api";
 import { useRunnerTheme } from "@/theme";
+
+type ThemeColors = ReturnType<typeof useRunnerTheme>["colors"];
 
 type PickedFile = {
   uri: string;
@@ -42,6 +53,7 @@ type UploadedDocument = Pick<
 const NATIONAL_ID_FRONT_KEY = "identity_national_id_front";
 const NATIONAL_ID_BACK_KEY = "identity_national_id_back";
 const MAX_FILE_SIZE = 10 * 1024 * 1024;
+const BACK_SIZE = 44;
 
 const DOCUMENT_TITLES: Record<string, string> = {
   identity_profile_photo: "Profile photo",
@@ -64,6 +76,19 @@ const DOCUMENT_TITLES: Record<string, string> = {
   business_support_qualification: "Business support qualification",
 };
 
+const GUIDANCE_ITEMS = [
+  "Use a genuine, unaltered document.",
+  "Make sure the writing is sharp and readable.",
+  "Avoid glare, shadows and cropped edges.",
+  "Use JPEG, PNG or WEBP images up to 10 MB each.",
+];
+
+function formatFileSize(bytes: number) {
+  if (bytes < 1024) return `${bytes} B`;
+  if (bytes < 1024 * 1024) return `${Math.round(bytes / 1024)} KB`;
+  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+}
+
 function getStatus(
   documents: UploadedDocument[],
   requirementKey: string,
@@ -71,7 +96,6 @@ function getStatus(
   const document = documents.find(
     (item) => item.requirementKey === requirementKey,
   );
-
   return document?.reviewStatus ?? null;
 }
 
@@ -82,7 +106,6 @@ function getRejectionReason(
   const document = documents.find(
     (item) => item.requirementKey === requirementKey,
   );
-
   return document?.rejectionReason ?? null;
 }
 
@@ -133,13 +156,17 @@ function PickedFileCard({
   colors,
   onCamera,
   onGallery,
+  onClear,
+  disabled,
 }: {
   title: string;
   description: string;
   file: PickedFile | null;
-  colors: any;
+  colors: ThemeColors;
   onCamera: () => void;
   onGallery: () => void;
+  onClear?: () => void;
+  disabled?: boolean;
 }) {
   return (
     <View
@@ -147,15 +174,28 @@ function PickedFileCard({
         styles.fileCard,
         {
           backgroundColor: colors.surface,
-          borderColor: colors.border,
+          borderColor: file ? colors.blue : colors.border,
         },
+        file &&
+          Platform.select({
+            ios: {
+              shadowColor: colors.blue,
+              shadowOpacity: 0.1,
+              shadowRadius: 6,
+              shadowOffset: { width: 0, height: 3 },
+            },
+            android: { elevation: 1 },
+            default: {},
+          }),
       ]}
     >
       <Text style={[styles.fileTitle, { color: colors.text }]}>
         {title}
       </Text>
 
-      <Text style={[styles.fileDescription, { color: colors.textMuted }]}>
+      <Text
+        style={[styles.fileDescription, { color: colors.textMuted }]}
+      >
         {description}
       </Text>
 
@@ -163,7 +203,11 @@ function PickedFileCard({
         <View style={styles.previewContainer}>
           <Image
             source={{ uri: file.uri }}
-            style={styles.previewImage}
+            style={[
+              styles.previewImage,
+              { backgroundColor: colors.paper },
+            ]}
+            accessibilityIgnoresInvertColors
           />
 
           <View style={styles.previewDetails}>
@@ -174,10 +218,43 @@ function PickedFileCard({
               {file.name}
             </Text>
 
-            <Text style={[styles.fileSelected, { color: colors.success }]}>
-              Image selected
-            </Text>
+            <View style={styles.fileMetaRow}>
+              <Ionicons
+                name="checkmark-circle"
+                size={14}
+                color={colors.success}
+              />
+              <Text
+                style={[
+                  styles.fileSelected,
+                  { color: colors.success },
+                ]}
+              >
+                Image selected
+                {file.size ? ` · ${formatFileSize(file.size)}` : ""}
+              </Text>
+            </View>
           </View>
+
+          {onClear ? (
+            <Pressable
+              accessibilityRole="button"
+              accessibilityLabel="Remove selected image"
+              disabled={disabled}
+              onPress={onClear}
+              hitSlop={10}
+              style={({ pressed }) => ({
+                padding: 4,
+                opacity: pressed ? 0.55 : disabled ? 0.5 : 1,
+              })}
+            >
+              <Ionicons
+                name="close-circle"
+                size={22}
+                color={colors.textMuted}
+              />
+            </Pressable>
+          ) : null}
         </View>
       ) : (
         <View
@@ -189,7 +266,17 @@ function PickedFileCard({
             },
           ]}
         >
-          <Text style={[styles.emptyPreviewText, { color: colors.textMuted }]}>
+          <Ionicons
+            name="image-outline"
+            size={26}
+            color={colors.textMuted}
+          />
+          <Text
+            style={[
+              styles.emptyPreviewText,
+              { color: colors.textMuted },
+            ]}
+          >
             No image selected
           </Text>
         </View>
@@ -197,19 +284,59 @@ function PickedFileCard({
 
       <View style={styles.pickerActions}>
         <Pressable
+          accessibilityRole="button"
+          accessibilityLabel="Take a photo of this document"
+          disabled={disabled}
           onPress={onCamera}
-          style={[styles.secondaryButton, { borderColor: colors.border }]}
+          style={({ pressed }) => [
+            styles.secondaryButton,
+            {
+              borderColor: colors.border,
+              backgroundColor: colors.paper,
+              opacity: pressed ? 0.6 : disabled ? 0.5 : 1,
+            },
+          ]}
         >
-          <Text style={[styles.secondaryButtonText, { color: colors.text }]}>
+          <Ionicons
+            name="camera-outline"
+            size={17}
+            color={colors.text}
+          />
+          <Text
+            style={[
+              styles.secondaryButtonText,
+              { color: colors.text },
+            ]}
+          >
             Take photo
           </Text>
         </Pressable>
 
         <Pressable
+          accessibilityRole="button"
+          accessibilityLabel="Choose an image from your gallery"
+          disabled={disabled}
           onPress={onGallery}
-          style={[styles.secondaryButton, { borderColor: colors.border }]}
+          style={({ pressed }) => [
+            styles.secondaryButton,
+            {
+              borderColor: colors.border,
+              backgroundColor: colors.paper,
+              opacity: pressed ? 0.6 : disabled ? 0.5 : 1,
+            },
+          ]}
         >
-          <Text style={[styles.secondaryButtonText, { color: colors.text }]}>
+          <Ionicons
+            name="images-outline"
+            size={17}
+            color={colors.text}
+          />
+          <Text
+            style={[
+              styles.secondaryButtonText,
+              { color: colors.text },
+            ]}
+          >
             Choose image
           </Text>
         </Pressable>
@@ -241,6 +368,15 @@ export default function RunnerDocumentDetailScreen() {
   const [error, setError] = useState<string | null>(null);
   const [pageError, setPageError] = useState<string | null>(null);
 
+  const scrollRef = useRef<ScrollView>(null);
+  const mountedRef = useRef(true);
+
+  useEffect(() => {
+    return () => {
+      mountedRef.current = false;
+    };
+  }, []);
+
   const loadOnboarding = useCallback(async () => {
     setLoading(true);
     setPageError(null);
@@ -248,25 +384,25 @@ export default function RunnerDocumentDetailScreen() {
     try {
       const response = await getRunnerOnboarding();
 
-      setRequirements(
-        Array.isArray(response.requirements)
-          ? response.requirements
-          : [],
-      );
+      if (!mountedRef.current) return;
 
+      setRequirements(
+        Array.isArray(response.requirements) ? response.requirements : [],
+      );
       setDocuments(
-        Array.isArray(response.documents)
-          ? response.documents
-          : [],
+        Array.isArray(response.documents) ? response.documents : [],
       );
     } catch (cause) {
+      if (!mountedRef.current) return;
       setPageError(
         cause instanceof Error
           ? cause.message
           : "Could not load your document requirements.",
       );
     } finally {
-      setLoading(false);
+      if (mountedRef.current) {
+        setLoading(false);
+      }
     }
   }, []);
 
@@ -274,44 +410,42 @@ export default function RunnerDocumentDetailScreen() {
     void loadOnboarding();
   }, [loadOnboarding]);
 
+  // Scroll any inline error into view so it's never off-screen.
+  useEffect(() => {
+    if (!error) return;
+    const frame = requestAnimationFrame(() => {
+      scrollRef.current?.scrollToEnd({ animated: true });
+    });
+    return () => cancelAnimationFrame(frame);
+  }, [error]);
+
   const frontRequirement = useMemo(
-    () =>
-      requirements.find(
-        (item) => item.key === NATIONAL_ID_FRONT_KEY,
-      ),
+    () => requirements.find((item) => item.key === NATIONAL_ID_FRONT_KEY),
     [requirements],
   );
 
   const backRequirement = useMemo(
-    () =>
-      requirements.find(
-        (item) => item.key === NATIONAL_ID_BACK_KEY,
-      ),
+    () => requirements.find((item) => item.key === NATIONAL_ID_BACK_KEY),
     [requirements],
   );
 
   const singleRequirement = useMemo(
-    () =>
-      requirements.find((item) => item.key === (routeKey ?? "")),
+    () => requirements.find((item) => item.key === (routeKey ?? "")),
     [requirements, routeKey],
   );
 
   const frontStatus = getStatus(documents, NATIONAL_ID_FRONT_KEY);
   const backStatus = getStatus(documents, NATIONAL_ID_BACK_KEY);
-  const singleStatus = routeKey
-    ? getStatus(documents, routeKey)
-    : null;
+  const singleStatus = routeKey ? getStatus(documents, routeKey) : null;
 
   const frontRejectionReason = getRejectionReason(
     documents,
     NATIONAL_ID_FRONT_KEY,
   );
-
   const backRejectionReason = getRejectionReason(
     documents,
     NATIONAL_ID_BACK_KEY,
   );
-
   const singleRejectionReason = routeKey
     ? getRejectionReason(documents, routeKey)
     : null;
@@ -342,8 +476,14 @@ export default function RunnerDocumentDetailScreen() {
       router.back();
       return;
     }
-
     router.replace("/(auth)/documents");
+  }
+
+  function clearFile(side: "front" | "back" | "single") {
+    if (side === "front") setFrontFile(null);
+    else if (side === "back") setBackFile(null);
+    else setSingleFile(null);
+    setError(null);
   }
 
   const pickImage = async (
@@ -357,6 +497,8 @@ export default function RunnerDocumentDetailScreen() {
         source === "camera"
           ? await ImagePicker.requestCameraPermissionsAsync()
           : await ImagePicker.requestMediaLibraryPermissionsAsync();
+
+      if (!mountedRef.current) return;
 
       if (!permission.granted) {
         setError(
@@ -380,6 +522,7 @@ export default function RunnerDocumentDetailScreen() {
               quality: 0.9,
             });
 
+      if (!mountedRef.current) return;
       if (result.canceled || !result.assets?.length) return;
 
       const asset = result.assets[0];
@@ -389,11 +532,15 @@ export default function RunnerDocumentDetailScreen() {
       const mimeType = getMimeType(name, asset.mimeType);
 
       if (asset.fileSize && asset.fileSize > MAX_FILE_SIZE) {
-        setError("This image is larger than 10 MB. Choose a smaller image.");
+        setError(
+          "This image is larger than 10 MB. Choose a smaller image.",
+        );
         return;
       }
 
-      if (!["image/jpeg", "image/png", "image/webp"].includes(mimeType)) {
+      if (
+        !["image/jpeg", "image/png", "image/webp"].includes(mimeType)
+      ) {
         setError("Choose a JPEG, PNG or WEBP image.");
         return;
       }
@@ -409,6 +556,7 @@ export default function RunnerDocumentDetailScreen() {
       else if (side === "back") setBackFile(picked);
       else setSingleFile(picked);
     } catch (cause) {
+      if (!mountedRef.current) return;
       setError(
         cause instanceof Error
           ? cause.message
@@ -422,12 +570,15 @@ export default function RunnerDocumentDetailScreen() {
 
     if (isNationalIdentity) {
       if (!frontFile || !backFile) {
-        setError("Select both the front and back of your National ID.");
+        setError(
+          "Select both the front and back of your National ID.",
+        );
         return;
       }
-
       if (!frontRequirement || !backRequirement) {
-        setError("The National ID requirements could not be loaded.");
+        setError(
+          "The National ID requirements could not be loaded.",
+        );
         return;
       }
     } else {
@@ -435,7 +586,6 @@ export default function RunnerDocumentDetailScreen() {
         setError("This document requirement could not be found.");
         return;
       }
-
       if (!singleFile) {
         setError("Choose an image of this document before submitting.");
         return;
@@ -457,15 +607,20 @@ export default function RunnerDocumentDetailScreen() {
         });
       }
 
+      if (!mountedRef.current) return;
+
       router.replace("/(auth)/documents");
     } catch (cause) {
+      if (!mountedRef.current) return;
       setError(
         cause instanceof Error
           ? cause.message
           : "Your document could not be submitted. Please try again.",
       );
     } finally {
-      setUploading(false);
+      if (mountedRef.current) {
+        setUploading(false);
+      }
     }
   };
 
@@ -478,76 +633,160 @@ export default function RunnerDocumentDetailScreen() {
     loading ||
     !documentExists ||
     locked ||
-    (isNationalIdentity
-      ? !frontFile || !backFile
-      : !singleFile);
+    (isNationalIdentity ? !frontFile || !backFile : !singleFile);
+
+  const isDarkPaper = colors.paper === "#080F1D";
 
   return (
     <SafeAreaView
       style={[styles.safeArea, { backgroundColor: colors.paper }]}
       edges={["top", "bottom"]}
     >
+      <StatusBar
+        barStyle={isDarkPaper ? "light-content" : "dark-content"}
+        backgroundColor={colors.paper}
+      />
+
+      {/* Header */}
       <View style={styles.header}>
         <Pressable
           accessibilityRole="button"
-          accessibilityLabel="Go back"
+          accessibilityLabel="Go back to documents"
           disabled={uploading}
           onPress={goBack}
-          style={styles.backButton}
+          hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}
+          style={({ pressed }) => [
+            styles.backButton,
+            {
+              backgroundColor: colors.surface,
+              borderColor: colors.border,
+              opacity: pressed ? 0.6 : uploading ? 0.5 : 1,
+            },
+          ]}
         >
-          <Text style={[styles.backText, { color: colors.blue }]}>
-            ‹  Back
-          </Text>
+          <Ionicons
+            name="chevron-back"
+            size={22}
+            color={colors.text}
+          />
         </Pressable>
+
+        <View style={styles.brand}>
+          <Text style={[styles.brandName, { color: colors.navy }]}>
+            SaMi <Text style={{ color: colors.blue }}>Runner</Text>
+          </Text>
+          <Text
+            style={[
+              styles.brandTagline,
+              { color: colors.textMuted },
+            ]}
+          >
+            CONSIDER IT DONE
+          </Text>
+        </View>
+
+        <View style={styles.headerSpacer} />
       </View>
 
       {loading ? (
-        <View style={styles.center}>
+        <View
+          style={styles.center}
+          accessibilityRole="progressbar"
+          accessibilityLabel="Loading document requirement"
+        >
           <ActivityIndicator size="large" color={colors.blue} />
-          <Text style={[styles.loadingText, { color: colors.textMuted }]}>
+          <Text
+            style={[styles.loadingText, { color: colors.textMuted }]}
+          >
             Loading document requirement…
           </Text>
         </View>
       ) : pageError ? (
         <View style={styles.center}>
+          <View
+            style={[
+              styles.errorIconWrap,
+              { backgroundColor: colors.dangerSoft },
+            ]}
+          >
+            <Ionicons
+              name="alert-circle-outline"
+              size={26}
+              color={colors.red}
+            />
+          </View>
+
           <Text style={[styles.errorTitle, { color: colors.text }]}>
             Could not open this document
           </Text>
 
-          <Text style={[styles.errorText, { color: colors.red }]}>
+          <Text
+            style={[styles.bodyText, { color: colors.textMuted }]}
+            numberOfLines={4}
+          >
             {pageError}
           </Text>
 
           <Pressable
+            accessibilityRole="button"
+            accessibilityLabel="Try again"
             onPress={() => void loadOnboarding()}
-            style={[styles.primaryButton, { backgroundColor: colors.blue }]}
+            style={({ pressed }) => [
+              styles.primaryButton,
+              { backgroundColor: colors.blue },
+              pressed && styles.pressed,
+            ]}
           >
             <Text style={styles.primaryButtonText}>Try again</Text>
           </Pressable>
         </View>
       ) : !documentExists ? (
         <View style={styles.center}>
+          <View
+            style={[
+              styles.errorIconWrap,
+              { backgroundColor: colors.blueSoft },
+            ]}
+          >
+            <Ionicons
+              name="document-text-outline"
+              size={26}
+              color={colors.blue}
+            />
+          </View>
+
           <Text style={[styles.errorTitle, { color: colors.text }]}>
             Requirement not found
           </Text>
 
-          <Text style={[styles.bodyText, { color: colors.textMuted }]}>
-            This document is not part of your current onboarding requirements.
+          <Text
+            style={[styles.bodyText, { color: colors.textMuted }]}
+          >
+            This document is not part of your current onboarding
+            requirements.
           </Text>
 
           <Pressable
+            accessibilityRole="button"
+            accessibilityLabel="Back to documents"
             onPress={goBack}
-            style={[styles.primaryButton, { backgroundColor: colors.blue }]}
+            style={({ pressed }) => [
+              styles.primaryButton,
+              { backgroundColor: colors.blue },
+              pressed && styles.pressed,
+            ]}
           >
             <Text style={styles.primaryButtonText}>Back</Text>
           </Pressable>
         </View>
       ) : (
         <ScrollView
+          ref={scrollRef}
           contentContainerStyle={styles.content}
           keyboardShouldPersistTaps="handled"
           showsVerticalScrollIndicator={false}
         >
+          {/* Heading */}
           <View style={styles.headingBlock}>
             <Text style={[styles.eyebrow, { color: colors.blue }]}>
               RUNNER VERIFICATION
@@ -557,13 +796,16 @@ export default function RunnerDocumentDetailScreen() {
               {isNationalIdentity ? "National ID" : singleTitle}
             </Text>
 
-            <Text style={[styles.bodyText, { color: colors.textMuted }]}>
+            <Text
+              style={[styles.bodyText, { color: colors.textMuted }]}
+            >
               {isNationalIdentity
                 ? "Submit both sides of your National ID together. Make sure the details are clear and all edges are visible."
                 : singleDescription}
             </Text>
           </View>
 
+          {/* Body */}
           {locked ? (
             <View
               style={[
@@ -571,17 +813,32 @@ export default function RunnerDocumentDetailScreen() {
                 { backgroundColor: colors.blueSoft },
               ]}
             >
-              <Text style={[styles.statusTitle, { color: colors.text }]}>
-                {isNationalIdentity
-                  ? "National ID already submitted"
-                  : "Document already submitted"}
-              </Text>
+              <View style={styles.statusHeader}>
+                <Ionicons
+                  name="time-outline"
+                  size={20}
+                  color={colors.blue}
+                />
+                <Text
+                  style={[styles.statusTitle, { color: colors.text }]}
+                >
+                  {isNationalIdentity
+                    ? "National ID already submitted"
+                    : "Document already submitted"}
+                </Text>
+              </View>
 
-              <Text style={[styles.bodyText, { color: colors.textMuted }]}>
+              <Text
+                style={[
+                  styles.bodyText,
+                  { color: colors.textMuted },
+                ]}
+              >
                 {isNationalIdentity
-                  ? `Front: ${statusLabel(frontStatus)} · Back: ${statusLabel(backStatus)}`
-                  : statusLabel(singleStatus)}
-                . You can upload a replacement if the review team rejects it.
+                  ? `Front: ${statusLabel(frontStatus)} · Back: ${statusLabel(backStatus)}.`
+                  : `${statusLabel(singleStatus)}.`}{" "}
+                You can upload a replacement if the review team
+                rejects it.
               </Text>
             </View>
           ) : (
@@ -595,14 +852,21 @@ export default function RunnerDocumentDetailScreen() {
                         { backgroundColor: colors.dangerSoft },
                       ]}
                     >
-                      <Text
-                        style={[
-                          styles.rejectionTitle,
-                          { color: colors.red },
-                        ]}
-                      >
-                        National ID changes requested
-                      </Text>
+                      <View style={styles.rejectionHeader}>
+                        <Ionicons
+                          name="alert-circle-outline"
+                          size={18}
+                          color={colors.red}
+                        />
+                        <Text
+                          style={[
+                            styles.rejectionTitle,
+                            { color: colors.red },
+                          ]}
+                        >
+                          National ID changes requested
+                        </Text>
+                      </View>
 
                       {frontRejectionReason ? (
                         <Text
@@ -611,7 +875,10 @@ export default function RunnerDocumentDetailScreen() {
                             { color: colors.text },
                           ]}
                         >
-                          Front: {frontRejectionReason}
+                          <Text style={{ fontWeight: "800" }}>
+                            Front:{" "}
+                          </Text>
+                          {frontRejectionReason}
                         </Text>
                       ) : null}
 
@@ -622,7 +889,10 @@ export default function RunnerDocumentDetailScreen() {
                             { color: colors.text },
                           ]}
                         >
-                          Back: {backRejectionReason}
+                          <Text style={{ fontWeight: "800" }}>
+                            Back:{" "}
+                          </Text>
+                          {backRejectionReason}
                         </Text>
                       ) : null}
                     </View>
@@ -633,8 +903,14 @@ export default function RunnerDocumentDetailScreen() {
                     description="Capture the side showing your photograph and personal details."
                     file={frontFile}
                     colors={colors}
-                    onCamera={() => void pickImage("front", "camera")}
-                    onGallery={() => void pickImage("front", "gallery")}
+                    disabled={uploading}
+                    onCamera={() =>
+                      void pickImage("front", "camera")
+                    }
+                    onGallery={() =>
+                      void pickImage("front", "gallery")
+                    }
+                    onClear={() => clearFile("front")}
                   />
 
                   <PickedFileCard
@@ -642,8 +918,14 @@ export default function RunnerDocumentDetailScreen() {
                     description="Capture the reverse side, including the printed details."
                     file={backFile}
                     colors={colors}
-                    onCamera={() => void pickImage("back", "camera")}
-                    onGallery={() => void pickImage("back", "gallery")}
+                    disabled={uploading}
+                    onCamera={() =>
+                      void pickImage("back", "camera")
+                    }
+                    onGallery={() =>
+                      void pickImage("back", "gallery")
+                    }
+                    onClear={() => clearFile("back")}
                   />
                 </>
               ) : (
@@ -655,14 +937,21 @@ export default function RunnerDocumentDetailScreen() {
                         { backgroundColor: colors.dangerSoft },
                       ]}
                     >
-                      <Text
-                        style={[
-                          styles.rejectionTitle,
-                          { color: colors.red },
-                        ]}
-                      >
-                        Changes requested
-                      </Text>
+                      <View style={styles.rejectionHeader}>
+                        <Ionicons
+                          name="alert-circle-outline"
+                          size={18}
+                          color={colors.red}
+                        />
+                        <Text
+                          style={[
+                            styles.rejectionTitle,
+                            { color: colors.red },
+                          ]}
+                        >
+                          Changes requested
+                        </Text>
+                      </View>
 
                       <Text
                         style={[
@@ -680,14 +969,21 @@ export default function RunnerDocumentDetailScreen() {
                     description={singleDescription}
                     file={singleFile}
                     colors={colors}
-                    onCamera={() => void pickImage("single", "camera")}
-                    onGallery={() => void pickImage("single", "gallery")}
+                    disabled={uploading}
+                    onCamera={() =>
+                      void pickImage("single", "camera")
+                    }
+                    onGallery={() =>
+                      void pickImage("single", "gallery")
+                    }
+                    onClear={() => clearFile("single")}
                   />
                 </>
               )}
             </>
           )}
 
+          {/* Guidance */}
           <View
             style={[
               styles.guidanceCard,
@@ -697,53 +993,102 @@ export default function RunnerDocumentDetailScreen() {
               },
             ]}
           >
-            <Text style={[styles.guidanceTitle, { color: colors.text }]}>
+            <Text
+              style={[styles.guidanceTitle, { color: colors.text }]}
+            >
               Before submitting
             </Text>
 
-            <Text style={[styles.guidanceText, { color: colors.textMuted }]}>
-              • Use a genuine, unaltered document.
-              {"\n"}• Make sure the writing is sharp and readable.
-              {"\n"}• Avoid glare, shadows and cropped edges.
-              {"\n"}• Use JPEG, PNG or WEBP images up to 10 MB each.
-            </Text>
+            <View style={styles.guidanceList}>
+              {GUIDANCE_ITEMS.map((item) => (
+                <View key={item} style={styles.guidanceRow}>
+                  <View
+                    style={[
+                      styles.guidanceDot,
+                      { backgroundColor: colors.blue },
+                    ]}
+                  />
+                  <Text
+                    style={[
+                      styles.guidanceText,
+                      { color: colors.textMuted },
+                    ]}
+                  >
+                    {item}
+                  </Text>
+                </View>
+              ))}
+            </View>
           </View>
 
+          {/* Error */}
           {error ? (
             <View
+              accessibilityRole="alert"
+              accessibilityLiveRegion="polite"
               style={[
                 styles.errorCard,
                 { backgroundColor: colors.dangerSoft },
               ]}
             >
-              <Text style={[styles.errorText, { color: colors.red }]}>
+              <Ionicons
+                name="alert-circle-outline"
+                size={18}
+                color={colors.red}
+              />
+              <Text
+                style={[styles.errorText, { color: colors.red }]}
+              >
                 {error}
               </Text>
             </View>
           ) : null}
 
+          {/* Submit / Back */}
           {locked ? (
             <Pressable
+              accessibilityRole="button"
+              accessibilityLabel="Back to documents"
               onPress={goBack}
-              style={[styles.primaryButton, { backgroundColor: colors.blue }]}
+              style={({ pressed }) => [
+                styles.primaryButton,
+                { backgroundColor: colors.blue },
+                pressed && styles.pressed,
+              ]}
             >
               <Text style={styles.primaryButtonText}>Back</Text>
             </Pressable>
           ) : (
             <Pressable
+              accessibilityRole="button"
+              accessibilityLabel={
+                uploading
+                  ? "Uploading document"
+                  : isNationalIdentity
+                    ? "Submit National ID"
+                    : "Submit document"
+              }
+              accessibilityHint="Uploads the selected image(s) to SaMi Runner verification"
+              accessibilityState={{
+                busy: uploading,
+                disabled: submitDisabled,
+              }}
               disabled={submitDisabled}
               onPress={() => void submitDocument()}
-              style={[
+              style={({ pressed }) => [
                 styles.primaryButton,
-                {
-                  backgroundColor: submitDisabled
-                    ? colors.muted
-                    : colors.blue,
-                },
+                { backgroundColor: colors.blue },
+                submitDisabled && styles.disabled,
+                pressed && !submitDisabled && styles.pressed,
               ]}
             >
               {uploading ? (
-                <ActivityIndicator color="#FFFFFF" />
+                <>
+                  <ActivityIndicator color="#FFFFFF" size="small" />
+                  <Text style={styles.primaryButtonText}>
+                    Uploading…
+                  </Text>
+                </>
               ) : (
                 <Text style={styles.primaryButtonText}>
                   {isNationalIdentity
@@ -760,170 +1105,277 @@ export default function RunnerDocumentDetailScreen() {
 }
 
 const styles = StyleSheet.create({
-  safeArea: {
-    flex: 1,
-  },
+  safeArea: { flex: 1 },
+
+  // Header
   header: {
-    paddingHorizontal: 22,
-    paddingTop: 8,
-    paddingBottom: 6,
+    minHeight: BACK_SIZE,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    paddingHorizontal: 20,
+    paddingTop: 12,
   },
+
   backButton: {
-    alignSelf: "flex-start",
-    paddingVertical: 8,
+    width: BACK_SIZE,
+    height: BACK_SIZE,
+    borderRadius: 14,
+    borderWidth: 1,
+    alignItems: "center",
+    justifyContent: "center",
   },
-  backText: {
-    fontSize: 15,
-    fontWeight: "700",
+
+  brand: {
+    alignItems: "center",
+    gap: 3,
   },
+
+  brandName: {
+    fontSize: 19,
+    fontWeight: "900",
+    fontStyle: "italic",
+    letterSpacing: -0.5,
+  },
+
+  brandTagline: {
+    fontSize: 8,
+    fontWeight: "900",
+    letterSpacing: 2,
+  },
+
+  headerSpacer: { width: BACK_SIZE },
+
+  // Content
   content: {
-    paddingHorizontal: 22,
-    paddingTop: 18,
+    paddingHorizontal: 20,
+    paddingTop: 16,
     paddingBottom: 36,
     gap: 18,
   },
-  headingBlock: {
-    gap: 9,
-    marginBottom: 4,
-  },
+
+  headingBlock: { gap: 9, marginBottom: 2 },
+
   eyebrow: {
     fontSize: 11,
-    fontWeight: "800",
-    letterSpacing: 1.3,
+    fontWeight: "900",
+    letterSpacing: 1.4,
   },
+
   title: {
-    fontSize: 29,
-    fontWeight: "800",
-    letterSpacing: -0.6,
+    fontSize: 28,
+    lineHeight: 36,
+    fontWeight: "900",
+    letterSpacing: -0.7,
   },
+
   bodyText: {
-    fontSize: 14,
-    lineHeight: 21,
+    fontSize: 13.5,
+    lineHeight: 20,
   },
+
+  // File card
   fileCard: {
     borderWidth: 1,
     borderRadius: 18,
     padding: 16,
-    gap: 10,
+    gap: 12,
   },
+
   fileTitle: {
-    fontSize: 16,
-    fontWeight: "800",
+    fontSize: 15.5,
+    fontWeight: "900",
   },
+
   fileDescription: {
-    fontSize: 13,
-    lineHeight: 19,
+    fontSize: 12.5,
+    lineHeight: 18,
   },
+
   emptyPreview: {
-    minHeight: 90,
+    minHeight: 96,
     borderWidth: 1,
     borderStyle: "dashed",
     borderRadius: 12,
     alignItems: "center",
     justifyContent: "center",
+    gap: 6,
   },
+
   emptyPreviewText: {
-    fontSize: 13,
+    fontSize: 12.5,
     fontWeight: "600",
   },
+
   previewContainer: {
     flexDirection: "row",
     alignItems: "center",
     gap: 12,
-    minHeight: 90,
+    minHeight: 96,
   },
+
   previewImage: {
     width: 84,
     height: 84,
     borderRadius: 10,
-    backgroundColor: "#E6EAF0",
   },
+
   previewDetails: {
     flex: 1,
     gap: 6,
   },
+
   fileName: {
     fontSize: 13,
-    fontWeight: "600",
+    fontWeight: "700",
+    lineHeight: 18,
   },
+
+  fileMetaRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 5,
+  },
+
   fileSelected: {
     fontSize: 12,
     fontWeight: "700",
   },
+
   pickerActions: {
     flexDirection: "row",
     gap: 10,
   },
+
   secondaryButton: {
     flex: 1,
-    minHeight: 44,
+    minHeight: 46,
     borderWidth: 1,
-    borderRadius: 11,
+    borderRadius: 12,
+    flexDirection: "row",
     alignItems: "center",
     justifyContent: "center",
-    paddingHorizontal: 8,
+    gap: 7,
+    paddingHorizontal: 10,
   },
+
   secondaryButtonText: {
-    fontSize: 12,
-    fontWeight: "700",
+    fontSize: 12.5,
+    fontWeight: "800",
   },
+
+  // Rejection card
   rejectionCard: {
     borderRadius: 14,
     padding: 14,
     gap: 8,
   },
+
+  rejectionHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 7,
+  },
+
   rejectionTitle: {
-    fontSize: 13,
+    fontSize: 13.5,
     fontWeight: "900",
   },
+
   rejectionText: {
-    fontSize: 12,
+    fontSize: 12.5,
     lineHeight: 19,
   },
+
+  // Guidance
   guidanceCard: {
     borderWidth: 1,
     borderRadius: 16,
     padding: 16,
-    gap: 8,
+    gap: 10,
   },
+
   guidanceTitle: {
-    fontSize: 14,
-    fontWeight: "800",
+    fontSize: 14.5,
+    fontWeight: "900",
   },
+
+  guidanceList: {
+    gap: 7,
+  },
+
+  guidanceRow: {
+    flexDirection: "row",
+    alignItems: "flex-start",
+    gap: 9,
+  },
+
+  guidanceDot: {
+    width: 5,
+    height: 5,
+    borderRadius: 2.5,
+    marginTop: 7,
+  },
+
   guidanceText: {
-    fontSize: 13,
-    lineHeight: 22,
+    flex: 1,
+    fontSize: 12.5,
+    lineHeight: 19,
   },
+
+  // Status card
   statusCard: {
     borderRadius: 16,
     padding: 16,
-    gap: 7,
+    gap: 10,
   },
+
+  statusHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+  },
+
   statusTitle: {
     fontSize: 15,
-    fontWeight: "800",
+    fontWeight: "900",
   },
+
+  // Error
   errorCard: {
     borderRadius: 12,
-    padding: 13,
+    padding: 12,
+    flexDirection: "row",
+    alignItems: "flex-start",
+    gap: 9,
   },
+
   errorText: {
-    fontSize: 13,
-    lineHeight: 19,
+    flex: 1,
+    fontSize: 12.5,
+    lineHeight: 18,
   },
+
+  // Primary button
   primaryButton: {
-    minHeight: 54,
-    borderRadius: 14,
+    minHeight: 58,
+    borderRadius: 15,
+    flexDirection: "row",
     alignItems: "center",
     justifyContent: "center",
     paddingHorizontal: 18,
+    gap: 10,
     marginTop: 4,
   },
+
   primaryButtonText: {
     color: "#FFFFFF",
     fontSize: 15,
-    fontWeight: "800",
+    fontWeight: "900",
+    letterSpacing: -0.2,
   },
+
+  // Center states
   center: {
     flex: 1,
     alignItems: "center",
@@ -931,12 +1383,31 @@ const styles = StyleSheet.create({
     paddingHorizontal: 28,
     gap: 14,
   },
+
   loadingText: {
     fontSize: 13,
+    lineHeight: 20,
   },
+
+  errorIconWrap: {
+    width: 56,
+    height: 56,
+    borderRadius: 18,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+
   errorTitle: {
-    fontSize: 19,
-    fontWeight: "800",
+    fontSize: 20,
+    fontWeight: "900",
+    letterSpacing: -0.3,
     textAlign: "center",
+  },
+
+  disabled: { opacity: 0.45 },
+
+  pressed: {
+    opacity: 0.85,
+    transform: [{ scale: 0.985 }],
   },
 });

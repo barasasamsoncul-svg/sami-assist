@@ -5,6 +5,7 @@ import bcrypt from "bcryptjs";
 import { createHash, timingSafeEqual } from "node:crypto";
 import { NextResponse } from "next/server";
 
+import { isSameOrigin } from "@/apps/admin/server/auth";
 import { databasePool, query } from "@/lib/db";
 
 function errorResponse(message: string, status = 400) {
@@ -41,12 +42,6 @@ function normalizeEmail(value: unknown) {
 
 function isValidEmail(value: string) {
   return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value);
-}
-
-function isSameOrigin(request: Request) {
-  const origin = request.headers.get("origin");
-
-  return !origin || origin === new URL(request.url).origin;
 }
 
 function tokenMatches(expected: string, supplied: string) {

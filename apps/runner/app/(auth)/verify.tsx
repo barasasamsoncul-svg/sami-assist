@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
 import {
   ActivityIndicator,
@@ -13,10 +13,7 @@ import {
   View,
 } from "react-native";
 
-import {
-  router,
-  useLocalSearchParams,
-} from "expo-router";
+import { router, useLocalSearchParams } from "expo-router";
 
 import { SafeAreaView } from "react-native-safe-area-context";
 import { Ionicons } from "@expo/vector-icons";
@@ -31,6 +28,16 @@ import {
 import { useRunnerTheme } from "@/theme";
 
 const OTP_RESEND_COOLDOWN_SECONDS = 60;
+const CODE_LENGTH = 6;
+const CODE_AUTOSUBMIT_DELAY_MS = 180;
+const SUCCESS_FLASH_MS = 280;
+const BACK_SIZE = 44;
+
+function formatCountdown(seconds: number): string {
+  const m = Math.floor(seconds / 60);
+  const s = seconds % 60;
+  return `${String(m).padStart(2, "0")}:${String(s).padStart(2, "0")}`;
+}
 
 export default function VerifyRunnerScreen() {
   const { colors } = useRunnerTheme();
@@ -45,53 +52,68 @@ export default function VerifyRunnerScreen() {
   }>();
 
   const initialChallengeId = String(params.challengeId || "");
-
   const initialDestination = String(
     params.destination || "your email address",
   );
-
   const isRegistration = params.purpose === "register";
 
   const fullName = String(params.fullName || "").trim();
   const email = String(params.email || "").trim().toLowerCase();
   const phone = String(params.phone || "").trim();
 
-  const [challengeId, setChallengeId] = useState(
-    initialChallengeId,
-  );
-
-  const [destination, setDestination] = useState(
-    initialDestination,
-  );
+  const [challengeId, setChallengeId] = useState(initialChallengeId);
+  const [destination, setDestination] = useState(initialDestination);
 
   const [code, setCode] = useState("");
   const [busy, setBusy] = useState(false);
   const [resending, setResending] = useState(false);
+  const [verified, setVerified] = useState(false);
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
 
+  const [inputFocused, setInputFocused] = useState(false);
+
+  const [resendAvailableAt, setResendAvailableAt] = useState(
+    () => Date.now() + OTP_RESEND_COOLDOWN_SECONDS * 1000,
+  );
   const [resendCountdown, setResendCountdown] = useState(
     OTP_RESEND_COOLDOWN_SECONDS,
   );
 
+  const codeInputRef = useRef<TextInput>(null);
+  const mountedRef = useRef(true);
+
+  // Autofocus so the OS one-time-code autofill prompt can fire immediately.
   useEffect(() => {
-    if (resendCountdown <= 0) {
-      return;
+    const t = setTimeout(() => {
+      codeInputRef.current?.focus();
+    }, 380);
+    return () => clearTimeout(t);
+  }, []);
+
+  useEffect(() => {
+    return () => {
+      mountedRef.current = false;
+    };
+  }, []);
+
+  // Background-safe countdown: recomputed from a target timestamp every 500ms.
+  useEffect(() => {
+    function tick() {
+      const remaining = Math.max(
+        0,
+        Math.ceil((resendAvailableAt - Date.now()) / 1000),
+      );
+      setResendCountdown(remaining);
     }
 
-    const timer = setTimeout(() => {
-      setResendCountdown((remaining) =>
-        Math.max(0, remaining - 1),
-      );
-    }, 1000);
-
-    return () => clearTimeout(timer);
-  }, [resendCountdown]);
+    tick();
+    const interval = setInterval(tick, 500);
+    return () => clearInterval(interval);
+  }, [resendAvailableAt]);
 
   async function verify() {
-    if (busy || resending) {
-      return;
-    }
+    if (busy || resending || verified) return;
 
     if (!challengeId) {
       setError("Your verification session is missing. Start again.");
@@ -118,33 +140,48 @@ export default function VerifyRunnerScreen() {
 
       await saveRunnerSession(result.sessionToken);
 
-      // Clear the authentication navigation history.
-      // The saved session remains intact.
-      router.dismissAll();
+      if (!mountedRef.current) return;
 
-      // The startup resolver checks the server and sends the
-      // Runner to the correct onboarding step, status screen
-      // or approved Runner dashboard.
+      setVerified(true);
+      await new Promise((resolve) =>
+        setTimeout(resolve, SUCCESS_FLASH_MS),
+      );
+
+      if (!mountedRef.current) return;
+
+      router.dismissAll();
       router.replace("/");
     } catch (cause) {
+      if (!mountedRef.current) return;
       setError(
         cause instanceof Error
           ? cause.message
           : "The verification code could not be verified.",
       );
     } finally {
-      setBusy(false);
+      if (mountedRef.current) {
+        setBusy(false);
+      }
     }
   }
 
+  // Auto-submit on the 6th digit — the standard OTP pattern. `verify`'s state
+  // deps are all listed below so the effect re-runs with the latest closure.
+  useEffect(() => {
+    if (code.length !== CODE_LENGTH) return;
+    if (busy || resending || verified) return;
+    if (!challengeId) return;
+
+    const t = setTimeout(() => {
+      void verify();
+    }, CODE_AUTOSUBMIT_DELAY_MS);
+
+    return () => clearTimeout(t);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [code, busy, resending, verified, challengeId]);
+
   async function resendCode() {
-    if (
-      busy ||
-      resending ||
-      resendCountdown > 0
-    ) {
-      return;
-    }
+    if (busy || resending || resendCountdown > 0 || verified) return;
 
     if (!email) {
       setError(
@@ -153,10 +190,7 @@ export default function VerifyRunnerScreen() {
       return;
     }
 
-    if (
-      isRegistration &&
-      (!fullName || !phone)
-    ) {
+    if (isRegistration && (!fullName || !phone)) {
       setError(
         "Your registration details are missing. Go back and complete registration again.",
       );
@@ -182,6 +216,8 @@ export default function VerifyRunnerScreen() {
         );
       }
 
+      if (!mountedRef.current) return;
+
       setChallengeId(result.challengeId);
 
       if (result.destination) {
@@ -189,43 +225,45 @@ export default function VerifyRunnerScreen() {
       }
 
       setCode("");
-      setResendCountdown(OTP_RESEND_COOLDOWN_SECONDS);
+      setResendAvailableAt(
+        Date.now() + OTP_RESEND_COOLDOWN_SECONDS * 1000,
+      );
 
       setNotice(
         result.message || "A new verification code has been sent.",
       );
+
+      // Refocus the input so the user can retype immediately.
+      setTimeout(() => codeInputRef.current?.focus(), 200);
     } catch (cause) {
+      if (!mountedRef.current) return;
       setError(
         cause instanceof Error
           ? cause.message
           : "A new verification code could not be sent.",
       );
     } finally {
-      setResending(false);
+      if (mountedRef.current) {
+        setResending(false);
+      }
     }
   }
 
   const resendLabel =
     resendCountdown > 0
-      ? `Resend code in 00:${String(
-          resendCountdown,
-        ).padStart(2, "0")}`
+      ? `Resend code in ${formatCountdown(resendCountdown)}`
       : "Resend code";
+
+  const disabled = busy || resending || verified;
+  const isDarkPaper = colors.paper === "#080F1D";
 
   return (
     <SafeAreaView
       edges={["top", "bottom"]}
-      style={[
-        styles.safeArea,
-        { backgroundColor: colors.paper },
-      ]}
+      style={[styles.safeArea, { backgroundColor: colors.paper }]}
     >
       <StatusBar
-        barStyle={
-          colors.paper === "#080F1D"
-            ? "light-content"
-            : "dark-content"
-        }
+        barStyle={isDarkPaper ? "light-content" : "dark-content"}
         backgroundColor={colors.paper}
       />
 
@@ -237,15 +275,22 @@ export default function VerifyRunnerScreen() {
         <ScrollView
           contentContainerStyle={styles.scrollContent}
           keyboardShouldPersistTaps="handled"
-          automaticallyAdjustKeyboardInsets
           showsVerticalScrollIndicator={false}
         >
           <Pressable
             accessibilityRole="button"
             accessibilityLabel="Go back"
-            disabled={busy || resending}
+            disabled={disabled}
             onPress={() => router.back()}
-            style={styles.backButton}
+            hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}
+            style={({ pressed }) => [
+              styles.backButton,
+              {
+                backgroundColor: colors.surface,
+                borderColor: colors.border,
+                opacity: pressed ? 0.6 : disabled ? 0.5 : 1,
+              },
+            ]}
           >
             <Ionicons
               name="chevron-back"
@@ -272,20 +317,14 @@ export default function VerifyRunnerScreen() {
               />
             </View>
 
-            <Text
-              style={[styles.eyebrow, { color: colors.blue }]}
-            >
+            <Text style={[styles.eyebrow, { color: colors.blue }]}>
               {isRegistration
                 ? "REGISTRATION VERIFICATION"
                 : "RUNNER SIGN IN"}
             </Text>
 
-            <Text
-              style={[styles.title, { color: colors.text }]}
-            >
-              {isRegistration
-                ? "Verify your email"
-                : "Welcome back"}
+            <Text style={[styles.title, { color: colors.text }]}>
+              {isRegistration ? "Verify your email" : "Welcome back"}
             </Text>
 
             <Text
@@ -295,12 +334,7 @@ export default function VerifyRunnerScreen() {
                 ? "Enter the six-digit code we sent to "
                 : "Enter the six-digit sign-in code sent to "}
 
-              <Text
-                style={[
-                  styles.destination,
-                  { color: colors.text },
-                ]}
-              >
+              <Text style={[styles.destination, { color: colors.text }]}>
                 {destination}
               </Text>
               .
@@ -323,37 +357,45 @@ export default function VerifyRunnerScreen() {
                   style={[styles.infoText, { color: colors.text }]}
                 >
                   Verifying your email creates your Runner account.
-                  You will then complete your task selection,
-                  transport details and document verification.
+                  You will then complete your task selection, transport
+                  details and document verification.
                 </Text>
               </View>
             ) : null}
 
-            <Text
-              style={[styles.label, { color: colors.text }]}
-            >
+            <Text style={[styles.label, { color: colors.text }]}>
               Verification code
             </Text>
 
             <TextInput
+              ref={codeInputRef}
               value={code}
               onChangeText={(value) => {
                 setCode(
-                  value.replace(/[^0-9]/g, "").slice(0, 6),
+                  value.replace(/[^0-9]/g, "").slice(0, CODE_LENGTH),
                 );
                 setError("");
                 setNotice("");
               }}
+              onFocus={() => setInputFocused(true)}
+              onBlur={() => setInputFocused(false)}
               keyboardType="number-pad"
               textContentType="oneTimeCode"
               autoComplete="one-time-code"
-              maxLength={6}
+              maxLength={CODE_LENGTH}
               placeholder="000000"
               placeholderTextColor={colors.textMuted}
               returnKeyType="done"
-              editable={!busy && !resending}
+              editable={!disabled}
+              selectionColor={colors.blue}
+              cursorColor={colors.blue}
               onSubmitEditing={() => {
-                if (code.length === 6 && !busy && !resending) {
+                if (
+                  code.length === CODE_LENGTH &&
+                  !busy &&
+                  !resending &&
+                  !verified
+                ) {
                   void verify();
                 }
               }}
@@ -361,17 +403,35 @@ export default function VerifyRunnerScreen() {
                 styles.codeInput,
                 {
                   backgroundColor: colors.surface,
-                  borderColor: colors.border,
+                  borderColor: verified
+                    ? colors.blue
+                    : inputFocused
+                      ? colors.blue
+                      : error
+                        ? colors.red
+                        : colors.border,
                   color: colors.text,
                 },
-                (busy || resending) && styles.disabled,
+                (inputFocused || verified) &&
+                  Platform.select({
+                    ios: {
+                      shadowColor: verified ? colors.blue : colors.blue,
+                      shadowOpacity: 0.2,
+                      shadowRadius: 8,
+                      shadowOffset: { width: 0, height: 2 },
+                    },
+                    android: { elevation: 2 },
+                    default: {},
+                  }),
+                disabled && !verified && styles.disabled,
               ]}
-              accessibilityLabel="Six digit email verification code"
+              accessibilityLabel="Six-digit verification code"
             />
 
             {error ? (
               <View
                 accessibilityRole="alert"
+                accessibilityLiveRegion="polite"
                 style={[
                   styles.errorContainer,
                   { backgroundColor: colors.dangerSoft },
@@ -383,9 +443,7 @@ export default function VerifyRunnerScreen() {
                   color={colors.red}
                 />
 
-                <Text
-                  style={[styles.error, { color: colors.red }]}
-                >
+                <Text style={[styles.error, { color: colors.red }]}>
                   {error}
                 </Text>
               </View>
@@ -393,6 +451,8 @@ export default function VerifyRunnerScreen() {
 
             {notice ? (
               <View
+                accessibilityRole="alert"
+                accessibilityLiveRegion="polite"
                 style={[
                   styles.noticeContainer,
                   { backgroundColor: colors.blueSoft },
@@ -404,9 +464,7 @@ export default function VerifyRunnerScreen() {
                   color={colors.blue}
                 />
 
-                <Text
-                  style={[styles.notice, { color: colors.text }]}
-                >
+                <Text style={[styles.notice, { color: colors.text }]}>
                   {notice}
                 </Text>
               </View>
@@ -414,20 +472,37 @@ export default function VerifyRunnerScreen() {
 
             <Pressable
               accessibilityRole="button"
-              disabled={busy || resending}
+              accessibilityLabel={
+                verified
+                  ? "Verified"
+                  : isRegistration
+                    ? "Verify and create account"
+                    : "Verify and continue"
+              }
+              accessibilityHint="Submits your six-digit code"
+              accessibilityState={{ busy }}
+              disabled={disabled}
               onPress={() => void verify()}
               style={({ pressed }) => [
                 styles.primaryButton,
-                { backgroundColor: colors.blue },
-                (busy || resending) && styles.disabled,
-                pressed &&
-                  !busy &&
-                  !resending &&
-                  styles.pressed,
+                {
+                  backgroundColor: verified ? colors.blue : colors.blue,
+                },
+                disabled && !verified && styles.disabled,
+                pressed && !disabled && styles.pressed,
               ]}
             >
               {busy ? (
                 <ActivityIndicator color="#FFFFFF" />
+              ) : verified ? (
+                <>
+                  <Ionicons
+                    name="checkmark-circle"
+                    size={20}
+                    color="#FFFFFF"
+                  />
+                  <Text style={styles.primaryButtonText}>Verified</Text>
+                </>
               ) : (
                 <>
                   <Text style={styles.primaryButtonText}>
@@ -449,35 +524,30 @@ export default function VerifyRunnerScreen() {
               accessibilityRole="button"
               accessibilityLabel={resendLabel}
               disabled={
-                busy ||
-                resending ||
-                resendCountdown > 0
+                busy || resending || verified || resendCountdown > 0
               }
+              hitSlop={8}
               onPress={() => void resendCode()}
               style={({ pressed }) => [
                 styles.resendButton,
                 (busy ||
                   resending ||
+                  verified ||
                   resendCountdown > 0) &&
                   styles.disabled,
                 pressed &&
                   !busy &&
                   !resending &&
+                  !verified &&
                   resendCountdown === 0 &&
                   styles.pressed,
               ]}
             >
               {resending ? (
-                <ActivityIndicator
-                  size="small"
-                  color={colors.blue}
-                />
+                <ActivityIndicator size="small" color={colors.blue} />
               ) : (
                 <Text
-                  style={[
-                    styles.resendText,
-                    { color: colors.blue },
-                  ]}
+                  style={[styles.resendText, { color: colors.blue }]}
                 >
                   {resendLabel}
                 </Text>
@@ -495,7 +565,13 @@ export default function VerifyRunnerScreen() {
 
             <Pressable
               accessibilityRole="button"
-              disabled={busy || resending}
+              accessibilityLabel={
+                isRegistration
+                  ? "Change registration details"
+                  : "Use a different email address"
+              }
+              disabled={disabled}
+              hitSlop={6}
               onPress={() =>
                 router.replace(
                   isRegistration
@@ -503,13 +579,13 @@ export default function VerifyRunnerScreen() {
                     : "/(auth)/login",
                 )
               }
-              style={styles.changeEmailButton}
+              style={({ pressed }) => [
+                styles.changeEmailButton,
+                { opacity: pressed ? 0.6 : disabled ? 0.5 : 1 },
+              ]}
             >
               <Text
-                style={[
-                  styles.changeEmailText,
-                  { color: colors.blue },
-                ]}
+                style={[styles.changeEmailText, { color: colors.blue }]}
               >
                 {isRegistration
                   ? "Change registration details"
@@ -524,148 +600,180 @@ export default function VerifyRunnerScreen() {
 }
 
 const styles = StyleSheet.create({
-  safeArea: {
-    flex: 1,
-  },
-  keyboardContainer: {
-    flex: 1,
-  },
+  safeArea: { flex: 1 },
+  keyboardContainer: { flex: 1 },
+
   scrollContent: {
     flexGrow: 1,
     paddingHorizontal: 24,
-    paddingTop: 20,
-    paddingBottom: 32,
+    paddingTop: 12,
+    paddingBottom: 36,
   },
+
   backButton: {
-    height: 42,
-    width: 42,
+    height: BACK_SIZE,
+    width: BACK_SIZE,
+    borderRadius: 14,
+    borderWidth: 1,
     alignItems: "center",
     justifyContent: "center",
+    alignSelf: "flex-start",
   },
+
   content: {
     flexGrow: 1,
     justifyContent: "center",
     gap: 16,
-    paddingTop: 30,
-    paddingBottom: 30,
+    paddingTop: 24,
+    paddingBottom: 28,
   },
+
   iconWrap: {
     width: 58,
     height: 58,
     borderRadius: 18,
     alignItems: "center",
     justifyContent: "center",
-    marginBottom: 5,
+    marginBottom: 4,
   },
+
   eyebrow: {
-    fontSize: 10,
+    fontSize: 11,
     fontWeight: "900",
     letterSpacing: 1.3,
   },
+
   title: {
     fontSize: 28,
     fontWeight: "900",
     letterSpacing: -0.5,
+    lineHeight: 34,
   },
+
   subtitle: {
-    fontSize: 13,
+    fontSize: 13.5,
     lineHeight: 21,
   },
+
   destination: {
     fontWeight: "800",
   },
+
   infoBox: {
     flexDirection: "row",
     alignItems: "flex-start",
     borderRadius: 13,
-    padding: 12,
-    gap: 9,
+    padding: 13,
+    gap: 10,
   },
+
   infoText: {
     flex: 1,
-    fontSize: 11,
-    lineHeight: 17,
-  },
-  label: {
     fontSize: 12,
-    fontWeight: "800",
-    marginTop: 5,
+    lineHeight: 18,
   },
+
+  label: {
+    fontSize: 13,
+    fontWeight: "800",
+    marginTop: 6,
+  },
+
   codeInput: {
-    minHeight: 64,
-    borderWidth: 1,
-    borderRadius: 15,
+    minHeight: 66,
+    borderWidth: 1.5,
+    borderRadius: 16,
     textAlign: "center",
     fontSize: 25,
     fontWeight: "900",
-    letterSpacing: 9,
+    letterSpacing: 8,
+    paddingLeft: 8,
+    paddingVertical: 12,
     marginTop: 2,
   },
+
   errorContainer: {
     flexDirection: "row",
     alignItems: "flex-start",
     borderRadius: 12,
     padding: 12,
-    gap: 9,
+    gap: 10,
   },
+
   error: {
     flex: 1,
-    fontSize: 12,
+    fontSize: 12.5,
     lineHeight: 18,
   },
+
   noticeContainer: {
     flexDirection: "row",
     alignItems: "flex-start",
     borderRadius: 12,
     padding: 12,
-    gap: 9,
+    gap: 10,
   },
+
   notice: {
     flex: 1,
-    fontSize: 12,
+    fontSize: 12.5,
     lineHeight: 18,
   },
+
   primaryButton: {
-    minHeight: 55,
-    borderRadius: 14,
+    minHeight: 56,
+    borderRadius: 15,
     alignItems: "center",
     justifyContent: "center",
     flexDirection: "row",
     gap: 9,
-    marginTop: 5,
+    marginTop: 6,
   },
+
   primaryButtonText: {
     color: "#FFFFFF",
+    fontSize: 15,
+    fontWeight: "900",
+    letterSpacing: -0.2,
+  },
+
+  resendButton: {
+    minHeight: 44,
+    alignItems: "center",
+    justifyContent: "center",
+    paddingHorizontal: 14,
+  },
+
+  resendText: {
     fontSize: 13,
     fontWeight: "900",
   },
-  resendButton: {
-    minHeight: 40,
-    alignItems: "center",
-    justifyContent: "center",
-    paddingHorizontal: 12,
-  },
-  resendText: {
-    fontSize: 12,
-    fontWeight: "900",
-  },
+
   resendHint: {
-    fontSize: 10,
+    fontSize: 11,
+    lineHeight: 16,
     textAlign: "center",
-    marginTop: -12,
+    marginTop: -8,
   },
+
   changeEmailButton: {
     alignItems: "center",
-    padding: 12,
+    paddingVertical: 12,
+    paddingHorizontal: 12,
+    marginTop: 2,
   },
+
   changeEmailText: {
-    fontSize: 12,
+    fontSize: 13,
     fontWeight: "800",
   },
+
   disabled: {
     opacity: 0.55,
   },
+
   pressed: {
-    opacity: 0.82,
+    opacity: 0.85,
+    transform: [{ scale: 0.985 }],
   },
 });

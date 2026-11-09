@@ -1,8 +1,12 @@
+
 import { createHash } from "node:crypto";
 import { cookies } from "next/headers";
 import { NextResponse } from "next/server";
 
-import { authenticateAdmin } from "@/apps/admin/server/auth";
+import {
+  authenticateAdmin,
+  isSameOrigin,
+} from "@/apps/admin/server/auth";
 import { query } from "@/lib/db";
 
 const ADMIN_SESSION_COOKIE_NAME = "sami_admin_session";
@@ -23,20 +27,6 @@ function error(message: string, status: number) {
       headers: { "Cache-Control": "no-store" },
     },
   );
-}
-
-function requestHasAllowedOrigin(request: Request) {
-  const origin = request.headers.get("origin");
-
-  if (!origin) {
-    return true;
-  }
-
-  try {
-    return new URL(origin).origin === new URL(request.url).origin;
-  } catch {
-    return false;
-  }
 }
 
 async function getCurrentAdminSessionHash() {
@@ -101,7 +91,7 @@ export async function listAdminSessions(request: Request) {
 }
 
 export async function revokeOtherAdminSessions(request: Request) {
-  if (!requestHasAllowedOrigin(request)) {
+  if (!isSameOrigin(request)) {
     return error("This request origin is not allowed.", 403);
   }
 

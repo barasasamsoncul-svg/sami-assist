@@ -1,4 +1,4 @@
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import {
   ActivityIndicator,
   Keyboard,
@@ -18,6 +18,8 @@ import { Ionicons } from "@expo/vector-icons";
 import { requestRunnerOtp } from "@/api";
 import { useRunnerTheme } from "@/theme";
 
+const BACK_SIZE = 44;
+
 function normalizeEmail(value: string) {
   return value.trim().toLowerCase();
 }
@@ -33,10 +35,27 @@ export default function RunnerLoginScreen() {
   const { colors } = useRunnerTheme();
   const scrollRef = useRef<ScrollView | null>(null);
   const emailInputRef = useRef<TextInput | null>(null);
+  const mountedRef = useRef(true);
 
   const [email, setEmail] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
+  const [inputFocused, setInputFocused] = useState(false);
+
+  useEffect(() => {
+    return () => {
+      mountedRef.current = false;
+    };
+  }, []);
+
+  // Scroll the error banner into view whenever it appears.
+  useEffect(() => {
+    if (!error) return;
+    const frame = requestAnimationFrame(() => {
+      scrollRef.current?.scrollToEnd({ animated: true });
+    });
+    return () => cancelAnimationFrame(frame);
+  }, [error]);
 
   async function continueWithEmail() {
     if (busy) return;
@@ -62,6 +81,8 @@ export default function RunnerLoginScreen() {
     try {
       const result = await requestRunnerOtp(normalizedEmail);
 
+      if (!mountedRef.current) return;
+
       router.push({
         pathname: "/(auth)/verify",
         params: {
@@ -72,13 +93,16 @@ export default function RunnerLoginScreen() {
         },
       });
     } catch (cause) {
+      if (!mountedRef.current) return;
       setError(
         cause instanceof Error
           ? cause.message
           : "We couldn't send your verification code. Please try again.",
       );
     } finally {
-      setBusy(false);
+      if (mountedRef.current) {
+        setBusy(false);
+      }
     }
   }
 
@@ -94,12 +118,15 @@ export default function RunnerLoginScreen() {
     router.replace("/");
   }
 
+  const inputBorderColor = error
+    ? colors.red
+    : inputFocused
+      ? colors.blue
+      : colors.border;
+
   return (
     <SafeAreaView
-      style={[
-        styles.safeArea,
-        { backgroundColor: colors.paper },
-      ]}
+      style={[styles.safeArea, { backgroundColor: colors.paper }]}
       edges={["top", "bottom"]}
     >
       <KeyboardAvoidingView
@@ -116,28 +143,28 @@ export default function RunnerLoginScreen() {
             Platform.OS === "ios" ? "interactive" : "on-drag"
           }
           showsVerticalScrollIndicator={false}
-          automaticallyAdjustKeyboardInsets={Platform.OS === "ios"}
         >
           <View style={styles.main}>
+            {/* Top bar */}
             <View style={styles.topBar}>
               <Pressable
                 accessibilityRole="button"
                 accessibilityLabel="Back to welcome"
                 disabled={busy}
                 onPress={goToWelcome}
-                hitSlop={10}
-                style={[
+                hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}
+                style={({ pressed }) => [
                   styles.backButton,
                   {
                     backgroundColor: colors.surface,
                     borderColor: colors.border,
+                    opacity: pressed ? 0.6 : busy ? 0.5 : 1,
                   },
-                  busy && styles.disabled,
                 ]}
               >
                 <Ionicons
                   name="chevron-back"
-                  size={21}
+                  size={22}
                   color={colors.text}
                 />
               </Pressable>
@@ -154,24 +181,35 @@ export default function RunnerLoginScreen() {
               <View style={styles.topBarSpacer} />
             </View>
 
+            {/* Brand block */}
             <View style={styles.brand}>
-              <View style={styles.logoMark}>
-                <Ionicons
-                  name="bicycle"
-                  size={30}
-                  color="#FFFFFF"
-                />
+              <View
+                style={[
+                  styles.logoMark,
+                  { backgroundColor: colors.navy },
+                ]}
+              >
+                <Ionicons name="bicycle" size={30} color="#FFFFFF" />
               </View>
 
-              <Text style={styles.brandName}>
-                SaMi <Text style={styles.brandAccent}>Runner</Text>
+              <Text
+                style={[styles.brandName, { color: colors.navy }]}
+              >
+                SaMi{" "}
+                <Text style={{ color: colors.blue }}>Runner</Text>
               </Text>
 
-              <Text style={styles.brandTagline}>
+              <Text
+                style={[
+                  styles.brandTagline,
+                  { color: colors.textMuted },
+                ]}
+              >
                 CONSIDER IT DONE
               </Text>
             </View>
 
+            {/* Intro */}
             <View style={styles.intro}>
               <View
                 style={[
@@ -186,36 +224,25 @@ export default function RunnerLoginScreen() {
                   ]}
                 />
                 <Text
-                  style={[
-                    styles.eyebrow,
-                    { color: colors.blue },
-                  ]}
+                  style={[styles.eyebrow, { color: colors.blue }]}
                 >
                   WELCOME BACK
                 </Text>
               </View>
 
-              <Text
-                style={[
-                  styles.title,
-                  { color: colors.text },
-                ]}
-              >
+              <Text style={[styles.title, { color: colors.text }]}>
                 Sign in to your{"\n"}Runner account.
               </Text>
 
               <Text
-                style={[
-                  styles.subtitle,
-                  { color: colors.textMuted },
-                ]}
+                style={[styles.subtitle, { color: colors.textMuted }]}
               >
-                Continue with the email address you used
-                to register. We'll send you a secure code
-                to verify your identity.
+                Continue with the email address you used to register.
+                We'll send you a secure code to verify your identity.
               </Text>
             </View>
 
+            {/* Form card */}
             <View
               style={[
                 styles.formCard,
@@ -227,14 +254,10 @@ export default function RunnerLoginScreen() {
             >
               <View style={styles.formHeading}>
                 <Text
-                  style={[
-                    styles.formTitle,
-                    { color: colors.text },
-                  ]}
+                  style={[styles.formTitle, { color: colors.text }]}
                 >
                   Your email address
                 </Text>
-
                 <Text
                   style={[
                     styles.formDescription,
@@ -250,16 +273,27 @@ export default function RunnerLoginScreen() {
                   styles.emailInput,
                   {
                     backgroundColor: colors.paper,
-                    borderColor: error
-                      ? colors.red
-                      : colors.border,
+                    borderColor: inputBorderColor,
                   },
+                  inputFocused &&
+                    Platform.select({
+                      ios: {
+                        shadowColor: colors.blue,
+                        shadowOpacity: 0.16,
+                        shadowRadius: 6,
+                        shadowOffset: { width: 0, height: 2 },
+                      },
+                      android: { elevation: 1 },
+                      default: {},
+                    }),
                 ]}
               >
                 <Ionicons
                   name="mail-outline"
                   size={20}
-                  color={colors.textMuted}
+                  color={
+                    inputFocused ? colors.blue : colors.textMuted
+                  }
                 />
 
                 <TextInput
@@ -269,6 +303,8 @@ export default function RunnerLoginScreen() {
                     setEmail(value);
                     if (error) setError("");
                   }}
+                  onFocus={() => setInputFocused(true)}
+                  onBlur={() => setInputFocused(false)}
                   placeholder="you@example.com"
                   placeholderTextColor={colors.textMuted}
                   keyboardType="email-address"
@@ -281,10 +317,8 @@ export default function RunnerLoginScreen() {
                   maxLength={254}
                   editable={!busy}
                   selectionColor={colors.blue}
-                  style={[
-                    styles.input,
-                    { color: colors.text },
-                  ]}
+                  cursorColor={colors.blue}
+                  style={[styles.input, { color: colors.text }]}
                   accessibilityLabel="Runner email address"
                   accessibilityHint="Enter the email address associated with your Runner account."
                 />
@@ -299,12 +333,15 @@ export default function RunnerLoginScreen() {
                       setError("");
                       emailInputRef.current?.focus();
                     }}
-                    hitSlop={8}
+                    hitSlop={10}
+                    style={({ pressed }) => ({
+                      opacity: pressed ? 0.55 : busy ? 0.5 : 1,
+                    })}
                   >
                     <Ionicons
                       name="close-circle"
                       size={19}
-                      color={colors.muted}
+                      color={colors.textMuted}
                     />
                   </Pressable>
                 ) : null}
@@ -313,6 +350,7 @@ export default function RunnerLoginScreen() {
               {error ? (
                 <View
                   accessibilityRole="alert"
+                  accessibilityLiveRegion="polite"
                   style={[
                     styles.errorContainer,
                     { backgroundColor: colors.dangerSoft },
@@ -323,12 +361,8 @@ export default function RunnerLoginScreen() {
                     size={19}
                     color={colors.red}
                   />
-
                   <Text
-                    style={[
-                      styles.errorText,
-                      { color: colors.red },
-                    ]}
+                    style={[styles.errorText, { color: colors.red }]}
                   >
                     {error}
                   </Text>
@@ -337,8 +371,13 @@ export default function RunnerLoginScreen() {
 
               <Pressable
                 accessibilityRole="button"
-                accessibilityLabel="Continue with email"
-                accessibilityState={{ disabled: busy }}
+                accessibilityLabel={
+                  busy
+                    ? "Sending verification code"
+                    : "Continue with email"
+                }
+                accessibilityHint="Sends a six-digit verification code to your email address"
+                accessibilityState={{ busy, disabled: busy }}
                 disabled={busy}
                 onPress={() => void continueWithEmail()}
                 style={({ pressed }) => [
@@ -350,9 +389,9 @@ export default function RunnerLoginScreen() {
               >
                 {busy ? (
                   <>
-                    <ActivityIndicator color="#FFFFFF" />
+                    <ActivityIndicator color="#FFFFFF" size="small" />
                     <Text style={styles.primaryButtonText}>
-                      Sending verification code...
+                      Sending verification code…
                     </Text>
                   </>
                 ) : (
@@ -386,6 +425,7 @@ export default function RunnerLoginScreen() {
               </View>
             </View>
 
+            {/* Info card */}
             <View
               style={[
                 styles.infoCard,
@@ -397,21 +437,17 @@ export default function RunnerLoginScreen() {
                 size={20}
                 color={colors.blue}
               />
-
               <Text
-                style={[
-                  styles.infoText,
-                  { color: colors.text },
-                ]}
+                style={[styles.infoText, { color: colors.text }]}
               >
-                Already registered but haven't completed
-                your application? Sign in using the same
-                email to continue where you left off or
-                check your application status.
+                Already registered but haven't completed your
+                application? Sign in using the same email to continue
+                where you left off or check your application status.
               </Text>
             </View>
           </View>
 
+          {/* Footer */}
           <View style={styles.footer}>
             <View style={styles.registerPrompt}>
               <Text
@@ -425,10 +461,14 @@ export default function RunnerLoginScreen() {
 
               <Pressable
                 accessibilityRole="button"
+                accessibilityLabel="Create a Runner account"
                 disabled={busy}
                 onPress={openRegistration}
-                hitSlop={8}
-                style={styles.registerButton}
+                hitSlop={10}
+                style={({ pressed }) => [
+                  styles.registerButton,
+                  { opacity: pressed ? 0.6 : busy ? 0.5 : 1 },
+                ]}
               >
                 <Text
                   style={[
@@ -438,7 +478,6 @@ export default function RunnerLoginScreen() {
                 >
                   Create an account
                 </Text>
-
                 <Ionicons
                   name="arrow-forward"
                   size={15}
@@ -453,15 +492,13 @@ export default function RunnerLoginScreen() {
                 size={15}
                 color={colors.textMuted}
               />
-
               <Text
                 style={[
                   styles.footerSecurityText,
                   { color: colors.textMuted },
                 ]}
               >
-                SaMi Runner uses a separate account from
-                SaMi Customer.
+                SaMi Runner uses a separate account from SaMi Customer.
               </Text>
             </View>
           </View>
@@ -472,57 +509,47 @@ export default function RunnerLoginScreen() {
 }
 
 const styles = StyleSheet.create({
-  safeArea: {
-    flex: 1,
-  },
-
-  keyboardContainer: {
-    flex: 1,
-  },
-
-  scroll: {
-    flex: 1,
-  },
+  safeArea: { flex: 1 },
+  keyboardContainer: { flex: 1 },
+  scroll: { flex: 1 },
 
   content: {
     flexGrow: 1,
-    paddingHorizontal: 23,
-    paddingTop: 10,
-    paddingBottom: 24,
+    paddingHorizontal: 20,
+    paddingTop: 12,
+    paddingBottom: 32,
     justifyContent: "space-between",
-    gap: 30,
+    gap: 26,
   },
 
-  main: {
-    gap: 27,
-  },
+  main: { gap: 22 },
 
+  // Top bar
   topBar: {
-    minHeight: 42,
+    minHeight: BACK_SIZE,
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
   },
 
   backButton: {
-    width: 40,
-    height: 40,
-    borderRadius: 13,
+    width: BACK_SIZE,
+    height: BACK_SIZE,
+    borderRadius: 14,
     borderWidth: 1,
     alignItems: "center",
     justifyContent: "center",
   },
 
   topBarLabel: {
-    fontSize: 9,
+    fontSize: 10.5,
     fontWeight: "900",
-    letterSpacing: 1.5,
+    letterSpacing: 1.2,
   },
 
-  topBarSpacer: {
-    width: 40,
-  },
+  topBarSpacer: { width: BACK_SIZE },
 
+  // Brand block
   brand: {
     alignItems: "center",
     gap: 7,
@@ -530,44 +557,36 @@ const styles = StyleSheet.create({
   },
 
   logoMark: {
-    width: 59,
-    height: 59,
+    width: 58,
+    height: 58,
     borderRadius: 19,
-    backgroundColor: "#000535",
     alignItems: "center",
     justifyContent: "center",
     marginBottom: 2,
   },
 
   brandName: {
-    color: "#000535",
     fontSize: 26,
     fontWeight: "900",
     fontStyle: "italic",
     letterSpacing: -0.8,
   },
 
-  brandAccent: {
-    color: "#2769C7",
-  },
-
   brandTagline: {
-    color: "#74839A",
     fontSize: 8,
     fontWeight: "900",
     letterSpacing: 2.3,
   },
 
-  intro: {
-    gap: 11,
-  },
+  // Intro
+  intro: { gap: 11 },
 
   eyebrowWrap: {
     alignSelf: "flex-start",
     flexDirection: "row",
     alignItems: "center",
     gap: 7,
-    paddingHorizontal: 10,
+    paddingHorizontal: 11,
     paddingVertical: 7,
     borderRadius: 30,
   },
@@ -579,49 +598,48 @@ const styles = StyleSheet.create({
   },
 
   eyebrow: {
-    fontSize: 9,
+    fontSize: 11,
     fontWeight: "900",
-    letterSpacing: 1.1,
+    letterSpacing: 1.4,
   },
 
   title: {
-    fontSize: 30,
-    lineHeight: 37,
+    fontSize: 28,
+    lineHeight: 36,
     fontWeight: "900",
-    letterSpacing: -1,
+    letterSpacing: -0.8,
   },
 
   subtitle: {
-    fontSize: 13,
+    fontSize: 13.5,
     lineHeight: 21,
     maxWidth: 330,
   },
 
+  // Form card
   formCard: {
     borderWidth: 1,
-    borderRadius: 19,
-    padding: 17,
-    gap: 15,
+    borderRadius: 18,
+    padding: 16,
+    gap: 14,
   },
 
-  formHeading: {
-    gap: 5,
-  },
+  formHeading: { gap: 5 },
 
   formTitle: {
-    fontSize: 14,
+    fontSize: 15,
     fontWeight: "900",
   },
 
   formDescription: {
-    fontSize: 11,
+    fontSize: 12,
     lineHeight: 17,
   },
 
   emailInput: {
-    minHeight: 56,
+    minHeight: 58,
     borderWidth: 1,
-    borderRadius: 13,
+    borderRadius: 14,
     flexDirection: "row",
     alignItems: "center",
     paddingHorizontal: 14,
@@ -630,28 +648,30 @@ const styles = StyleSheet.create({
 
   input: {
     flex: 1,
-    minHeight: 54,
-    paddingVertical: 9,
-    fontSize: 14,
+    minHeight: 56,
+    paddingVertical: 10,
+    fontSize: 15,
   },
 
+  // Error
   errorContainer: {
     flexDirection: "row",
     alignItems: "flex-start",
-    borderRadius: 11,
-    padding: 11,
+    borderRadius: 12,
+    padding: 12,
     gap: 9,
   },
 
   errorText: {
     flex: 1,
-    fontSize: 11,
-    lineHeight: 17,
+    fontSize: 12.5,
+    lineHeight: 18,
   },
 
+  // Primary button
   primaryButton: {
-    minHeight: 53,
-    borderRadius: 13,
+    minHeight: 58,
+    borderRadius: 15,
     paddingHorizontal: 15,
     alignItems: "center",
     justifyContent: "center",
@@ -661,10 +681,12 @@ const styles = StyleSheet.create({
 
   primaryButtonText: {
     color: "#FFFFFF",
-    fontSize: 13,
+    fontSize: 15,
     fontWeight: "900",
+    letterSpacing: -0.2,
   },
 
+  // Security note
   securityNote: {
     flexDirection: "row",
     alignItems: "center",
@@ -673,27 +695,28 @@ const styles = StyleSheet.create({
   },
 
   securityText: {
-    fontSize: 10,
+    fontSize: 11.5,
     fontWeight: "600",
+    lineHeight: 16,
   },
 
+  // Info card
   infoCard: {
-    padding: 13,
-    borderRadius: 13,
+    padding: 14,
+    borderRadius: 14,
     flexDirection: "row",
     alignItems: "flex-start",
-    gap: 9,
+    gap: 10,
   },
 
   infoText: {
     flex: 1,
-    fontSize: 10,
-    lineHeight: 16,
+    fontSize: 12,
+    lineHeight: 18,
   },
 
-  footer: {
-    gap: 18,
-  },
+  // Footer
+  footer: { gap: 18 },
 
   registerPrompt: {
     flexDirection: "row",
@@ -704,18 +727,18 @@ const styles = StyleSheet.create({
   },
 
   footerText: {
-    fontSize: 11,
+    fontSize: 13,
   },
 
   registerButton: {
     flexDirection: "row",
     alignItems: "center",
     gap: 4,
-    paddingVertical: 5,
+    paddingVertical: 6,
   },
 
   registerText: {
-    fontSize: 11,
+    fontSize: 13,
     fontWeight: "900",
   },
 
@@ -727,15 +750,16 @@ const styles = StyleSheet.create({
   },
 
   footerSecurityText: {
-    fontSize: 9,
+    fontSize: 11,
+    lineHeight: 15,
     textAlign: "center",
+    flexShrink: 1,
   },
 
-  disabled: {
-    opacity: 0.65,
-  },
+  disabled: { opacity: 0.6 },
 
   pressed: {
     opacity: 0.85,
+    transform: [{ scale: 0.985 }],
   },
 });

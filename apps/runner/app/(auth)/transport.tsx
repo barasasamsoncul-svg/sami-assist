@@ -1,8 +1,15 @@
-
-import { useEffect, useState } from "react";
+import {
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useRef,
+  useState,
+} from "react";
 
 import {
   ActivityIndicator,
+  Animated,
+  Easing,
   KeyboardAvoidingView,
   Platform,
   Pressable,
@@ -78,6 +85,8 @@ const VEHICLES_REQUIRING_REGISTRATION: VehicleType[] = [
   "van",
 ];
 
+const BACK_SIZE = 44;
+
 function requiresVehicleRegistration(
   value: VehicleType,
 ): boolean {
@@ -101,7 +110,15 @@ export default function RunnerTransportScreen() {
   const [error, setError] = useState("");
   const [loadError, setLoadError] = useState("");
 
-  async function loadTransportDetails() {
+  const [areaFocused, setAreaFocused] = useState(false);
+  const [regFocused, setRegFocused] = useState(false);
+
+  const scrollRef = useRef<ScrollView>(null);
+
+  const regFieldAnim = useRef(new Animated.Value(0)).current;
+  const regFieldShownRef = useRef(false);
+
+  const loadTransportDetails = useCallback(async () => {
     setLoading(true);
     setLoadError("");
     setError("");
@@ -157,13 +174,42 @@ export default function RunnerTransportScreen() {
     } finally {
       setLoading(false);
     }
-  }
+  }, []);
 
   useEffect(() => {
     void loadTransportDetails();
-  }, []);
+  }, [loadTransportDetails]);
+
+  const showRegistrationField =
+    vehicleType !== "" &&
+    requiresVehicleRegistration(vehicleType);
+
+  // Animate the registration field in the first time it appears.
+  useLayoutEffect(() => {
+    if (showRegistrationField && !regFieldShownRef.current) {
+      regFieldAnim.setValue(0);
+      Animated.timing(regFieldAnim, {
+        toValue: 1,
+        duration: 260,
+        easing: Easing.out(Easing.cubic),
+        useNativeDriver: true,
+      }).start();
+    }
+    regFieldShownRef.current = showRegistrationField;
+  }, [showRegistrationField, regFieldAnim]);
+
+  // When a validation error appears, scroll it into view.
+  useEffect(() => {
+    if (!error) return;
+    const frame = requestAnimationFrame(() => {
+      scrollRef.current?.scrollToEnd({ animated: true });
+    });
+    return () => cancelAnimationFrame(frame);
+  }, [error]);
 
   function chooseVehicle(value: VehicleType) {
+    if (value === vehicleType) return;
+
     setVehicleType(value);
     setError("");
 
@@ -238,43 +284,31 @@ export default function RunnerTransportScreen() {
     }
   }
 
-  const showRegistrationField =
-    vehicleType !== "" &&
-    requiresVehicleRegistration(vehicleType);
+  const isDarkPaper = colors.paper === "#080F1D";
 
   return (
     <SafeAreaView
       edges={["top", "bottom"]}
-      style={[
-        styles.safeArea,
-        { backgroundColor: colors.paper },
-      ]}
+      style={[styles.safeArea, { backgroundColor: colors.paper }]}
     >
       <StatusBar
-        barStyle={
-          colors.paper === "#080F1D"
-            ? "light-content"
-            : "dark-content"
-        }
+        barStyle={isDarkPaper ? "light-content" : "dark-content"}
         backgroundColor={colors.paper}
       />
 
       <KeyboardAvoidingView
         style={styles.keyboardContainer}
-        behavior={
-          Platform.OS === "ios" ? "padding" : "height"
-        }
-        keyboardVerticalOffset={
-          Platform.OS === "ios" ? 8 : 0
-        }
+        behavior={Platform.OS === "ios" ? "padding" : "height"}
+        keyboardVerticalOffset={Platform.OS === "ios" ? 8 : 0}
       >
         <View style={styles.container}>
           <ScrollView
+            ref={scrollRef}
             contentContainerStyle={styles.scrollContent}
             keyboardShouldPersistTaps="handled"
-            automaticallyAdjustKeyboardInsets
             showsVerticalScrollIndicator={false}
           >
+            {/* Header */}
             <View style={styles.header}>
               <Pressable
                 accessibilityRole="button"
@@ -287,32 +321,27 @@ export default function RunnerTransportScreen() {
                     router.replace("/(auth)/tasks");
                   }
                 }}
-                style={[
+                hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}
+                style={({ pressed }) => [
                   styles.backButton,
                   {
                     backgroundColor: colors.surface,
                     borderColor: colors.border,
+                    opacity: pressed ? 0.6 : saving ? 0.5 : 1,
                   },
                 ]}
               >
                 <Ionicons
                   name="chevron-back"
-                  size={21}
+                  size={22}
                   color={colors.text}
                 />
               </Pressable>
 
               <View style={styles.brand}>
-                <Text
-                  style={[
-                    styles.brandName,
-                    { color: colors.navy },
-                  ]}
-                >
+                <Text style={[styles.brandName, { color: colors.navy }]}>
                   SaMi{" "}
-                  <Text style={{ color: colors.blue }}>
-                    Runner
-                  </Text>
+                  <Text style={{ color: colors.blue }}>Runner</Text>
                 </Text>
 
                 <Text
@@ -328,6 +357,7 @@ export default function RunnerTransportScreen() {
               <View style={styles.headerSpacer} />
             </View>
 
+            {/* Progress */}
             <View style={styles.progressSection}>
               <View
                 style={[
@@ -343,16 +373,40 @@ export default function RunnerTransportScreen() {
                 />
               </View>
 
-              <Text
-                style={[
-                  styles.progressText,
-                  { color: colors.textMuted },
-                ]}
-              >
-                STEP 2 OF 3 · TRANSPORT DETAILS
-              </Text>
+              <View style={styles.progressMeta}>
+                <Text
+                  style={[
+                    styles.progressText,
+                    { color: colors.textMuted },
+                  ]}
+                >
+                  STEP 2 OF 3 · TRANSPORT DETAILS
+                </Text>
+
+                <View style={styles.progressDots}>
+                  <View
+                    style={[
+                      styles.stepDot,
+                      { backgroundColor: colors.blue },
+                    ]}
+                  />
+                  <View
+                    style={[
+                      styles.stepDotCurrent,
+                      { backgroundColor: colors.blue },
+                    ]}
+                  />
+                  <View
+                    style={[
+                      styles.stepDot,
+                      { backgroundColor: colors.border },
+                    ]}
+                  />
+                </View>
+              </View>
             </View>
 
+            {/* Intro */}
             <View style={styles.intro}>
               <View
                 style={[
@@ -367,21 +421,11 @@ export default function RunnerTransportScreen() {
                 />
               </View>
 
-              <Text
-                style={[
-                  styles.eyebrow,
-                  { color: colors.blue },
-                ]}
-              >
+              <Text style={[styles.eyebrow, { color: colors.blue }]}>
                 YOUR SERVICE AREA AND TRANSPORT
               </Text>
 
-              <Text
-                style={[
-                  styles.title,
-                  { color: colors.text },
-                ]}
-              >
+              <Text style={[styles.title, { color: colors.text }]}>
                 Where and how will you work?
               </Text>
 
@@ -391,12 +435,12 @@ export default function RunnerTransportScreen() {
                   { color: colors.textMuted },
                 ]}
               >
-                Tell us your main operating area and
-                the transport you intend to use for
-                customer errands.
+                Tell us your main operating area and the transport you
+                intend to use for customer errands.
               </Text>
             </View>
 
+            {/* Category summary */}
             <View
               style={[
                 styles.categorySummary,
@@ -408,7 +452,7 @@ export default function RunnerTransportScreen() {
             >
               <Ionicons
                 name="checkmark-circle-outline"
-                size={21}
+                size={22}
                 color={colors.blue}
               />
 
@@ -428,19 +472,23 @@ export default function RunnerTransportScreen() {
                     { color: colors.textMuted },
                   ]}
                 >
-                  Your saved task choices will determine
-                  some of your document requirements.
+                  Your saved task choices will determine some of your
+                  document requirements.
                 </Text>
               </View>
             </View>
 
+            {/* Body */}
             {loading ? (
-              <View style={styles.loadingState}>
+              <View
+                style={styles.loadingState}
+                accessibilityRole="progressbar"
+                accessibilityLabel="Loading your transport details"
+              >
                 <ActivityIndicator
                   size="large"
                   color={colors.blue}
                 />
-
                 <Text
                   style={[
                     styles.loadingText,
@@ -462,7 +510,6 @@ export default function RunnerTransportScreen() {
                   size={20}
                   color={colors.red}
                 />
-
                 <Text
                   style={[
                     styles.loadErrorText,
@@ -471,11 +518,15 @@ export default function RunnerTransportScreen() {
                 >
                   {loadError}
                 </Text>
-
                 <Pressable
                   accessibilityRole="button"
+                  accessibilityLabel="Retry loading transport details"
+                  hitSlop={10}
                   onPress={() => void loadTransportDetails()}
-                  style={styles.retryButton}
+                  style={({ pressed }) => [
+                    styles.retryButton,
+                    { opacity: pressed ? 0.55 : 1 },
+                  ]}
                 >
                   <Text
                     style={[
@@ -489,17 +540,11 @@ export default function RunnerTransportScreen() {
               </View>
             ) : (
               <>
+                {/* Service area */}
                 <View style={styles.fieldGroup}>
-                  <Text
-                    style={[
-                      styles.label,
-                      { color: colors.text },
-                    ]}
-                  >
+                  <Text style={[styles.label, { color: colors.text }]}>
                     Main service area
-                    <Text style={{ color: colors.red }}>
-                      {" "}*
-                    </Text>
+                    <Text style={{ color: colors.red }}> *</Text>
                   </Text>
 
                   <View
@@ -507,14 +552,27 @@ export default function RunnerTransportScreen() {
                       styles.inputContainer,
                       {
                         backgroundColor: colors.surface,
-                        borderColor: colors.border,
+                        borderColor: areaFocused
+                          ? colors.blue
+                          : colors.border,
                       },
+                      areaFocused &&
+                        Platform.select({
+                          ios: {
+                            shadowColor: colors.blue,
+                            shadowOpacity: 0.16,
+                            shadowRadius: 6,
+                            shadowOffset: { width: 0, height: 2 },
+                          },
+                          android: { elevation: 1 },
+                          default: {},
+                        }),
                     ]}
                   >
                     <Ionicons
                       name="location-outline"
                       size={20}
-                      color={colors.textMuted}
+                      color={areaFocused ? colors.blue : colors.textMuted}
                     />
 
                     <TextInput
@@ -523,16 +581,18 @@ export default function RunnerTransportScreen() {
                         setServiceArea(value);
                         setError("");
                       }}
+                      onFocus={() => setAreaFocused(true)}
+                      onBlur={() => setAreaFocused(false)}
+                      editable={!saving}
                       placeholder="e.g. Kilimani, Nairobi"
                       placeholderTextColor={colors.textMuted}
                       autoCapitalize="words"
                       autoCorrect={false}
                       maxLength={120}
                       returnKeyType="done"
-                      style={[
-                        styles.input,
-                        { color: colors.text },
-                      ]}
+                      selectionColor={colors.blue}
+                      cursorColor={colors.blue}
+                      style={[styles.input, { color: colors.text }]}
                       accessibilityLabel="Main service area"
                     />
                   </View>
@@ -543,12 +603,12 @@ export default function RunnerTransportScreen() {
                       { color: colors.textMuted },
                     ]}
                   >
-                    Enter your town, estate or neighbourhood.
-                    This is where you expect to handle most
-                    of your errands.
+                    Enter your town, estate or neighbourhood. This is
+                    where you expect to handle most of your errands.
                   </Text>
                 </View>
 
+                {/* Vehicle selection */}
                 <View style={styles.vehicleSection}>
                   <View style={styles.sectionHeading}>
                     <Text
@@ -558,9 +618,7 @@ export default function RunnerTransportScreen() {
                       ]}
                     >
                       What transport will you use?
-                      <Text style={{ color: colors.red }}>
-                        {" "}*
-                      </Text>
+                      <Text style={{ color: colors.red }}> *</Text>
                     </Text>
 
                     <Text
@@ -575,20 +633,16 @@ export default function RunnerTransportScreen() {
 
                   <View style={styles.vehicleList}>
                     {VEHICLES.map((vehicle) => {
-                      const selected =
-                        vehicleType === vehicle.value;
+                      const selected = vehicleType === vehicle.value;
 
                       return (
                         <Pressable
                           key={vehicle.value}
                           accessibilityRole="radio"
-                          accessibilityState={{
-                            checked: selected,
-                          }}
-                          onPress={() =>
-                            chooseVehicle(vehicle.value)
-                          }
-                          style={[
+                          accessibilityState={{ checked: selected }}
+                          accessibilityLabel={`${vehicle.title}. ${vehicle.description}`}
+                          onPress={() => chooseVehicle(vehicle.value)}
+                          style={({ pressed }) => [
                             styles.vehicleCard,
                             {
                               backgroundColor: selected
@@ -597,7 +651,25 @@ export default function RunnerTransportScreen() {
                               borderColor: selected
                                 ? colors.blue
                                 : colors.border,
+                              opacity: pressed ? 0.88 : 1,
+                              transform: [
+                                { scale: pressed ? 0.995 : 1 },
+                              ],
                             },
+                            selected &&
+                              Platform.select({
+                                ios: {
+                                  shadowColor: colors.blue,
+                                  shadowOpacity: 0.12,
+                                  shadowRadius: 6,
+                                  shadowOffset: {
+                                    width: 0,
+                                    height: 3,
+                                  },
+                                },
+                                android: { elevation: 2 },
+                                default: {},
+                              }),
                           ]}
                         >
                           <View
@@ -614,9 +686,7 @@ export default function RunnerTransportScreen() {
                               name={vehicle.icon}
                               size={23}
                               color={
-                                selected
-                                  ? "#FFFFFF"
-                                  : colors.blue
+                                selected ? "#FFFFFF" : colors.blue
                               }
                             />
                           </View>
@@ -648,15 +718,17 @@ export default function RunnerTransportScreen() {
                                 borderColor: selected
                                   ? colors.blue
                                   : colors.border,
+                                backgroundColor: selected
+                                  ? colors.blue
+                                  : "transparent",
                               },
                             ]}
                           >
                             {selected ? (
-                              <View
-                                style={[
-                                  styles.radioInner,
-                                  { backgroundColor: colors.blue },
-                                ]}
+                              <Ionicons
+                                name="checkmark"
+                                size={14}
+                                color="#FFFFFF"
                               />
                             ) : null}
                           </View>
@@ -666,71 +738,105 @@ export default function RunnerTransportScreen() {
                   </View>
                 </View>
 
+                {/* Registration — animated in when required */}
                 {showRegistrationField ? (
-                  <View style={styles.fieldGroup}>
-                    <Text
-                      style={[
-                        styles.label,
-                        { color: colors.text },
-                      ]}
-                    >
-                      Vehicle registration number
-                      <Text style={{ color: colors.red }}>
-                        {" "}*
-                      </Text>
-                    </Text>
-
-                    <View
-                      style={[
-                        styles.inputContainer,
+                  <Animated.View
+                    style={{
+                      opacity: regFieldAnim,
+                      transform: [
                         {
-                          backgroundColor: colors.surface,
-                          borderColor: colors.border,
+                          translateY: regFieldAnim.interpolate({
+                            inputRange: [0, 1],
+                            outputRange: [-6, 0],
+                          }),
                         },
-                      ]}
-                    >
-                      <Ionicons
-                        name="car-outline"
-                        size={20}
-                        color={colors.textMuted}
-                      />
-
-                      <TextInput
-                        value={vehicleRegistration}
-                        onChangeText={(value) => {
-                          setVehicleRegistration(
-                            value.toUpperCase(),
-                          );
-                          setError("");
-                        }}
-                        placeholder="e.g. KDA 123A"
-                        placeholderTextColor={colors.textMuted}
-                        autoCapitalize="characters"
-                        autoCorrect={false}
-                        maxLength={30}
-                        returnKeyType="done"
+                      ],
+                    }}
+                  >
+                    <View style={styles.fieldGroup}>
+                      <Text
                         style={[
-                          styles.input,
+                          styles.label,
                           { color: colors.text },
                         ]}
-                        accessibilityLabel="Vehicle registration number"
-                      />
-                    </View>
+                      >
+                        Vehicle registration number
+                        <Text style={{ color: colors.red }}> *</Text>
+                      </Text>
 
-                    <Text
-                      style={[
-                        styles.fieldHint,
-                        { color: colors.textMuted },
-                      ]}
-                    >
-                      Enter the registration number of the
-                      vehicle you intend to use. Supporting
-                      vehicle documents will be requested
-                      separately.
-                    </Text>
-                  </View>
+                      <View
+                        style={[
+                          styles.inputContainer,
+                          {
+                            backgroundColor: colors.surface,
+                            borderColor: regFocused
+                              ? colors.blue
+                              : colors.border,
+                          },
+                          regFocused &&
+                            Platform.select({
+                              ios: {
+                                shadowColor: colors.blue,
+                                shadowOpacity: 0.16,
+                                shadowRadius: 6,
+                                shadowOffset: {
+                                  width: 0,
+                                  height: 2,
+                                },
+                              },
+                              android: { elevation: 1 },
+                              default: {},
+                            }),
+                        ]}
+                      >
+                        <Ionicons
+                          name="car-outline"
+                          size={20}
+                          color={
+                            regFocused ? colors.blue : colors.textMuted
+                          }
+                        />
+
+                        <TextInput
+                          value={vehicleRegistration}
+                          onChangeText={(value) => {
+                            setVehicleRegistration(value.toUpperCase());
+                            setError("");
+                          }}
+                          onFocus={() => setRegFocused(true)}
+                          onBlur={() => setRegFocused(false)}
+                          editable={!saving}
+                          placeholder="e.g. KDA 123A"
+                          placeholderTextColor={colors.textMuted}
+                          autoCapitalize="characters"
+                          autoCorrect={false}
+                          maxLength={30}
+                          returnKeyType="done"
+                          selectionColor={colors.blue}
+                          cursorColor={colors.blue}
+                          style={[
+                            styles.input,
+                            { color: colors.text },
+                          ]}
+                          accessibilityLabel="Vehicle registration number"
+                        />
+                      </View>
+
+                      <Text
+                        style={[
+                          styles.fieldHint,
+                          { color: colors.textMuted },
+                        ]}
+                      >
+                        Enter the registration number of the vehicle
+                        you intend to use. Supporting vehicle documents
+                        will be requested separately.
+                      </Text>
+                    </View>
+                  </Animated.View>
                 ) : null}
 
+                {/* Info */}
                 <View
                   style={[
                     styles.infoBox,
@@ -749,20 +855,20 @@ export default function RunnerTransportScreen() {
                       { color: colors.text },
                     ]}
                   >
-                    Your transport choice affects which
-                    verification documents SaMi requests.
-                    For example, motorised vehicles require
-                    relevant vehicle evidence. Document
-                    uploads will be handled on the next
-                    page.
+                    Your transport choice affects which verification
+                    documents SaMi requests. For example, motorised
+                    vehicles require relevant vehicle evidence.
+                    Document uploads will be handled on the next page.
                   </Text>
                 </View>
               </>
             )}
 
+            {/* Validation error */}
             {error ? (
               <View
                 accessibilityRole="alert"
+                accessibilityLiveRegion="polite"
                 style={[
                   styles.errorContainer,
                   { backgroundColor: colors.dangerSoft },
@@ -775,10 +881,7 @@ export default function RunnerTransportScreen() {
                 />
 
                 <Text
-                  style={[
-                    styles.errorText,
-                    { color: colors.red },
-                  ]}
+                  style={[styles.errorText, { color: colors.red }]}
                 >
                   {error}
                 </Text>
@@ -786,6 +889,7 @@ export default function RunnerTransportScreen() {
             ) : null}
           </ScrollView>
 
+          {/* Bottom bar */}
           {!loading && !loadError ? (
             <View
               style={[
@@ -798,6 +902,8 @@ export default function RunnerTransportScreen() {
             >
               <Pressable
                 accessibilityRole="button"
+                accessibilityLabel="Save and continue"
+                accessibilityHint="Saves your transport details and opens the documents step"
                 disabled={saving}
                 onPress={() => void saveTransportDetails()}
                 style={({ pressed }) => [
@@ -830,8 +936,8 @@ export default function RunnerTransportScreen() {
                   { color: colors.textMuted },
                 ]}
               >
-                You can review these details before submitting
-                your application.
+                You can review these details before submitting your
+                application.
               </Text>
             </View>
           ) : null}
@@ -842,36 +948,29 @@ export default function RunnerTransportScreen() {
 }
 
 const styles = StyleSheet.create({
-  safeArea: {
-    flex: 1,
-  },
-
-  keyboardContainer: {
-    flex: 1,
-  },
-
-  container: {
-    flex: 1,
-  },
+  safeArea: { flex: 1 },
+  keyboardContainer: { flex: 1 },
+  container: { flex: 1 },
 
   scrollContent: {
-    paddingHorizontal: 22,
+    paddingHorizontal: 20,
     paddingTop: 12,
-    paddingBottom: 28,
-    gap: 23,
+    paddingBottom: 32,
+    gap: 22,
   },
 
+  // Header ---------------------------------------------------------------
   header: {
-    minHeight: 46,
+    minHeight: BACK_SIZE,
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
   },
 
   backButton: {
-    width: 42,
-    height: 42,
-    borderRadius: 13,
+    width: BACK_SIZE,
+    height: BACK_SIZE,
+    borderRadius: 14,
     borderWidth: 1,
     alignItems: "center",
     justifyContent: "center",
@@ -890,40 +989,60 @@ const styles = StyleSheet.create({
   },
 
   brandTagline: {
-    fontSize: 7,
+    fontSize: 8,
     fontWeight: "900",
     letterSpacing: 2,
   },
 
-  headerSpacer: {
-    width: 42,
-  },
+  headerSpacer: { width: BACK_SIZE },
 
-  progressSection: {
-    gap: 9,
-  },
+  // Progress -------------------------------------------------------------
+  progressSection: { gap: 10 },
 
   progressTrack: {
-    height: 5,
-    borderRadius: 5,
+    height: 6,
+    borderRadius: 6,
     overflow: "hidden",
   },
 
   progressFill: {
     width: "66.66%",
     height: "100%",
-    borderRadius: 5,
+    borderRadius: 6,
+  },
+
+  progressMeta: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
   },
 
   progressText: {
-    fontSize: 9,
+    fontSize: 10.5,
     fontWeight: "900",
     letterSpacing: 1.2,
   },
 
-  intro: {
-    gap: 10,
+  progressDots: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 5,
   },
+
+  stepDot: {
+    width: 6,
+    height: 6,
+    borderRadius: 3,
+  },
+
+  stepDotCurrent: {
+    width: 16,
+    height: 6,
+    borderRadius: 3,
+  },
+
+  // Intro ---------------------------------------------------------------
+  intro: { gap: 10 },
 
   iconWrap: {
     width: 54,
@@ -935,28 +1054,30 @@ const styles = StyleSheet.create({
   },
 
   eyebrow: {
-    fontSize: 10,
+    fontSize: 11,
     fontWeight: "900",
     letterSpacing: 1.4,
   },
 
   title: {
-    fontSize: 27,
-    lineHeight: 35,
+    fontSize: 28,
+    lineHeight: 36,
     fontWeight: "900",
     letterSpacing: -0.7,
   },
 
   subtitle: {
-    fontSize: 13,
+    fontSize: 13.5,
     lineHeight: 21,
   },
 
+  // Category summary ----------------------------------------------------
   categorySummary: {
-    minHeight: 66,
+    minHeight: 72,
     borderWidth: 1,
-    borderRadius: 14,
-    paddingHorizontal: 13,
+    borderRadius: 16,
+    paddingHorizontal: 14,
+    paddingVertical: 12,
     flexDirection: "row",
     alignItems: "center",
     gap: 11,
@@ -968,26 +1089,25 @@ const styles = StyleSheet.create({
   },
 
   categorySummaryTitle: {
-    fontSize: 12,
+    fontSize: 13,
     fontWeight: "900",
   },
 
   categorySummarySubtitle: {
-    fontSize: 10,
-    lineHeight: 15,
+    fontSize: 11.5,
+    lineHeight: 17,
   },
 
-  fieldGroup: {
-    gap: 9,
-  },
+  // Fields --------------------------------------------------------------
+  fieldGroup: { gap: 9 },
 
   label: {
-    fontSize: 12,
+    fontSize: 13,
     fontWeight: "800",
   },
 
   inputContainer: {
-    minHeight: 57,
+    minHeight: 58,
     borderRadius: 14,
     borderWidth: 1,
     flexDirection: "row",
@@ -998,51 +1118,44 @@ const styles = StyleSheet.create({
 
   input: {
     flex: 1,
-    minHeight: 55,
+    minHeight: 56,
     paddingVertical: 10,
-    fontSize: 14,
+    fontSize: 15,
   },
 
   fieldHint: {
-    fontSize: 10,
-    lineHeight: 16,
+    fontSize: 11.5,
+    lineHeight: 17,
   },
 
-  vehicleSection: {
-    gap: 13,
-  },
+  // Vehicle list --------------------------------------------------------
+  vehicleSection: { gap: 13 },
 
-  sectionHeading: {
-    gap: 5,
-  },
+  sectionHeading: { gap: 5 },
 
   sectionTitle: {
-    fontSize: 15,
+    fontSize: 16,
     fontWeight: "900",
   },
 
-  sectionSubtitle: {
-    fontSize: 11,
-  },
+  sectionSubtitle: { fontSize: 12 },
 
-  vehicleList: {
-    gap: 10,
-  },
+  vehicleList: { gap: 10 },
 
   vehicleCard: {
-    minHeight: 78,
+    minHeight: 84,
     borderWidth: 1,
     borderRadius: 14,
     paddingHorizontal: 12,
-    paddingVertical: 10,
+    paddingVertical: 12,
     flexDirection: "row",
     alignItems: "center",
     gap: 12,
   },
 
   vehicleIcon: {
-    width: 43,
-    height: 43,
+    width: 44,
+    height: 44,
     borderRadius: 13,
     alignItems: "center",
     justifyContent: "center",
@@ -1054,30 +1167,25 @@ const styles = StyleSheet.create({
   },
 
   vehicleTitle: {
-    fontSize: 12,
+    fontSize: 13.5,
     fontWeight: "900",
   },
 
   vehicleDescription: {
-    fontSize: 10,
-    lineHeight: 15,
+    fontSize: 11.5,
+    lineHeight: 16,
   },
 
   radioOuter: {
-    width: 21,
-    height: 21,
+    width: 22,
+    height: 22,
     borderWidth: 1.5,
     borderRadius: 11,
     alignItems: "center",
     justifyContent: "center",
   },
 
-  radioInner: {
-    width: 11,
-    height: 11,
-    borderRadius: 6,
-  },
-
+  // Info + states -------------------------------------------------------
   infoBox: {
     padding: 13,
     borderRadius: 13,
@@ -1088,8 +1196,8 @@ const styles = StyleSheet.create({
 
   infoText: {
     flex: 1,
-    fontSize: 10,
-    lineHeight: 17,
+    fontSize: 12,
+    lineHeight: 18,
   },
 
   loadingState: {
@@ -1099,9 +1207,7 @@ const styles = StyleSheet.create({
     gap: 12,
   },
 
-  loadingText: {
-    fontSize: 11,
-  },
+  loadingText: { fontSize: 12 },
 
   loadError: {
     borderRadius: 13,
@@ -1113,16 +1219,14 @@ const styles = StyleSheet.create({
 
   loadErrorText: {
     flex: 1,
-    fontSize: 11,
-    lineHeight: 17,
+    fontSize: 12,
+    lineHeight: 18,
   },
 
-  retryButton: {
-    padding: 5,
-  },
+  retryButton: { padding: 6 },
 
   retryText: {
-    fontSize: 11,
+    fontSize: 12,
     fontWeight: "900",
   },
 
@@ -1136,12 +1240,13 @@ const styles = StyleSheet.create({
 
   errorText: {
     flex: 1,
-    fontSize: 11,
-    lineHeight: 17,
+    fontSize: 12,
+    lineHeight: 18,
   },
 
+  // Bottom bar ----------------------------------------------------------
   bottomBar: {
-    paddingHorizontal: 22,
+    paddingHorizontal: 20,
     paddingTop: 13,
     paddingBottom: 10,
     borderTopWidth: 1,
@@ -1149,7 +1254,7 @@ const styles = StyleSheet.create({
   },
 
   primaryButton: {
-    minHeight: 56,
+    minHeight: 58,
     borderRadius: 15,
     flexDirection: "row",
     alignItems: "center",
@@ -1159,21 +1264,23 @@ const styles = StyleSheet.create({
 
   primaryButtonText: {
     color: "#FFFFFF",
-    fontSize: 14,
+    fontSize: 15,
     fontWeight: "900",
+    letterSpacing: -0.2,
   },
 
   bottomHint: {
-    fontSize: 9,
-    lineHeight: 14,
+    fontSize: 11,
+    lineHeight: 16,
     textAlign: "center",
+    maxWidth: 340,
+    alignSelf: "center",
   },
 
-  disabled: {
-    opacity: 0.5,
-  },
+  disabled: { opacity: 0.5 },
 
   pressed: {
-    opacity: 0.82,
+    opacity: 0.85,
+    transform: [{ scale: 0.985 }],
   },
 });

@@ -74,10 +74,23 @@ function hashValue(value: string) {
     .digest("hex");
 }
 
-function isSameOrigin(request: Request) {
+/**
+ * Admin mutation requests must explicitly identify this exact origin.
+ * Missing, malformed, opaque and cross-origin Origin headers are rejected.
+ * This is used by every state-changing Admin authentication endpoint.
+ */
+export function isSameOrigin(request: Request): boolean {
   const origin = request.headers.get("origin");
 
-  return !origin || origin === new URL(request.url).origin;
+  if (!origin) {
+    return false;
+  }
+
+  try {
+    return origin === new URL(request.url).origin;
+  } catch {
+    return false;
+  }
 }
 
 async function countFailedAttempts(identifierHash: string) {
@@ -354,7 +367,14 @@ export async function getAdminSession(request: Request) {
  * Revokes only the current Admin session.
  * Website, Customer and Runner sessions are not affected.
  */
-export async function logoutAdmin(_request: Request) {
+export async function logoutAdmin(request: Request) {
+  if (!isSameOrigin(request)) {
+    return errorResponse(
+      "Cross-origin sign-out requests are not allowed.",
+      403,
+    );
+  }
+
   const jar = await cookies();
   const rawToken = jar.get(ADMIN_SESSION_COOKIE)?.value;
 

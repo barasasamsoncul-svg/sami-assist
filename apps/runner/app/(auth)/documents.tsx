@@ -1,8 +1,15 @@
-import { useEffect, useMemo, useState } from "react";
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 
 import {
   ActivityIndicator,
   Pressable,
+  Platform,
   ScrollView,
   StatusBar,
   StyleSheet,
@@ -21,9 +28,7 @@ import {
   type RunnerUploadedDocument,
 } from "@/api";
 
-import {
-  getRunnerReviewFeedback,
-} from "@/review";
+import { getRunnerReviewFeedback } from "@/review";
 
 import type {
   RunnerReviewFeedback,
@@ -52,6 +57,8 @@ type DocumentProgress = {
   completed: number;
   total: number;
 };
+
+const BACK_SIZE = 44;
 
 function latestDocument(
   documents: RunnerUploadedDocument[],
@@ -90,8 +97,8 @@ function buildDocumentCards(
     "identity_national_id_back",
   ]);
 
-  const nationalIdRequirements = requirements.filter(
-    (item) => nationalIdKeys.has(item.key),
+  const nationalIdRequirements = requirements.filter((item) =>
+    nationalIdKeys.has(item.key),
   );
 
   const otherRequirements = requirements.filter(
@@ -107,9 +114,7 @@ function buildDocumentCards(
       description:
         "Upload clear images of both the front and back sides of your National ID on one screen.",
       requirements: nationalIdRequirements,
-      required: nationalIdRequirements.some(
-        (item) => item.required,
-      ),
+      required: nationalIdRequirements.some((item) => item.required),
     });
   }
 
@@ -154,10 +159,7 @@ function getDocumentProgress(
     };
   }
 
-  if (
-    entries.length > 0 &&
-    completed === entries.length
-  ) {
+  if (entries.length > 0 && completed === entries.length) {
     return {
       status: allApproved ? "approved" : "submitted",
       label: allApproved ? "Approved" : "Submitted",
@@ -321,8 +323,7 @@ function getCurrentDocumentReview(
 export default function RunnerDocumentsScreen() {
   const { colors } = useRunnerTheme();
 
-  const [data, setData] =
-    useState<RunnerOnboardingData | null>(null);
+  const [data, setData] = useState<RunnerOnboardingData | null>(null);
 
   const [feedback, setFeedback] =
     useState<RunnerReviewFeedback | null>(null);
@@ -332,11 +333,17 @@ export default function RunnerDocumentsScreen() {
   const [loadError, setLoadError] = useState("");
   const [feedbackError, setFeedbackError] = useState("");
 
+  const scrollRef = useRef<ScrollView>(null);
+  const mountedRef = useRef(true);
+
+  useEffect(() => {
+    return () => {
+      mountedRef.current = false;
+    };
+  }, []);
+
   const cards = useMemo(
-    () =>
-      data
-        ? buildDocumentCards(data.requirements)
-        : [],
+    () => (data ? buildDocumentCards(data.requirements) : []),
     [data],
   );
 
@@ -349,14 +356,10 @@ export default function RunnerDocumentsScreen() {
       };
     }
 
-    const required = data.requirements.filter(
-      (item) => item.required,
-    );
+    const required = data.requirements.filter((item) => item.required);
 
     const completed = required.filter((item) =>
-      isSatisfied(
-        latestDocument(data.documents, item.key),
-      ),
+      isSatisfied(latestDocument(data.documents, item.key)),
     ).length;
 
     return {
@@ -364,18 +367,15 @@ export default function RunnerDocumentsScreen() {
       completed,
       percentage:
         required.length > 0
-          ? Math.round(
-              (completed / required.length) * 100,
-            )
+          ? Math.round((completed / required.length) * 100)
           : 0,
     };
   }, [data]);
 
   const allRequiredDocumentsComplete =
-    progress.required > 0 &&
-    progress.completed === progress.required;
+    progress.required > 0 && progress.completed === progress.required;
 
-  async function loadDocuments() {
+  const loadDocuments = useCallback(async () => {
     setLoading(true);
     setLoadError("");
     setFeedbackError("");
@@ -383,6 +383,8 @@ export default function RunnerDocumentsScreen() {
 
     try {
       const result = await getRunnerOnboarding();
+
+      if (!mountedRef.current) return;
 
       if (result.onboardingStatus === "approved") {
         router.replace("/(app)");
@@ -405,10 +407,7 @@ export default function RunnerDocumentsScreen() {
         return;
       }
 
-      if (
-        !result.runner.serviceArea ||
-        !result.runner.vehicleType
-      ) {
+      if (!result.runner.serviceArea || !result.runner.vehicleType) {
         router.replace("/(auth)/transport");
         return;
       }
@@ -417,8 +416,12 @@ export default function RunnerDocumentsScreen() {
 
       try {
         const reviewResult = await getRunnerReviewFeedback();
+
+        if (!mountedRef.current) return;
+
         setFeedback(reviewResult);
       } catch (cause) {
+        if (!mountedRef.current) return;
         setFeedback(null);
         setFeedbackError(
           cause instanceof Error
@@ -427,19 +430,31 @@ export default function RunnerDocumentsScreen() {
         );
       }
     } catch (cause) {
+      if (!mountedRef.current) return;
       setLoadError(
         cause instanceof Error
           ? cause.message
           : "Your document requirements could not be loaded.",
       );
     } finally {
-      setLoading(false);
+      if (mountedRef.current) {
+        setLoading(false);
+      }
     }
-  }
+  }, []);
 
   useEffect(() => {
     void loadDocuments();
-  }, []);
+  }, [loadDocuments]);
+
+  // Scroll the validation error into view when it appears.
+  useEffect(() => {
+    if (!error) return;
+    const frame = requestAnimationFrame(() => {
+      scrollRef.current?.scrollToEnd({ animated: true });
+    });
+    return () => cancelAnimationFrame(frame);
+  }, [error]);
 
   function openDocument(card: DocumentCard) {
     router.push({
@@ -461,28 +476,26 @@ export default function RunnerDocumentsScreen() {
     router.push("/(auth)/review");
   }
 
+  const isDarkPaper = colors.paper === "#080F1D";
+
   return (
     <SafeAreaView
       edges={["top", "bottom"]}
-      style={[
-        styles.safeArea,
-        { backgroundColor: colors.paper },
-      ]}
+      style={[styles.safeArea, { backgroundColor: colors.paper }]}
     >
       <StatusBar
-        barStyle={
-          colors.paper === "#080F1D"
-            ? "light-content"
-            : "dark-content"
-        }
+        barStyle={isDarkPaper ? "light-content" : "dark-content"}
         backgroundColor={colors.paper}
       />
 
       <View style={styles.container}>
         <ScrollView
+          ref={scrollRef}
           contentContainerStyle={styles.scrollContent}
           showsVerticalScrollIndicator={false}
+          keyboardShouldPersistTaps="handled"
         >
+          {/* Header */}
           <View style={styles.header}>
             <Pressable
               accessibilityRole="button"
@@ -494,32 +507,28 @@ export default function RunnerDocumentsScreen() {
                   router.replace("/(auth)/transport");
                 }
               }}
-              style={[
+              hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}
+              style={({ pressed }) => [
                 styles.backButton,
                 {
                   backgroundColor: colors.surface,
                   borderColor: colors.border,
+                  opacity: pressed ? 0.6 : 1,
                 },
               ]}
             >
               <Ionicons
                 name="chevron-back"
-                size={21}
+                size={22}
                 color={colors.text}
               />
             </Pressable>
 
             <View style={styles.brand}>
               <Text
-                style={[
-                  styles.brandName,
-                  { color: colors.navy },
-                ]}
+                style={[styles.brandName, { color: colors.navy }]}
               >
-                SaMi{" "}
-                <Text style={{ color: colors.blue }}>
-                  Runner
-                </Text>
+                SaMi <Text style={{ color: colors.blue }}>Runner</Text>
               </Text>
 
               <Text
@@ -535,8 +544,12 @@ export default function RunnerDocumentsScreen() {
             <View style={styles.headerSpacer} />
           </View>
 
+          {/* Progress — step 3 of 3 */}
           <View style={styles.progressSection}>
             <View
+              accessibilityRole="progressbar"
+              accessibilityLabel="Documents step"
+              accessibilityValue={{ min: 1, max: 3, now: 3 }}
               style={[
                 styles.progressTrack,
                 { backgroundColor: colors.border },
@@ -545,24 +558,45 @@ export default function RunnerDocumentsScreen() {
               <View
                 style={[
                   styles.progressFill,
-                  {
-                    width: "100%",
-                    backgroundColor: colors.blue,
-                  },
+                  { backgroundColor: colors.blue },
                 ]}
               />
             </View>
 
-            <Text
-              style={[
-                styles.progressText,
-                { color: colors.textMuted },
-              ]}
-            >
-              STEP 3 OF 3 · DOCUMENTS
-            </Text>
+            <View style={styles.progressMeta}>
+              <Text
+                style={[
+                  styles.progressText,
+                  { color: colors.textMuted },
+                ]}
+              >
+                STEP 3 OF 3 · DOCUMENTS
+              </Text>
+
+              <View style={styles.progressDots}>
+                <View
+                  style={[
+                    styles.stepDot,
+                    { backgroundColor: colors.blue },
+                  ]}
+                />
+                <View
+                  style={[
+                    styles.stepDot,
+                    { backgroundColor: colors.blue },
+                  ]}
+                />
+                <View
+                  style={[
+                    styles.stepDotCurrent,
+                    { backgroundColor: colors.blue },
+                  ]}
+                />
+              </View>
+            </View>
           </View>
 
+          {/* Intro */}
           <View style={styles.intro}>
             <View
               style={[
@@ -571,48 +605,37 @@ export default function RunnerDocumentsScreen() {
               ]}
             >
               <Ionicons
-                name="documents-outline"
+                name="document-text-outline"
                 size={27}
                 color={colors.blue}
               />
             </View>
 
-            <Text
-              style={[
-                styles.eyebrow,
-                { color: colors.blue },
-              ]}
-            >
+            <Text style={[styles.eyebrow, { color: colors.blue }]}>
               RUNNER VERIFICATION
             </Text>
 
-            <Text
-              style={[
-                styles.title,
-                { color: colors.text },
-              ]}
-            >
+            <Text style={[styles.title, { color: colors.text }]}>
               Your documents
             </Text>
 
             <Text
-              style={[
-                styles.subtitle,
-                { color: colors.textMuted },
-              ]}
+              style={[styles.subtitle, { color: colors.textMuted }]}
             >
-              Open each document below to upload the
-              requested evidence. Requirements are based
-              on your selected tasks and transport type.
+              Open each document below to upload the requested evidence.
+              Requirements are based on your selected tasks and transport
+              type.
             </Text>
           </View>
 
+          {/* Body */}
           {loading ? (
-            <View style={styles.loadingState}>
-              <ActivityIndicator
-                size="large"
-                color={colors.blue}
-              />
+            <View
+              style={styles.loadingState}
+              accessibilityRole="progressbar"
+              accessibilityLabel="Loading your document checklist"
+            >
+              <ActivityIndicator size="large" color={colors.blue} />
 
               <Text
                 style={[
@@ -647,14 +670,16 @@ export default function RunnerDocumentsScreen() {
 
               <Pressable
                 accessibilityRole="button"
+                accessibilityLabel="Retry loading documents"
+                hitSlop={10}
                 onPress={() => void loadDocuments()}
-                style={styles.retryButton}
+                style={({ pressed }) => [
+                  styles.retryButton,
+                  { opacity: pressed ? 0.55 : 1 },
+                ]}
               >
                 <Text
-                  style={[
-                    styles.retryText,
-                    { color: colors.blue },
-                  ]}
+                  style={[styles.retryText, { color: colors.blue }]}
                 >
                   Retry
                 </Text>
@@ -662,6 +687,7 @@ export default function RunnerDocumentsScreen() {
             </View>
           ) : data ? (
             <>
+              {/* Summary card */}
               <View
                 style={[
                   styles.summaryCard,
@@ -688,8 +714,8 @@ export default function RunnerDocumentsScreen() {
                         { color: colors.textMuted },
                       ]}
                     >
-                      {progress.completed} of{" "}
-                      {progress.required} requirements submitted
+                      {progress.completed} of {progress.required}{" "}
+                      requirements submitted
                     </Text>
                   </View>
 
@@ -704,6 +730,13 @@ export default function RunnerDocumentsScreen() {
                 </View>
 
                 <View
+                  accessibilityRole="progressbar"
+                  accessibilityLabel="Required document progress"
+                  accessibilityValue={{
+                    min: 0,
+                    max: progress.required,
+                    now: progress.completed,
+                  }}
                   style={[
                     styles.summaryTrack,
                     { backgroundColor: colors.border },
@@ -721,6 +754,7 @@ export default function RunnerDocumentsScreen() {
                 </View>
               </View>
 
+              {/* Checklist heading */}
               <View style={styles.listHeading}>
                 <Text
                   style={[
@@ -741,6 +775,7 @@ export default function RunnerDocumentsScreen() {
                 </Text>
               </View>
 
+              {/* Cards */}
               {cards.length === 0 ? (
                 <View
                   style={[
@@ -753,7 +788,7 @@ export default function RunnerDocumentsScreen() {
                 >
                   <Ionicons
                     name="document-text-outline"
-                    size={30}
+                    size={32}
                     color={colors.textMuted}
                   />
 
@@ -772,27 +807,20 @@ export default function RunnerDocumentsScreen() {
                       { color: colors.textMuted },
                     ]}
                   >
-                    SaMi has not returned any document
-                    requirements for this application.
-                    Contact support before continuing.
+                    SaMi has not returned any document requirements for
+                    this application. Contact support before continuing.
                   </Text>
                 </View>
               ) : (
                 <View style={styles.documentList}>
                   {cards.map((card) => {
-                    const documentProgress =
-                      getDocumentProgress(
-                        card,
-                        data.documents,
-                      );
-
-                    const firstRequirement =
-                      card.requirements[0];
-
-                    const icon = documentIcon(
-                      firstRequirement,
+                    const documentProgress = getDocumentProgress(
+                      card,
+                      data.documents,
                     );
 
+                    const firstRequirement = card.requirements[0];
+                    const icon = documentIcon(firstRequirement);
                     const badge = statusColors(
                       documentProgress.status,
                       colors,
@@ -802,8 +830,7 @@ export default function RunnerDocumentsScreen() {
                       card.key === "national_identity";
 
                     const hasRejectedDocument =
-                      documentProgress.status ===
-                      "changes_requested";
+                      documentProgress.status === "changes_requested";
 
                     const reviewItems = card.requirements
                       .map((requirement) => {
@@ -828,7 +855,10 @@ export default function RunnerDocumentsScreen() {
                       <Pressable
                         key={card.key}
                         accessibilityRole="button"
-                        accessibilityLabel={`Open ${card.title}`}
+                        accessibilityLabel={`${card.title}. ${
+                          card.required ? "Required" : "Optional"
+                        }. ${documentProgress.label}.`}
+                        accessibilityHint="Opens this document's upload screen"
                         onPress={() => openDocument(card)}
                         style={({ pressed }) => [
                           styles.documentCard,
@@ -837,22 +867,45 @@ export default function RunnerDocumentsScreen() {
                             borderColor: hasRejectedDocument
                               ? colors.red
                               : colors.border,
+                            opacity: pressed ? 0.85 : 1,
+                            transform: [
+                              { scale: pressed ? 0.995 : 1 },
+                            ],
                           },
-                          pressed && styles.pressed,
+                          hasRejectedDocument &&
+                            Platform.select({
+                              ios: {
+                                shadowColor: colors.red,
+                                shadowOpacity: 0.1,
+                                shadowRadius: 6,
+                                shadowOffset: {
+                                  width: 0,
+                                  height: 3,
+                                },
+                              },
+                              android: { elevation: 1 },
+                              default: {},
+                            }),
                         ]}
                       >
                         <View
                           style={[
                             styles.documentIcon,
                             {
-                              backgroundColor: colors.blueSoft,
+                              backgroundColor: hasRejectedDocument
+                                ? colors.dangerSoft
+                                : colors.blueSoft,
                             },
                           ]}
                         >
                           <Ionicons
                             name={icon}
                             size={23}
-                            color={colors.blue}
+                            color={
+                              hasRejectedDocument
+                                ? colors.red
+                                : colors.blue
+                            }
                           />
                         </View>
 
@@ -863,6 +916,7 @@ export default function RunnerDocumentsScreen() {
                                 styles.documentTitle,
                                 { color: colors.text },
                               ]}
+                              numberOfLines={2}
                             >
                               {card.title}
                             </Text>
@@ -912,9 +966,7 @@ export default function RunnerDocumentsScreen() {
                           <View
                             style={[
                               styles.statusBadge,
-                              {
-                                backgroundColor: badge.background,
-                              },
+                              { backgroundColor: badge.background },
                             ]}
                           >
                             <Text
@@ -973,7 +1025,9 @@ export default function RunnerDocumentsScreen() {
                                   <Text
                                     style={[
                                       styles.storageNotice,
-                                      { color: colors.textMuted },
+                                      {
+                                        color: colors.textMuted,
+                                      },
                                     ]}
                                   >
                                     {review.deletionPending
@@ -1007,6 +1061,7 @@ export default function RunnerDocumentsScreen() {
                 </View>
               )}
 
+              {/* Feedback error */}
               {feedbackError ? (
                 <View
                   style={[
@@ -1020,12 +1075,13 @@ export default function RunnerDocumentsScreen() {
                       { color: colors.textMuted },
                     ]}
                   >
-                    Review comments could not be refreshed. Refresh
-                    this checklist to try again.
+                    Review comments could not be refreshed. Refresh this
+                    checklist to try again.
                   </Text>
                 </View>
               ) : null}
 
+              {/* Review note */}
               <View
                 style={[
                   styles.reviewNote,
@@ -1044,18 +1100,19 @@ export default function RunnerDocumentsScreen() {
                     { color: colors.text },
                   ]}
                 >
-                  Uploaded documents are checked before
-                  your Runner application is approved.
-                  A successful upload does not mean the
-                  document has already been verified.
+                  Uploaded documents are checked before your Runner
+                  application is approved. A successful upload does not
+                  mean the document has already been verified.
                 </Text>
               </View>
             </>
           ) : null}
 
+          {/* Validation error */}
           {error ? (
             <View
               accessibilityRole="alert"
+              accessibilityLiveRegion="polite"
               style={[
                 styles.errorContainer,
                 { backgroundColor: colors.dangerSoft },
@@ -1068,10 +1125,7 @@ export default function RunnerDocumentsScreen() {
               />
 
               <Text
-                style={[
-                  styles.errorText,
-                  { color: colors.red },
-                ]}
+                style={[styles.errorText, { color: colors.red }]}
               >
                 {error}
               </Text>
@@ -1079,6 +1133,7 @@ export default function RunnerDocumentsScreen() {
           ) : null}
         </ScrollView>
 
+        {/* Bottom bar */}
         {!loading && !loadError && data ? (
           <View
             style={[
@@ -1091,13 +1146,25 @@ export default function RunnerDocumentsScreen() {
           >
             <Pressable
               accessibilityRole="button"
+              accessibilityLabel={
+                allRequiredDocumentsComplete
+                  ? "Review application"
+                  : "Complete required documents"
+              }
+              accessibilityHint={
+                allRequiredDocumentsComplete
+                  ? "Opens the review and submit screen"
+                  : "Upload every required document to enable this step"
+              }
+              accessibilityState={{
+                disabled: !allRequiredDocumentsComplete,
+              }}
               disabled={!allRequiredDocumentsComplete}
               onPress={continueToReview}
               style={({ pressed }) => [
                 styles.primaryButton,
                 { backgroundColor: colors.blue },
-                !allRequiredDocumentsComplete &&
-                  styles.disabled,
+                !allRequiredDocumentsComplete && styles.disabled,
                 pressed &&
                   allRequiredDocumentsComplete &&
                   styles.pressed,
@@ -1122,8 +1189,8 @@ export default function RunnerDocumentsScreen() {
                 { color: colors.textMuted },
               ]}
             >
-              Optional supporting documents do not block
-              your application.
+              Optional supporting documents do not block your
+              application.
             </Text>
           </View>
         ) : null}
@@ -1133,32 +1200,28 @@ export default function RunnerDocumentsScreen() {
 }
 
 const styles = StyleSheet.create({
-  safeArea: {
-    flex: 1,
-  },
-
-  container: {
-    flex: 1,
-  },
+  safeArea: { flex: 1 },
+  container: { flex: 1 },
 
   scrollContent: {
-    paddingHorizontal: 22,
+    paddingHorizontal: 20,
     paddingTop: 12,
-    paddingBottom: 28,
+    paddingBottom: 32,
     gap: 22,
   },
 
+  // Header
   header: {
-    minHeight: 46,
+    minHeight: BACK_SIZE,
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
   },
 
   backButton: {
-    width: 42,
-    height: 42,
-    borderRadius: 13,
+    width: BACK_SIZE,
+    height: BACK_SIZE,
+    borderRadius: 14,
     borderWidth: 1,
     alignItems: "center",
     justifyContent: "center",
@@ -1177,39 +1240,60 @@ const styles = StyleSheet.create({
   },
 
   brandTagline: {
-    fontSize: 7,
+    fontSize: 8,
     fontWeight: "900",
     letterSpacing: 2,
   },
 
-  headerSpacer: {
-    width: 42,
-  },
+  headerSpacer: { width: BACK_SIZE },
 
-  progressSection: {
-    gap: 9,
-  },
+  // Progress
+  progressSection: { gap: 10 },
 
   progressTrack: {
-    height: 5,
-    borderRadius: 5,
+    height: 6,
+    borderRadius: 6,
     overflow: "hidden",
   },
 
   progressFill: {
+    width: "100%",
     height: "100%",
-    borderRadius: 5,
+    borderRadius: 6,
+  },
+
+  progressMeta: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
   },
 
   progressText: {
-    fontSize: 9,
+    fontSize: 10.5,
     fontWeight: "900",
     letterSpacing: 1.2,
   },
 
-  intro: {
-    gap: 10,
+  progressDots: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 5,
   },
+
+  stepDot: {
+    width: 6,
+    height: 6,
+    borderRadius: 3,
+  },
+
+  stepDotCurrent: {
+    width: 16,
+    height: 6,
+    borderRadius: 3,
+  },
+
+  // Intro
+  intro: { gap: 10 },
 
   iconWrap: {
     width: 54,
@@ -1221,7 +1305,7 @@ const styles = StyleSheet.create({
   },
 
   eyebrow: {
-    fontSize: 10,
+    fontSize: 11,
     fontWeight: "900",
     letterSpacing: 1.4,
   },
@@ -1234,14 +1318,15 @@ const styles = StyleSheet.create({
   },
 
   subtitle: {
-    fontSize: 13,
+    fontSize: 13.5,
     lineHeight: 21,
   },
 
+  // Summary card
   summaryCard: {
-    borderRadius: 15,
+    borderRadius: 16,
     borderWidth: 1,
-    padding: 15,
+    padding: 16,
     gap: 13,
   },
 
@@ -1251,39 +1336,36 @@ const styles = StyleSheet.create({
     gap: 10,
   },
 
-  summaryCopy: {
-    flex: 1,
-    gap: 5,
-  },
+  summaryCopy: { flex: 1, gap: 5 },
 
   summaryTitle: {
-    fontSize: 12,
+    fontSize: 13,
     fontWeight: "900",
   },
 
   summarySubtitle: {
-    fontSize: 10,
+    fontSize: 11.5,
+    lineHeight: 16,
   },
 
   percentage: {
-    fontSize: 20,
+    fontSize: 22,
     fontWeight: "900",
   },
 
   summaryTrack: {
-    height: 7,
-    borderRadius: 7,
+    height: 8,
+    borderRadius: 8,
     overflow: "hidden",
   },
 
   summaryFill: {
     height: "100%",
-    borderRadius: 7,
+    borderRadius: 8,
   },
 
-  listHeading: {
-    gap: 5,
-  },
+  // List heading
+  listHeading: { gap: 5 },
 
   sectionTitle: {
     fontSize: 16,
@@ -1291,131 +1373,132 @@ const styles = StyleSheet.create({
   },
 
   sectionSubtitle: {
-    fontSize: 11,
+    fontSize: 12,
   },
 
-  documentList: {
-    gap: 11,
-  },
+  // Document list
+  documentList: { gap: 11 },
 
   documentCard: {
-    borderRadius: 15,
+    borderRadius: 16,
     borderWidth: 1,
-    padding: 13,
+    padding: 14,
     flexDirection: "row",
     alignItems: "center",
-    gap: 11,
+    gap: 12,
   },
 
   documentIcon: {
-    width: 43,
-    height: 43,
+    width: 44,
+    height: 44,
     borderRadius: 13,
     alignItems: "center",
     justifyContent: "center",
   },
 
-  documentCopy: {
-    flex: 1,
-    gap: 7,
-  },
+  documentCopy: { flex: 1, gap: 8, minWidth: 0 },
 
   documentTitleRow: {
     flexDirection: "row",
     flexWrap: "wrap",
     alignItems: "center",
-    gap: 7,
+    gap: 6,
   },
 
   documentTitle: {
-    fontSize: 12,
+    fontSize: 13.5,
     fontWeight: "900",
     flexShrink: 1,
+    lineHeight: 18,
   },
 
   requiredMark: {
-    fontSize: 9,
+    fontSize: 11,
     fontWeight: "900",
   },
 
   optionalMark: {
-    fontSize: 9,
+    fontSize: 11,
     fontWeight: "700",
   },
 
   documentDescription: {
-    fontSize: 10,
+    fontSize: 11.5,
     lineHeight: 16,
   },
 
   sidesHint: {
-    fontSize: 9,
+    fontSize: 11,
     fontWeight: "800",
   },
 
   statusBadge: {
     alignSelf: "flex-start",
     borderRadius: 20,
-    paddingHorizontal: 9,
-    paddingVertical: 5,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
   },
 
   statusText: {
-    fontSize: 9,
+    fontSize: 11,
     fontWeight: "900",
   },
 
+  // Review feedback
   reviewFeedback: {
-    borderRadius: 10,
-    padding: 10,
-    gap: 6,
+    borderRadius: 12,
+    padding: 11,
+    gap: 7,
   },
 
   reviewDecision: {
-    fontSize: 9,
+    fontSize: 10.5,
     fontWeight: "900",
     letterSpacing: 0.5,
   },
 
   reviewReason: {
-    fontSize: 11,
-    lineHeight: 17,
+    fontSize: 12,
+    lineHeight: 18,
   },
 
   storageNotice: {
-    fontSize: 10,
-    lineHeight: 15,
+    fontSize: 11.5,
+    lineHeight: 16,
   },
 
   reviewDate: {
-    fontSize: 9,
-    lineHeight: 14,
+    fontSize: 11,
+    lineHeight: 15,
   },
 
+  // Feedback error
   feedbackError: {
     borderRadius: 12,
     padding: 12,
   },
 
   feedbackErrorText: {
-    fontSize: 10,
-    lineHeight: 16,
+    fontSize: 12,
+    lineHeight: 18,
   },
 
+  // Review note
   reviewNote: {
-    borderRadius: 13,
-    padding: 13,
+    borderRadius: 14,
+    padding: 14,
     flexDirection: "row",
     alignItems: "flex-start",
-    gap: 9,
+    gap: 10,
   },
 
   reviewNoteText: {
     flex: 1,
-    fontSize: 10,
-    lineHeight: 17,
+    fontSize: 12,
+    lineHeight: 18,
   },
 
+  // Loading
   loadingState: {
     minHeight: 190,
     alignItems: "center",
@@ -1424,9 +1507,10 @@ const styles = StyleSheet.create({
   },
 
   loadingText: {
-    fontSize: 11,
+    fontSize: 12.5,
   },
 
+  // Load error
   loadError: {
     borderRadius: 14,
     padding: 14,
@@ -1437,39 +1521,39 @@ const styles = StyleSheet.create({
 
   loadErrorText: {
     flex: 1,
-    fontSize: 11,
-    lineHeight: 17,
+    fontSize: 12,
+    lineHeight: 18,
   },
 
-  retryButton: {
-    padding: 5,
-  },
+  retryButton: { padding: 6 },
 
   retryText: {
-    fontSize: 11,
+    fontSize: 12,
     fontWeight: "900",
   },
 
+  // Empty state
   emptyState: {
     borderWidth: 1,
-    borderRadius: 15,
-    padding: 22,
+    borderRadius: 16,
+    padding: 24,
     alignItems: "center",
     gap: 10,
   },
 
   emptyTitle: {
-    fontSize: 13,
+    fontSize: 14,
     fontWeight: "900",
     textAlign: "center",
   },
 
   emptyText: {
-    fontSize: 11,
-    lineHeight: 17,
+    fontSize: 12,
+    lineHeight: 18,
     textAlign: "center",
   },
 
+  // Validation error
   errorContainer: {
     borderRadius: 12,
     padding: 12,
@@ -1480,12 +1564,13 @@ const styles = StyleSheet.create({
 
   errorText: {
     flex: 1,
-    fontSize: 11,
-    lineHeight: 17,
+    fontSize: 12.5,
+    lineHeight: 18,
   },
 
+  // Bottom bar
   bottomBar: {
-    paddingHorizontal: 22,
+    paddingHorizontal: 20,
     paddingTop: 13,
     paddingBottom: 10,
     borderTopWidth: 1,
@@ -1493,7 +1578,7 @@ const styles = StyleSheet.create({
   },
 
   primaryButton: {
-    minHeight: 56,
+    minHeight: 58,
     borderRadius: 15,
     flexDirection: "row",
     alignItems: "center",
@@ -1503,21 +1588,23 @@ const styles = StyleSheet.create({
 
   primaryButtonText: {
     color: "#FFFFFF",
-    fontSize: 13,
+    fontSize: 15,
     fontWeight: "900",
+    letterSpacing: -0.2,
   },
 
   bottomHint: {
-    fontSize: 9,
-    lineHeight: 14,
+    fontSize: 11.5,
+    lineHeight: 16,
     textAlign: "center",
+    maxWidth: 340,
+    alignSelf: "center",
   },
 
-  disabled: {
-    opacity: 0.45,
-  },
+  disabled: { opacity: 0.45 },
 
   pressed: {
-    opacity: 0.82,
+    opacity: 0.85,
+    transform: [{ scale: 0.985 }],
   },
 });

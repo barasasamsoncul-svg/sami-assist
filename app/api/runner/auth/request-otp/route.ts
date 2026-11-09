@@ -1,4 +1,6 @@
 
+import { createHmac } from "node:crypto";
+import { isIP } from "node:net";
 import { NextResponse } from "next/server";
 
 import {
@@ -24,6 +26,27 @@ type RunnerAccount = {
   account_status: string;
   verification_status: string;
 };
+
+function getTrustedClientIp(request: Request): string | null {
+  // Vercel overwrites x-forwarded-for with the public client IP.
+  // Accept exactly one validated address; never trust an arbitrary
+  // comma-separated forwarding chain supplied by a caller.
+  const candidate = request.headers
+    .get("x-forwarded-for")
+    ?.trim();
+
+  if (!candidate || candidate.includes(",")) {
+    return null;
+  }
+
+  return isIP(candidate) ? candidate : null;
+}
+
+function hashClientIp(clientIp: string, pepper: string): string {
+  return createHmac("sha256", pepper)
+    .update("sami-runner-otp-ip:" + clientIp, "utf8")
+    .digest("hex");
+}
 
 function normalizeKenyanPhone(value: string): string | null {
   const trimmed = value.trim();
@@ -129,6 +152,30 @@ export async function POST(request: Request) {
     );
   }
 
+  const otpPepper = process.env.AUTH_EMAIL_OTP_PEPPER?.trim();
+
+  if (!otpPepper) {
+    return errorResponse(
+      "Runner email verification is not configured yet. Contact SaMi support.",
+      503,
+    );
+  }
+
+  const trustedClientIp = getTrustedClientIp(request);
+
+  if (!trustedClientIp && process.env.NODE_ENV === "production") {
+    return errorResponse(
+      "We could not verify the request source. Please try again later.",
+      503,
+    );
+  }
+
+  // Local development has no Vercel forwarding header. Keep local
+  // requests in one shared development bucket instead of bypassing
+  // the IP rate limiter entirely.
+  const clientIp = trustedClientIp || "127.0.0.1";
+  const ipHash = hashClientIp(clientIp, otpPepper);
+
   const client = await databasePool().connect();
 
   let challengeId = "";
@@ -169,63 +216,14 @@ export async function POST(request: Request) {
 
     const existingAccount = accountResult.rows[0];
 
-    if (purpose === "register" && existingAccount) {
-      await client.query("ROLLBACK");
-
-      return errorResponse(
-        "A Runner account with this email already exists. Sign in instead.",
-        409,
-      );
-    }
-
-    if (purpose === "login" && !existingAccount) {
-      await client.query("ROLLBACK");
-
-      return errorResponse(
-        "No Runner account was found with this email. Select Get started to register.",
-        404,
-      );
-    }
-
-    if (
-      existingAccount &&
-      ["suspended", "closed"].includes(
-        existingAccount.account_status,
-      )
-    ) {
-      await client.query("ROLLBACK");
-
-      return errorResponse(
-        "This Runner account is unavailable. Contact SaMi support.",
-        403,
-      );
-    }
-
-    if (purpose === "register" && phoneE164) {
-      const phoneResult = await client.query<{
-        id: string;
-      }>(
-        `SELECT id
-         FROM public.runner_accounts
-         WHERE phone_e164 = $1
-         LIMIT 1
-         FOR UPDATE`,
-        [phoneE164],
-      );
-
-      if (phoneResult.rows.length > 0) {
-        await client.query("ROLLBACK");
-
-        return errorResponse(
-          "This phone number is already associated with a Runner account. Sign in or use another number.",
-          409,
-        );
-      }
-
-      recipientName = fullName;
-    } else {
-      recipientName = existingAccount?.full_name || null;
-    }
+    // Do not disclose whether the email or phone number
+    // belongs to an existing account before email verification.
+    // Duplicate-account, phone and account-status checks remain
+    // in verify-otp, after the user proves control of the inbox.
+    recipientName =
+      purpose === "register"
+        ? fullName
+        : existingAccount?.full_name || null;
 
     // Maximum five requests per hour and one request every 60 seconds.
     const rateLimit = await client.query<{ email: string }>(
@@ -267,6 +265,81 @@ export async function POST(request: Request) {
 
       return errorResponse(
         "Please wait before requesting another code. A maximum of five codes is allowed per hour.",
+        429,
+      );
+    }
+
+    // Apply additional network-level limits across all email addresses.
+    // The upsert is atomic, so concurrent requests from the same IP
+    // cannot increment the counters past their configured limits.
+    const ipRateLimit = await client.query<{ ip_hash: string }>(
+      `INSERT INTO public.runner_email_otp_ip_rate_limits (
+         ip_hash,
+         window_started_at,
+         request_count,
+         burst_window_started_at,
+         burst_request_count,
+         last_requested_at,
+         created_at,
+         updated_at
+       )
+       VALUES (
+         $1,
+         now(),
+         1,
+         now(),
+         1,
+         now(),
+         now(),
+         now()
+       )
+       ON CONFLICT (ip_hash)
+       DO UPDATE SET
+         window_started_at = CASE
+           WHEN runner_email_otp_ip_rate_limits.window_started_at
+             <= now() - interval '1 hour'
+           THEN now()
+           ELSE runner_email_otp_ip_rate_limits.window_started_at
+         END,
+         request_count = CASE
+           WHEN runner_email_otp_ip_rate_limits.window_started_at
+             <= now() - interval '1 hour'
+           THEN 1
+           ELSE runner_email_otp_ip_rate_limits.request_count + 1
+         END,
+         burst_window_started_at = CASE
+           WHEN runner_email_otp_ip_rate_limits.burst_window_started_at
+             <= now() - interval '10 minutes'
+           THEN now()
+           ELSE runner_email_otp_ip_rate_limits.burst_window_started_at
+         END,
+         burst_request_count = CASE
+           WHEN runner_email_otp_ip_rate_limits.burst_window_started_at
+             <= now() - interval '10 minutes'
+           THEN 1
+           ELSE runner_email_otp_ip_rate_limits.burst_request_count + 1
+         END,
+         last_requested_at = now(),
+         updated_at = now()
+       WHERE (
+           runner_email_otp_ip_rate_limits.window_started_at
+             <= now() - interval '1 hour'
+           OR runner_email_otp_ip_rate_limits.request_count < 300
+         )
+         AND (
+           runner_email_otp_ip_rate_limits.burst_window_started_at
+             <= now() - interval '10 minutes'
+           OR runner_email_otp_ip_rate_limits.burst_request_count < 60
+         )
+       RETURNING ip_hash`,
+      [ipHash],
+    );
+
+    if (!ipRateLimit.rows[0]) {
+      await client.query("ROLLBACK");
+
+      return errorResponse(
+        "Too many verification requests have come from this network. Please try again later.",
         429,
       );
     }
