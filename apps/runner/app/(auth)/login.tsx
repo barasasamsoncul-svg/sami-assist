@@ -131,7 +131,7 @@ export default function RunnerLoginScreen() {
     >
       <KeyboardAvoidingView
         style={styles.keyboardContainer}
-        behavior={Platform.OS === "ios" ? "padding" : "height"}
+        behavior={Platform.OS === "ios" ? "padding" : undefined}
         keyboardVerticalOffset={Platform.OS === "ios" ? 8 : 0}
       >
         <ScrollView
@@ -140,7 +140,7 @@ export default function RunnerLoginScreen() {
           contentContainerStyle={styles.content}
           keyboardShouldPersistTaps="handled"
           keyboardDismissMode={
-            Platform.OS === "ios" ? "interactive" : "on-drag"
+            Platform.OS === "ios" ? "interactive" : "none"
           }
           showsVerticalScrollIndicator={false}
         >
