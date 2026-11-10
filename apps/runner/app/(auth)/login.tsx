@@ -41,10 +41,27 @@ export default function RunnerLoginScreen() {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const [inputFocused, setInputFocused] = useState(false);
+  const [keyboardVisible, setKeyboardVisible] = useState(false);
 
   useEffect(() => {
     return () => {
       mountedRef.current = false;
+    };
+  }, []);
+
+  useEffect(() => {
+    const showSubscription = Keyboard.addListener(
+      "keyboardDidShow",
+      () => setKeyboardVisible(true),
+    );
+    const hideSubscription = Keyboard.addListener(
+      "keyboardDidHide",
+      () => setKeyboardVisible(false),
+    );
+
+    return () => {
+      showSubscription.remove();
+      hideSubscription.remove();
     };
   }, []);
 
@@ -137,7 +154,10 @@ export default function RunnerLoginScreen() {
         <ScrollView
           ref={scrollRef}
           style={styles.scroll}
-          contentContainerStyle={styles.content}
+          contentContainerStyle={[
+            styles.content,
+            keyboardVisible && styles.contentKeyboardVisible,
+          ]}
           keyboardShouldPersistTaps="handled"
           keyboardDismissMode={
             Platform.OS === "ios" ? "interactive" : "none"
@@ -518,8 +538,12 @@ const styles = StyleSheet.create({
     paddingHorizontal: 20,
     paddingTop: 12,
     paddingBottom: 32,
-    justifyContent: "flex-start",
+    justifyContent: "space-between",
     gap: 26,
+  },
+
+  contentKeyboardVisible: {
+    justifyContent: "flex-start",
   },
 
   main: { gap: 22 },
