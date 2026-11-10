@@ -131,7 +131,7 @@ export default function RunnerLoginScreen() {
     >
       <KeyboardAvoidingView
         style={styles.keyboardContainer}
-        behavior={Platform.OS === "ios" ? "padding" : undefined}
+        behavior="padding"
         keyboardVerticalOffset={Platform.OS === "ios" ? 8 : 0}
       >
         <ScrollView
@@ -518,7 +518,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 20,
     paddingTop: 12,
     paddingBottom: 32,
-    justifyContent: "space-between",
+    justifyContent: "flex-start",
     gap: 26,
   },
 
