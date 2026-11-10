@@ -149,12 +149,14 @@ export default function RunnerRegistrationScreen() {
 
       <KeyboardAvoidingView
         style={styles.keyboardContainer}
-        behavior={Platform.OS === "ios" ? "padding" : undefined}
+        behavior="padding"
         keyboardVerticalOffset={Platform.OS === "ios" ? 8 : 0}
       >
         <ScrollView
+          style={styles.scroll}
           contentContainerStyle={styles.scrollContent}
           keyboardShouldPersistTaps="handled"
+          keyboardDismissMode={Platform.OS === "ios" ? "interactive" : "none"}
           showsVerticalScrollIndicator={false}
         >
           {/* Header */}
@@ -532,6 +534,7 @@ export default function RunnerRegistrationScreen() {
 const styles = StyleSheet.create({
   safeArea: { flex: 1 },
   keyboardContainer: { flex: 1 },
+  scroll: { flex: 1 },
 
   scrollContent: {
     flexGrow: 1,
