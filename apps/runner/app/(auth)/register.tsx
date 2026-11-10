@@ -15,7 +15,10 @@ import {
 
 import { router } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
-import { SafeAreaView } from "react-native-safe-area-context";
+import {
+  SafeAreaView,
+  useSafeAreaInsets,
+} from "react-native-safe-area-context";
 
 import { requestRunnerRegistrationOtp } from "@/api";
 import { useRunnerTheme } from "@/theme";
@@ -24,6 +27,7 @@ const BACK_SIZE = 44;
 
 export default function RunnerRegistrationScreen() {
   const { colors } = useRunnerTheme();
+  const insets = useSafeAreaInsets();
 
   const [fullName, setFullName] = useState("");
   const [email, setEmail] = useState("");
@@ -139,7 +143,7 @@ export default function RunnerRegistrationScreen() {
 
   return (
     <SafeAreaView
-      edges={["top", "bottom"]}
+      edges={["top"]}
       style={[styles.safeArea, { backgroundColor: colors.paper }]}
     >
       <StatusBar
@@ -149,15 +153,17 @@ export default function RunnerRegistrationScreen() {
 
       <KeyboardAvoidingView
         style={styles.keyboardContainer}
-        behavior={Platform.OS === "ios" ? "padding" : "height"}
-        keyboardVerticalOffset={Platform.OS === "ios" ? 8 : 0}
+        behavior={Platform.OS === "ios" ? "padding" : undefined}
       >
         <ScrollView
-          contentContainerStyle={styles.scrollContent}
+          contentContainerStyle={[
+            styles.scrollContent,
+            { paddingBottom: insets.bottom + 36 },
+          ]}
           keyboardShouldPersistTaps="handled"
+          keyboardDismissMode="none"
           showsVerticalScrollIndicator={false}
         >
-          {/* Header */}
           <View style={styles.header}>
             <Pressable
               accessibilityRole="button"
@@ -201,7 +207,6 @@ export default function RunnerRegistrationScreen() {
             <View style={styles.headerSpacer} />
           </View>
 
-          {/* Intro */}
           <View style={styles.intro}>
             <View
               style={[
@@ -233,9 +238,7 @@ export default function RunnerRegistrationScreen() {
             </Text>
           </View>
 
-          {/* Form */}
           <View style={styles.form}>
-            {/* Full name */}
             <View style={styles.fieldGroup}>
               <Text style={[styles.label, { color: colors.text }]}>
                 Full name
@@ -293,7 +296,6 @@ export default function RunnerRegistrationScreen() {
               </View>
             </View>
 
-            {/* Email */}
             <View style={styles.fieldGroup}>
               <Text style={[styles.label, { color: colors.text }]}>
                 Email address
@@ -361,7 +363,6 @@ export default function RunnerRegistrationScreen() {
               </Text>
             </View>
 
-            {/* Phone */}
             <View style={styles.fieldGroup}>
               <Text style={[styles.label, { color: colors.text }]}>
                 Phone number
@@ -430,7 +431,6 @@ export default function RunnerRegistrationScreen() {
             </View>
           </View>
 
-          {/* Error */}
           {error ? (
             <View
               accessibilityRole="alert"
@@ -454,7 +454,6 @@ export default function RunnerRegistrationScreen() {
             </View>
           ) : null}
 
-          {/* Footer */}
           <View style={styles.footer}>
             <Pressable
               accessibilityRole="button"
@@ -471,7 +470,7 @@ export default function RunnerRegistrationScreen() {
               ]}
             >
               {submitting ? (
-                <ActivityIndicator color="#FFFFFF" />
+                <ActivityIndicator color="#FFFFFF" size="small" />
               ) : (
                 <>
                   <Text style={styles.submitButtonText}>Submit</Text>
@@ -537,11 +536,9 @@ const styles = StyleSheet.create({
     flexGrow: 1,
     paddingHorizontal: 20,
     paddingTop: 12,
-    paddingBottom: 36,
     gap: 22,
   },
 
-  // Header
   header: {
     minHeight: BACK_SIZE,
     flexDirection: "row",
@@ -578,7 +575,6 @@ const styles = StyleSheet.create({
 
   headerSpacer: { width: BACK_SIZE },
 
-  // Intro
   intro: { gap: 10 },
 
   iconWrap: {
@@ -609,7 +605,6 @@ const styles = StyleSheet.create({
     maxWidth: 340,
   },
 
-  // Form
   form: { gap: 22 },
 
   fieldGroup: { gap: 9 },
@@ -641,7 +636,6 @@ const styles = StyleSheet.create({
     lineHeight: 17,
   },
 
-  // Error
   errorContainer: {
     borderRadius: 12,
     padding: 12,
@@ -656,7 +650,6 @@ const styles = StyleSheet.create({
     lineHeight: 18,
   },
 
-  // Footer
   footer: {
     gap: 17,
     paddingTop: 2,
@@ -686,9 +679,7 @@ const styles = StyleSheet.create({
     gap: 5,
   },
 
-  signInPrompt: {
-    fontSize: 13,
-  },
+  signInPrompt: { fontSize: 13 },
 
   signInLink: {
     fontSize: 13,

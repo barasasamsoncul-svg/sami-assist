@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import {
   ActivityIndicator,
   Keyboard,
@@ -11,7 +11,10 @@ import {
   TextInput,
   View,
 } from "react-native";
-import { SafeAreaView } from "react-native-safe-area-context";
+import {
+  SafeAreaView,
+  useSafeAreaInsets,
+} from "react-native-safe-area-context";
 import { router } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 
@@ -33,6 +36,7 @@ function isValidEmail(value: string) {
 
 export default function RunnerLoginScreen() {
   const { colors } = useRunnerTheme();
+  const insets = useSafeAreaInsets();
   const scrollRef = useRef<ScrollView | null>(null);
   const emailInputRef = useRef<TextInput | null>(null);
   const mountedRef = useRef(true);
@@ -48,7 +52,6 @@ export default function RunnerLoginScreen() {
     };
   }, []);
 
-  // Scroll the error banner into view whenever it appears.
   useEffect(() => {
     if (!error) return;
     const frame = requestAnimationFrame(() => {
@@ -127,25 +130,24 @@ export default function RunnerLoginScreen() {
   return (
     <SafeAreaView
       style={[styles.safeArea, { backgroundColor: colors.paper }]}
-      edges={["top", "bottom"]}
+      edges={["top"]}
     >
       <KeyboardAvoidingView
         style={styles.keyboardContainer}
-        behavior={Platform.OS === "ios" ? "padding" : "height"}
-        keyboardVerticalOffset={Platform.OS === "ios" ? 8 : 0}
+        behavior={Platform.OS === "ios" ? "padding" : undefined}
       >
         <ScrollView
           ref={scrollRef}
           style={styles.scroll}
-          contentContainerStyle={styles.content}
+          contentContainerStyle={[
+            styles.content,
+            { paddingBottom: insets.bottom + 32 },
+          ]}
           keyboardShouldPersistTaps="handled"
-          keyboardDismissMode={
-            Platform.OS === "ios" ? "interactive" : "on-drag"
-          }
+          keyboardDismissMode="none"
           showsVerticalScrollIndicator={false}
         >
           <View style={styles.main}>
-            {/* Top bar */}
             <View style={styles.topBar}>
               <Pressable
                 accessibilityRole="button"
@@ -181,7 +183,6 @@ export default function RunnerLoginScreen() {
               <View style={styles.topBarSpacer} />
             </View>
 
-            {/* Brand block */}
             <View style={styles.brand}>
               <View
                 style={[
@@ -209,7 +210,6 @@ export default function RunnerLoginScreen() {
               </Text>
             </View>
 
-            {/* Intro */}
             <View style={styles.intro}>
               <View
                 style={[
@@ -242,7 +242,6 @@ export default function RunnerLoginScreen() {
               </Text>
             </View>
 
-            {/* Form card */}
             <View
               style={[
                 styles.formCard,
@@ -291,9 +290,7 @@ export default function RunnerLoginScreen() {
                 <Ionicons
                   name="mail-outline"
                   size={20}
-                  color={
-                    inputFocused ? colors.blue : colors.textMuted
-                  }
+                  color={inputFocused ? colors.blue : colors.textMuted}
                 />
 
                 <TextInput
@@ -372,9 +369,7 @@ export default function RunnerLoginScreen() {
               <Pressable
                 accessibilityRole="button"
                 accessibilityLabel={
-                  busy
-                    ? "Sending verification code"
-                    : "Continue with email"
+                  busy ? "Sending verification code" : "Continue with email"
                 }
                 accessibilityHint="Sends a six-digit verification code to your email address"
                 accessibilityState={{ busy, disabled: busy }}
@@ -425,7 +420,6 @@ export default function RunnerLoginScreen() {
               </View>
             </View>
 
-            {/* Info card */}
             <View
               style={[
                 styles.infoCard,
@@ -447,7 +441,6 @@ export default function RunnerLoginScreen() {
             </View>
           </View>
 
-          {/* Footer */}
           <View style={styles.footer}>
             <View style={styles.registerPrompt}>
               <Text
@@ -517,14 +510,11 @@ const styles = StyleSheet.create({
     flexGrow: 1,
     paddingHorizontal: 20,
     paddingTop: 12,
-    paddingBottom: 32,
-    justifyContent: "space-between",
     gap: 26,
   },
 
   main: { gap: 22 },
 
-  // Top bar
   topBar: {
     minHeight: BACK_SIZE,
     flexDirection: "row",
@@ -549,7 +539,6 @@ const styles = StyleSheet.create({
 
   topBarSpacer: { width: BACK_SIZE },
 
-  // Brand block
   brand: {
     alignItems: "center",
     gap: 7,
@@ -578,7 +567,6 @@ const styles = StyleSheet.create({
     letterSpacing: 2.3,
   },
 
-  // Intro
   intro: { gap: 11 },
 
   eyebrowWrap: {
@@ -616,7 +604,6 @@ const styles = StyleSheet.create({
     maxWidth: 330,
   },
 
-  // Form card
   formCard: {
     borderWidth: 1,
     borderRadius: 18,
@@ -653,7 +640,6 @@ const styles = StyleSheet.create({
     fontSize: 15,
   },
 
-  // Error
   errorContainer: {
     flexDirection: "row",
     alignItems: "flex-start",
@@ -668,7 +654,6 @@ const styles = StyleSheet.create({
     lineHeight: 18,
   },
 
-  // Primary button
   primaryButton: {
     minHeight: 58,
     borderRadius: 15,
@@ -686,7 +671,6 @@ const styles = StyleSheet.create({
     letterSpacing: -0.2,
   },
 
-  // Security note
   securityNote: {
     flexDirection: "row",
     alignItems: "center",
@@ -700,7 +684,6 @@ const styles = StyleSheet.create({
     lineHeight: 16,
   },
 
-  // Info card
   infoCard: {
     padding: 14,
     borderRadius: 14,
@@ -715,8 +698,10 @@ const styles = StyleSheet.create({
     lineHeight: 18,
   },
 
-  // Footer
-  footer: { gap: 18 },
+  footer: {
+    marginTop: "auto",
+    gap: 18,
+  },
 
   registerPrompt: {
     flexDirection: "row",

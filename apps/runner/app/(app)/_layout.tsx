@@ -19,10 +19,10 @@ export default function RunnerAppLayout() {
         // screen mounts — very visible when leaving the map dashboard.
         contentStyle: { backgroundColor: colors.paper },
 
-        // Screen readers should focus the new screen's content, not
-        // the navigation shell. Each screen's first focusable element
-        // becomes the initial focus target.
-        statusBarStyle: colors.paper === "#080F1D" ? "light" : "dark",
+       // Screen readers should focus the new screen's content, not
+// the navigation shell. Each screen's first focusable element
+// becomes the initial focus target.
+statusBarStyle: colors.paper === "#080F1D" ? "light" : "dark",
       }}
     />
   );

@@ -82,7 +82,8 @@
     "owner": "sami-assist",
     "androidStatusBar": {
       "backgroundColor": "#000535",
-      "barStyle": "light-content"
+      "barStyle": "light-content",
+      "translucent": false
     }
   }
 }
