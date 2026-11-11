@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import {
   ActivityIndicator,
   Keyboard,
@@ -134,8 +134,9 @@ export default function RunnerLoginScreen() {
     >
       <KeyboardAvoidingView
         style={styles.keyboardContainer}
-        behavior={Platform.OS === "ios" ? "padding" : undefined}
-        keyboardVerticalOffset={Platform.OS === "ios" ? 8 : 0}
+        enabled={Platform.OS === "ios"}
+        behavior="padding"
+        keyboardVerticalOffset={8}
       >
         <ScrollView
           ref={scrollRef}
