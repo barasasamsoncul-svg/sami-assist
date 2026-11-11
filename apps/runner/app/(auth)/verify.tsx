@@ -82,6 +82,8 @@ export default function VerifyRunnerScreen() {
 
   const codeInputRef = useRef<TextInput>(null);
   const mountedRef = useRef(true);
+  const verificationInFlightRef = useRef(false);
+  const lastAutoSubmittedCodeRef = useRef<string | null>(null);
 
   // Autofocus so the OS one-time-code autofill prompt can fire immediately.
   useEffect(() => {
@@ -113,7 +115,12 @@ export default function VerifyRunnerScreen() {
   }, [resendAvailableAt]);
 
   async function verify() {
-    if (busy || resending || verified) return;
+    if (
+      verificationInFlightRef.current ||
+      busy ||
+      resending ||
+      verified
+    ) return;
 
     if (!challengeId) {
       setError("Your verification session is missing. Start again.");
@@ -125,6 +132,7 @@ export default function VerifyRunnerScreen() {
       return;
     }
 
+    verificationInFlightRef.current = true;
     setBusy(true);
     setError("");
     setNotice("");
@@ -159,20 +167,26 @@ export default function VerifyRunnerScreen() {
           : "The verification code could not be verified.",
       );
     } finally {
+      verificationInFlightRef.current = false;
       if (mountedRef.current) {
         setBusy(false);
       }
     }
   }
 
-  // Auto-submit on the 6th digit — the standard OTP pattern. `verify`'s state
-  // deps are all listed below so the effect re-runs with the latest closure.
+  // Auto-submit each completed code only once. In particular, do not retry
+  // a consumed/invalid challenge just because busy changes back to false.
   useEffect(() => {
     if (code.length !== CODE_LENGTH) return;
     if (busy || resending || verified) return;
     if (!challengeId) return;
 
+    const submissionKey = challengeId + ":" + code;
+    if (lastAutoSubmittedCodeRef.current === submissionKey) return;
+
     const t = setTimeout(() => {
+      if (lastAutoSubmittedCodeRef.current === submissionKey) return;
+      lastAutoSubmittedCodeRef.current = submissionKey;
       void verify();
     }, CODE_AUTOSUBMIT_DELAY_MS);
 
@@ -269,7 +283,7 @@ export default function VerifyRunnerScreen() {
 
       <KeyboardAvoidingView
         style={styles.keyboardContainer}
-        behavior={Platform.OS === "ios" ? "padding" : "height"}
+        behavior={Platform.OS === "ios" ? "padding" : undefined}
         keyboardVerticalOffset={Platform.OS === "ios" ? 8 : 0}
       >
         <ScrollView
@@ -371,6 +385,7 @@ export default function VerifyRunnerScreen() {
               ref={codeInputRef}
               value={code}
               onChangeText={(value) => {
+                lastAutoSubmittedCodeRef.current = null;
                 setCode(
                   value.replace(/[^0-9]/g, "").slice(0, CODE_LENGTH),
                 );
