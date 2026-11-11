@@ -39,7 +39,29 @@ export default function RunnerLoginScreen() {
   const insets = useSafeAreaInsets();
   const scrollRef = useRef<ScrollView | null>(null);
   const emailInputRef = useRef<TextInput | null>(null);
+  const scrollOffsetRef = useRef(0);
   const mountedRef = useRef(true);
+
+  const scrollEmailIntoView = useCallback(() => {
+    requestAnimationFrame(() => {
+      const input = emailInputRef.current;
+      const scroll = scrollRef.current;
+      if (!input || !scroll) return;
+
+      input.measureInWindow((_x, inputY) => {
+        scroll.measureInWindow((_scrollX, scrollY) => {
+          const distanceFromViewportTop = inputY - scrollY;
+          const targetY =
+            scrollOffsetRef.current + distanceFromViewportTop - 28;
+
+          scroll.scrollTo({
+            y: Math.max(0, targetY),
+            animated: true,
+          });
+        });
+      });
+    });
+  }, []);
 
   const [email, setEmail] = useState("");
   const [busy, setBusy] = useState(false);
@@ -53,12 +75,17 @@ export default function RunnerLoginScreen() {
   }, []);
 
   useEffect(() => {
-    if (!error) return;
-    const frame = requestAnimationFrame(() => {
-      scrollRef.current?.scrollToEnd({ animated: true });
+    const subscription = Keyboard.addListener("keyboardDidShow", () => {
+      scrollEmailIntoView();
     });
-    return () => cancelAnimationFrame(frame);
-  }, [error]);
+
+    return () => subscription.remove();
+  }, [scrollEmailIntoView]);
+
+  useEffect(() => {
+    if (!error) return;
+    scrollEmailIntoView();
+  }, [error, scrollEmailIntoView]);
 
   async function continueWithEmail() {
     if (busy) return;
@@ -145,7 +172,11 @@ export default function RunnerLoginScreen() {
             { paddingBottom: insets.bottom + 32 },
           ]}
           keyboardShouldPersistTaps="handled"
-          keyboardDismissMode="none"
+          keyboardDismissMode="on-drag"
+          scrollEventThrottle={16}
+          onScroll={(event) => {
+            scrollOffsetRef.current = event.nativeEvent.contentOffset.y;
+          }}
           showsVerticalScrollIndicator={false}
         >
           <View style={styles.main}>
@@ -301,7 +332,10 @@ export default function RunnerLoginScreen() {
                     setEmail(value);
                     if (error) setError("");
                   }}
-                  onFocus={() => setInputFocused(true)}
+                  onFocus={() => {
+                    setInputFocused(true);
+                    scrollEmailIntoView();
+                  }}
                   onBlur={() => setInputFocused(false)}
                   placeholder="you@example.com"
                   placeholderTextColor={colors.textMuted}
