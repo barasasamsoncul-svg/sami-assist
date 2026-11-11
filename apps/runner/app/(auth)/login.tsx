@@ -44,7 +44,6 @@ export default function RunnerLoginScreen() {
   const [email, setEmail] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
-  const [inputFocused, setInputFocused] = useState(false);
 
   useEffect(() => {
     return () => {
@@ -121,11 +120,7 @@ export default function RunnerLoginScreen() {
     router.replace("/");
   }
 
-  const inputBorderColor = error
-    ? colors.red
-    : inputFocused
-      ? colors.blue
-      : colors.border;
+  const inputBorderColor = error ? colors.red : colors.border;
 
   return (
     <SafeAreaView
@@ -276,23 +271,12 @@ export default function RunnerLoginScreen() {
                     backgroundColor: colors.paper,
                     borderColor: inputBorderColor,
                   },
-                  inputFocused &&
-                    Platform.select({
-                      ios: {
-                        shadowColor: colors.blue,
-                        shadowOpacity: 0.16,
-                        shadowRadius: 6,
-                        shadowOffset: { width: 0, height: 2 },
-                      },
-                      android: { elevation: 1 },
-                      default: {},
-                    }),
                 ]}
               >
                 <Ionicons
                   name="mail-outline"
                   size={20}
-                  color={inputFocused ? colors.blue : colors.textMuted}
+                  color={colors.textMuted}
                 />
 
                 <TextInput
@@ -302,8 +286,6 @@ export default function RunnerLoginScreen() {
                     setEmail(value);
                     if (error) setError("");
                   }}
-                  onFocus={() => setInputFocused(true)}
-                  onBlur={() => setInputFocused(false)}
                   placeholder="you@example.com"
                   placeholderTextColor={colors.textMuted}
                   keyboardType="email-address"
