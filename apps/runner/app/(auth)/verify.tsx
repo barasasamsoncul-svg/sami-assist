@@ -132,6 +132,8 @@ export default function VerifyRunnerScreen() {
       return;
     }
 
+    // Manual and automatic submission share the same one-attempt guard.
+    lastAutoSubmittedCodeRef.current = challengeId + ":" + code;
     verificationInFlightRef.current = true;
     setBusy(true);
     setError("");
