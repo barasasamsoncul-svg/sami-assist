@@ -12,10 +12,9 @@
     ],
     "userInterfaceStyle": "light",
     "icon": "./assets/icon.png",
-
     "plugins": [
       "expo-router",
-
+      "expo-sharing",
       [
         "expo-splash-screen",
         {
@@ -29,7 +28,6 @@
           }
         }
       ],
-
       [
         "expo-location",
         {
@@ -40,16 +38,13 @@
           "isAndroidForegroundServiceEnabled": true
         }
       ],
-
       [
         "expo-secure-store",
         {
           "configureAndroidBackup": true
         }
       ],
-
       "@maplibre/maplibre-react-native",
-
       [
         "@config-plugins/react-native-webrtc",
         {
@@ -57,7 +52,6 @@
           "microphonePermission": "SaMi Runner uses the microphone when you choose to use in-app voice or video calling."
         }
       ],
-
       [
         "expo-image-picker",
         {
@@ -67,13 +61,11 @@
         }
       ]
     ],
-
     "ios": {
       "supportsTablet": false,
       "bundleIdentifier": "com.sami.runner",
       "backgroundColor": "#000535"
     },
-
     "android": {
       "package": "com.sami.runner",
       "permissions": [
@@ -87,37 +79,29 @@
         "backgroundColor": "#000535"
       }
     },
-
     "experiments": {
       "typedRoutes": true
     },
-
     "backgroundColor": "#000535",
-
     "web": {
       "backgroundColor": "#000535"
     },
-
     "runtimeVersion": {
       "policy": "fingerprint"
     },
-
     "updates": {
       "url": "https://u.expo.dev/8fcd647e-3514-4436-b1ce-c1b417f6c1d3",
       "enabled": true,
       "checkAutomatically": "ON_LOAD",
       "fallbackToCacheTimeout": 0
     },
-
     "extra": {
       "router": {},
       "eas": {
         "projectId": "8fcd647e-3514-4436-b1ce-c1b417f6c1d3"
       }
     },
-
     "owner": "sami-assist",
-
     "androidStatusBar": {
       "backgroundColor": "#000535",
       "barStyle": "light-content",
