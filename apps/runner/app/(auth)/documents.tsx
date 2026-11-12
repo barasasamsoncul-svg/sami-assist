@@ -17,7 +17,7 @@ import {
   View,
 } from "react-native";
 
-import { router } from "expo-router";
+import { router, useFocusEffect } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import { SafeAreaView } from "react-native-safe-area-context";
 
@@ -51,8 +51,7 @@ type DocumentProgress = {
     | "partial"
     | "submitted"
     | "approved"
-    | "changes_requested"
-    | "optional";
+    | "changes_requested";
   label: string;
   completed: number;
   total: number;
@@ -92,16 +91,21 @@ function isChangesRequested(
 function buildDocumentCards(
   requirements: RunnerDocumentRequirement[],
 ): DocumentCard[] {
+  // Only server-designated mandatory documents belong in Runner onboarding.
+  const mandatoryRequirements = requirements.filter(
+    (item) => item.required,
+  );
+
   const nationalIdKeys = new Set([
     "identity_national_id_front",
     "identity_national_id_back",
   ]);
 
-  const nationalIdRequirements = requirements.filter((item) =>
+  const nationalIdRequirements = mandatoryRequirements.filter((item) =>
     nationalIdKeys.has(item.key),
   );
 
-  const otherRequirements = requirements.filter(
+  const otherRequirements = mandatoryRequirements.filter(
     (item) => !nationalIdKeys.has(item.key),
   );
 
@@ -114,7 +118,7 @@ function buildDocumentCards(
       description:
         "Upload clear images of both the front and back sides of your National ID on one screen.",
       requirements: nationalIdRequirements,
-      required: nationalIdRequirements.some((item) => item.required),
+      required: true,
     });
   }
 
@@ -126,7 +130,7 @@ function buildDocumentCards(
         requirement.instructions ||
         "Upload the requested supporting document.",
       requirements: [requirement],
-      required: requirement.required,
+      required: true,
     });
   }
 
@@ -173,15 +177,6 @@ function getDocumentProgress(
       status: "partial",
       label: `${completed} of ${entries.length} uploaded`,
       completed,
-      total: entries.length,
-    };
-  }
-
-  if (!card.required) {
-    return {
-      status: "optional",
-      label: "Optional",
-      completed: 0,
       total: entries.length,
     };
   }
@@ -242,6 +237,7 @@ function documentIcon(
 function statusColors(
   status: DocumentProgress["status"],
   colors: ReturnType<typeof useRunnerTheme>["colors"],
+  supportingText: string,
 ) {
   switch (status) {
     case "approved":
@@ -262,12 +258,6 @@ function statusColors(
         foreground: colors.red,
       };
 
-    case "optional":
-      return {
-        background: colors.warningSoft,
-        foreground: colors.warning,
-      };
-
     case "partial":
       return {
         background: colors.warningSoft,
@@ -277,7 +267,7 @@ function statusColors(
     default:
       return {
         background: colors.surface,
-        foreground: colors.textMuted,
+        foreground: supportingText,
       };
   }
 }
@@ -321,7 +311,13 @@ function getCurrentDocumentReview(
 }
 
 export default function RunnerDocumentsScreen() {
-  const { colors } = useRunnerTheme();
+  const { colors, mode } = useRunnerTheme();
+  const isDark = mode === "dark";
+
+  const supportingText = isDark ? "#C1CCDA" : "#526176";
+  const brandColor = isDark ? "#F5F7FB" : "#000535";
+  const actionBlue = isDark ? "#8AB8F8" : "#1F5EAB";
+  const buttonBlue = isDark ? "#1D5DAD" : "#174F9F";
 
   const [data, setData] = useState<RunnerOnboardingData | null>(null);
 
@@ -335,8 +331,12 @@ export default function RunnerDocumentsScreen() {
 
   const scrollRef = useRef<ScrollView>(null);
   const mountedRef = useRef(true);
+  const hasLoadedOnceRef = useRef(false);
+  const loadInFlightRef = useRef(false);
 
   useEffect(() => {
+    mountedRef.current = true;
+
     return () => {
       mountedRef.current = false;
     };
@@ -376,7 +376,13 @@ export default function RunnerDocumentsScreen() {
     progress.required > 0 && progress.completed === progress.required;
 
   const loadDocuments = useCallback(async () => {
-    setLoading(true);
+    if (loadInFlightRef.current) return;
+    loadInFlightRef.current = true;
+
+    if (!hasLoadedOnceRef.current) {
+      setLoading(true);
+    }
+
     setLoadError("");
     setFeedbackError("");
     setError("");
@@ -384,35 +390,21 @@ export default function RunnerDocumentsScreen() {
     try {
       const result = await getRunnerOnboarding();
 
+      if (
+        !result?.ok ||
+        !result.runner ||
+        !Array.isArray(result.requirements) ||
+        !Array.isArray(result.documents)
+      ) {
+        throw new Error(
+          "The server returned an incomplete document checklist. Please retry.",
+        );
+      }
+
       if (!mountedRef.current) return;
 
-      if (result.onboardingStatus === "approved") {
-        router.replace("/(app)");
-        return;
-      }
-
-      if (result.onboardingStatus === "pending_review") {
-        router.replace({
-          pathname: "/(app)/profile-setup",
-          params: { mode: "status" },
-        });
-        return;
-      }
-
-      if (
-        !result.runner.selectedCategories ||
-        result.runner.selectedCategories.length === 0
-      ) {
-        router.replace("/(auth)/tasks");
-        return;
-      }
-
-      if (!result.runner.serviceArea || !result.runner.vehicleType) {
-        router.replace("/(auth)/transport");
-        return;
-      }
-
       setData(result);
+      hasLoadedOnceRef.current = true;
 
       try {
         const reviewResult = await getRunnerReviewFeedback();
@@ -437,17 +429,19 @@ export default function RunnerDocumentsScreen() {
           : "Your document requirements could not be loaded.",
       );
     } finally {
+      loadInFlightRef.current = false;
       if (mountedRef.current) {
         setLoading(false);
       }
     }
   }, []);
 
-  useEffect(() => {
-    void loadDocuments();
-  }, [loadDocuments]);
+  useFocusEffect(
+    useCallback(() => {
+      void loadDocuments();
+    }, [loadDocuments]),
+  );
 
-  // Scroll the validation error into view when it appears.
   useEffect(() => {
     if (!error) return;
     const frame = requestAnimationFrame(() => {
@@ -465,7 +459,59 @@ export default function RunnerDocumentsScreen() {
     });
   }
 
+  const hasCategories = Boolean(
+    data?.runner.selectedCategories?.length,
+  );
+
+  const hasTransportDetails = Boolean(
+    data?.runner.serviceArea?.trim() && data?.runner.vehicleType,
+  );
+
+  const isApproved = Boolean(
+    data &&
+      (data.onboardingStatus === "approved" ||
+        data.runner.verificationStatus === "approved"),
+  );
+
+  const isPendingReview = Boolean(
+    data &&
+      (data.onboardingStatus === "pending_review" ||
+        data.runner.verificationStatus === "submitted"),
+  );
+
+  const isRestricted = Boolean(
+    data &&
+      ["suspended", "closed"].includes(data.runner.accountStatus),
+  );
+
+  const sessionExpired = /session has expired|sign in to continue|no valid runner session/i.test(
+    `${loadError} ${feedbackError}`,
+  );
+
+  const canUploadDocuments = Boolean(
+    data &&
+      hasCategories &&
+      hasTransportDetails &&
+      !isApproved &&
+      !isPendingReview &&
+      !isRestricted &&
+      !sessionExpired,
+  );
+
+  function openMissingPrerequisite() {
+    if (!hasCategories) {
+      router.push("/(auth)/tasks");
+      return;
+    }
+
+    if (!hasTransportDetails) {
+      router.push("/(auth)/transport");
+    }
+  }
+
   function continueToReview() {
+    if (!canUploadDocuments) return;
+
     if (!allRequiredDocumentsComplete) {
       setError(
         "Upload every required document before reviewing your application.",
@@ -476,15 +522,13 @@ export default function RunnerDocumentsScreen() {
     router.push("/(auth)/review");
   }
 
-  const isDarkPaper = colors.paper === "#080F1D";
-
   return (
     <SafeAreaView
       edges={["top", "bottom"]}
       style={[styles.safeArea, { backgroundColor: colors.paper }]}
     >
       <StatusBar
-        barStyle={isDarkPaper ? "light-content" : "dark-content"}
+        barStyle={isDark ? "light-content" : "dark-content"}
         backgroundColor={colors.paper}
       />
 
@@ -499,12 +543,12 @@ export default function RunnerDocumentsScreen() {
           <View style={styles.header}>
             <Pressable
               accessibilityRole="button"
-              accessibilityLabel="Back to transport details"
+              accessibilityLabel="Go back"
               onPress={() => {
                 if (router.canGoBack()) {
                   router.back();
                 } else {
-                  router.replace("/(auth)/transport");
+                  router.replace("/(auth)/tasks");
                 }
               }}
               hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}
@@ -526,15 +570,15 @@ export default function RunnerDocumentsScreen() {
 
             <View style={styles.brand}>
               <Text
-                style={[styles.brandName, { color: colors.navy }]}
+                style={[styles.brandName, { color: brandColor }]}
               >
-                SaMi <Text style={{ color: colors.blue }}>Runner</Text>
+                SaMi <Text style={{ color: actionBlue }}>Runner</Text>
               </Text>
 
               <Text
                 style={[
                   styles.brandTagline,
-                  { color: colors.textMuted },
+                  { color: supportingText },
                 ]}
               >
                 CONSIDER IT DONE
@@ -544,56 +588,11 @@ export default function RunnerDocumentsScreen() {
             <View style={styles.headerSpacer} />
           </View>
 
-          {/* Progress — step 3 of 3 */}
-          <View style={styles.progressSection}>
-            <View
-              accessibilityRole="progressbar"
-              accessibilityLabel="Documents step"
-              accessibilityValue={{ min: 1, max: 3, now: 3 }}
-              style={[
-                styles.progressTrack,
-                { backgroundColor: colors.border },
-              ]}
-            >
-              <View
-                style={[
-                  styles.progressFill,
-                  { backgroundColor: colors.blue },
-                ]}
-              />
-            </View>
-
-            <View style={styles.progressMeta}>
-              <Text
-                style={[
-                  styles.progressText,
-                  { color: colors.textMuted },
-                ]}
-              >
-                STEP 3 OF 3 · DOCUMENTS
-              </Text>
-
-              <View style={styles.progressDots}>
-                <View
-                  style={[
-                    styles.stepDot,
-                    { backgroundColor: colors.blue },
-                  ]}
-                />
-                <View
-                  style={[
-                    styles.stepDot,
-                    { backgroundColor: colors.blue },
-                  ]}
-                />
-                <View
-                  style={[
-                    styles.stepDotCurrent,
-                    { backgroundColor: colors.blue },
-                  ]}
-                />
-              </View>
-            </View>
+          <View style={styles.pageContext}>
+            <Ionicons name="shield-checkmark-outline" size={15} color={actionBlue} />
+            <Text style={[styles.pageContextText, { color: supportingText }]}>
+              RUNNER ACCOUNT · DOCUMENTS
+            </Text>
           </View>
 
           {/* Intro */}
@@ -607,11 +606,11 @@ export default function RunnerDocumentsScreen() {
               <Ionicons
                 name="document-text-outline"
                 size={27}
-                color={colors.blue}
+                color={actionBlue}
               />
             </View>
 
-            <Text style={[styles.eyebrow, { color: colors.blue }]}>
+            <Text style={[styles.eyebrow, { color: actionBlue }]}>
               RUNNER VERIFICATION
             </Text>
 
@@ -620,10 +619,10 @@ export default function RunnerDocumentsScreen() {
             </Text>
 
             <Text
-              style={[styles.subtitle, { color: colors.textMuted }]}
+              style={[styles.subtitle, { color: supportingText }]}
             >
-              Open each document below to upload the requested evidence.
-              Requirements are based on your selected tasks and transport
+              Open each required document below to upload the requested evidence.
+              Requirements are based on your selected services and transport
               type.
             </Text>
           </View>
@@ -635,18 +634,18 @@ export default function RunnerDocumentsScreen() {
               accessibilityRole="progressbar"
               accessibilityLabel="Loading your document checklist"
             >
-              <ActivityIndicator size="large" color={colors.blue} />
+              <ActivityIndicator size="large" color={actionBlue} />
 
               <Text
                 style={[
                   styles.loadingText,
-                  { color: colors.textMuted },
+                  { color: supportingText },
                 ]}
               >
                 Loading your document checklist...
               </Text>
             </View>
-          ) : loadError ? (
+          ) : loadError && !data ? (
             <View
               style={[
                 styles.loadError,
@@ -668,26 +667,124 @@ export default function RunnerDocumentsScreen() {
                 {loadError}
               </Text>
 
-              <Pressable
-                accessibilityRole="button"
-                accessibilityLabel="Retry loading documents"
-                hitSlop={10}
-                onPress={() => void loadDocuments()}
-                style={({ pressed }) => [
-                  styles.retryButton,
-                  { opacity: pressed ? 0.55 : 1 },
-                ]}
-              >
-                <Text
-                  style={[styles.retryText, { color: colors.blue }]}
+              {sessionExpired ? (
+                <Pressable
+                  accessibilityRole="button"
+                  accessibilityLabel="Sign in again"
+                  hitSlop={10}
+                  onPress={() => router.replace("/(auth)/login")}
+                  style={({ pressed }) => [
+                    styles.retryButton,
+                    { opacity: pressed ? 0.6 : 1 },
+                  ]}
                 >
-                  Retry
-                </Text>
-              </Pressable>
+                  <Text style={[styles.retryText, { color: actionBlue }]}>
+                    Sign in
+                  </Text>
+                </Pressable>
+              ) : (
+                <Pressable
+                  accessibilityRole="button"
+                  accessibilityLabel="Retry loading documents"
+                  hitSlop={10}
+                  onPress={() => void loadDocuments()}
+                  style={({ pressed }) => [
+                    styles.retryButton,
+                    { opacity: pressed ? 0.6 : 1 },
+                  ]}
+                >
+                  <Text style={[styles.retryText, { color: actionBlue }]}>
+                    Retry
+                  </Text>
+                </Pressable>
+              )}
             </View>
           ) : data ? (
             <>
-              {/* Summary card */}
+              {loadError ? (
+                <View
+                  accessibilityRole="alert"
+                  style={[styles.inlineRefreshError, { backgroundColor: colors.dangerSoft }]}
+                >
+                  <Ionicons name="alert-circle-outline" size={17} color={colors.red} />
+                  <Text style={[styles.inlineRefreshErrorText, { color: colors.red }]}>
+                    {sessionExpired
+                      ? "Your Runner session has expired. Sign in again to continue uploading documents."
+                      : "Your latest document status could not be refreshed. The information below may be out of date."}
+                  </Text>
+                  <Pressable
+                    onPress={() =>
+                      sessionExpired
+                        ? router.replace("/(auth)/login")
+                        : void loadDocuments()
+                    }
+                    hitSlop={8}
+                  >
+                    <Text style={[styles.retryText, { color: actionBlue }]}>
+                      {sessionExpired ? "Sign in" : "Retry"}
+                    </Text>
+                  </Pressable>
+                </View>
+              ) : null}
+
+              {sessionExpired ? (
+                <View style={[styles.stateNotice, { backgroundColor: colors.dangerSoft, borderColor: colors.red }]}>
+                  <Ionicons name="lock-closed-outline" size={21} color={colors.red} />
+                  <View style={styles.stateNoticeCopy}>
+                    <Text style={[styles.stateNoticeTitle, { color: colors.text }]}>Sign in to continue</Text>
+                    <Text style={[styles.stateNoticeBody, { color: supportingText }]}>Your saved application data is still available, but your Runner session has expired. Sign in again to continue securely.</Text>
+                    <Pressable onPress={() => router.replace("/(auth)/login")} hitSlop={8}>
+                      <Text style={[styles.noticeAction, { color: actionBlue }]}>Sign in again</Text>
+                    </Pressable>
+                  </View>
+                </View>
+              ) : isApproved ? (
+                <View style={[styles.stateNotice, { backgroundColor: colors.successSoft, borderColor: colors.success }]}>
+                  <Ionicons name="checkmark-circle-outline" size={21} color={colors.success} />
+                  <View style={styles.stateNoticeCopy}>
+                    <Text style={[styles.stateNoticeTitle, { color: colors.text }]}>Runner account approved</Text>
+                    <Text style={[styles.stateNoticeBody, { color: supportingText }]}>Your documents are available for reference. Uploading additional documents is closed for an approved application.</Text>
+                  </View>
+                </View>
+              ) : isPendingReview ? (
+                <View style={[styles.stateNotice, { backgroundColor: colors.warningSoft, borderColor: colors.warning }]}>
+                  <Ionicons name="time-outline" size={21} color={colors.warning} />
+                  <View style={styles.stateNoticeCopy}>
+                    <Text style={[styles.stateNoticeTitle, { color: colors.text }]}>Application under review</Text>
+                    <Text style={[styles.stateNoticeBody, { color: supportingText }]}>Your submitted documents are read-only while SaMi Operations reviews your application.</Text>
+                    <Pressable onPress={() => router.push({ pathname: "/(app)/profile-setup", params: { mode: "status" } })} hitSlop={8}>
+                      <Text style={[styles.noticeAction, { color: actionBlue }]}>View application status</Text>
+                    </Pressable>
+                  </View>
+                </View>
+              ) : isRestricted ? (
+                <View style={[styles.stateNotice, { backgroundColor: colors.dangerSoft, borderColor: colors.red }]}>
+                  <Ionicons name="lock-closed-outline" size={21} color={colors.red} />
+                  <View style={styles.stateNoticeCopy}>
+                    <Text style={[styles.stateNoticeTitle, { color: colors.text }]}>Account access restricted</Text>
+                    <Text style={[styles.stateNoticeBody, { color: supportingText }]}>Document uploads are unavailable for this Runner account. Contact SaMi Operations for assistance.</Text>
+                  </View>
+                </View>
+              ) : !hasCategories || !hasTransportDetails ? (
+                <View style={[styles.stateNotice, { backgroundColor: colors.blueSoft, borderColor: colors.border }]}>
+                  <Ionicons name="information-circle-outline" size={21} color={actionBlue} />
+                  <View style={styles.stateNoticeCopy}>
+                    <Text style={[styles.stateNoticeTitle, { color: colors.text }]}>Complete your setup first</Text>
+                    <Text style={[styles.stateNoticeBody, { color: supportingText }]}>
+                      {!hasCategories
+                        ? "Choose at least one service before uploading documents. You can leave this screen and return later."
+                        : "Add your service area and transport details before uploading documents. You can leave this screen and return later."}
+                    </Text>
+                    <Pressable onPress={openMissingPrerequisite} hitSlop={8}>
+                      <Text style={[styles.noticeAction, { color: actionBlue }]}>
+                        {!hasCategories ? "Choose services" : "Add transport details"}
+                      </Text>
+                    </Pressable>
+                  </View>
+                </View>
+              ) : null}
+
+              {/* Required document summary */}
               <View
                 style={[
                   styles.summaryCard,
@@ -711,7 +808,7 @@ export default function RunnerDocumentsScreen() {
                     <Text
                       style={[
                         styles.summarySubtitle,
-                        { color: colors.textMuted },
+                        { color: supportingText },
                       ]}
                     >
                       {progress.completed} of {progress.required}{" "}
@@ -722,7 +819,7 @@ export default function RunnerDocumentsScreen() {
                   <Text
                     style={[
                       styles.percentage,
-                      { color: colors.blue },
+                      { color: actionBlue },
                     ]}
                   >
                     {progress.percentage}%
@@ -762,20 +859,22 @@ export default function RunnerDocumentsScreen() {
                     { color: colors.text },
                   ]}
                 >
-                  Verification checklist
+                  Mandatory verification checklist
                 </Text>
 
                 <Text
                   style={[
                     styles.sectionSubtitle,
-                    { color: colors.textMuted },
+                    { color: supportingText },
                   ]}
                 >
-                  Tap a document to open its upload page.
+                  {canUploadDocuments
+                    ? "Tap a required document to open its upload page."
+                    : "Your document records remain visible here. Uploading is currently unavailable."}
                 </Text>
               </View>
 
-              {/* Cards */}
+              {/* Required documents only */}
               {cards.length === 0 ? (
                 <View
                   style={[
@@ -789,7 +888,7 @@ export default function RunnerDocumentsScreen() {
                   <Ionicons
                     name="document-text-outline"
                     size={32}
-                    color={colors.textMuted}
+                    color={supportingText}
                   />
 
                   <Text
@@ -798,17 +897,24 @@ export default function RunnerDocumentsScreen() {
                       { color: colors.text },
                     ]}
                   >
-                    No documents are configured
+                    {!hasCategories
+                      ? "Services not selected"
+                      : !hasTransportDetails
+                        ? "Transport details not complete"
+                        : "No mandatory documents are configured"}
                   </Text>
 
                   <Text
                     style={[
                       styles.emptyText,
-                      { color: colors.textMuted },
+                      { color: supportingText },
                     ]}
                   >
-                    SaMi has not returned any document requirements for
-                    this application. Contact support before continuing.
+                    {!hasCategories
+                      ? "Choose your services first. Your mandatory document checklist will be available when you return."
+                      : !hasTransportDetails
+                        ? "Complete your transport details first. Your mandatory document checklist will be available when you return."
+                        : "SaMi has not returned mandatory document requirements for this application. Contact SaMi Operations before continuing."}
                   </Text>
                 </View>
               ) : (
@@ -824,6 +930,7 @@ export default function RunnerDocumentsScreen() {
                     const badge = statusColors(
                       documentProgress.status,
                       colors,
+                      supportingText,
                     );
 
                     const nationalId =
@@ -855,10 +962,14 @@ export default function RunnerDocumentsScreen() {
                       <Pressable
                         key={card.key}
                         accessibilityRole="button"
-                        accessibilityLabel={`${card.title}. ${
-                          card.required ? "Required" : "Optional"
-                        }. ${documentProgress.label}.`}
-                        accessibilityHint="Opens this document's upload screen"
+                        accessibilityLabel={`${card.title}. Required. ${documentProgress.label}.`}
+                        accessibilityHint={
+                          canUploadDocuments
+                            ? "Opens this document's upload screen"
+                            : "Document details are read-only until the required onboarding steps are complete"
+                        }
+                        accessibilityState={{ disabled: !canUploadDocuments }}
+                        disabled={!canUploadDocuments}
                         onPress={() => openDocument(card)}
                         style={({ pressed }) => [
                           styles.documentCard,
@@ -867,9 +978,13 @@ export default function RunnerDocumentsScreen() {
                             borderColor: hasRejectedDocument
                               ? colors.red
                               : colors.border,
-                            opacity: pressed ? 0.85 : 1,
+                            opacity: !canUploadDocuments
+                              ? 0.78
+                              : pressed
+                                ? 0.85
+                                : 1,
                             transform: [
-                              { scale: pressed ? 0.995 : 1 },
+                              { scale: pressed && canUploadDocuments ? 0.995 : 1 },
                             ],
                           },
                           hasRejectedDocument &&
@@ -921,31 +1036,20 @@ export default function RunnerDocumentsScreen() {
                               {card.title}
                             </Text>
 
-                            {card.required ? (
-                              <Text
-                                style={[
-                                  styles.requiredMark,
-                                  { color: colors.red },
-                                ]}
-                              >
-                                Required
-                              </Text>
-                            ) : (
-                              <Text
-                                style={[
-                                  styles.optionalMark,
-                                  { color: colors.textMuted },
-                                ]}
-                              >
-                                Optional
-                              </Text>
-                            )}
+                            <Text
+                              style={[
+                                styles.requiredMark,
+                                { color: colors.red },
+                              ]}
+                            >
+                              Required
+                            </Text>
                           </View>
 
                           <Text
                             style={[
                               styles.documentDescription,
-                              { color: colors.textMuted },
+                              { color: supportingText },
                             ]}
                             numberOfLines={3}
                           >
@@ -956,7 +1060,7 @@ export default function RunnerDocumentsScreen() {
                             <Text
                               style={[
                                 styles.sidesHint,
-                                { color: colors.textMuted },
+                                { color: supportingText },
                               ]}
                             >
                               Front and back · one submission
@@ -1026,7 +1130,7 @@ export default function RunnerDocumentsScreen() {
                                     style={[
                                       styles.storageNotice,
                                       {
-                                        color: colors.textMuted,
+                                        color: supportingText,
                                       },
                                     ]}
                                   >
@@ -1039,7 +1143,7 @@ export default function RunnerDocumentsScreen() {
                                 <Text
                                   style={[
                                     styles.reviewDate,
-                                    { color: colors.textMuted },
+                                    { color: supportingText },
                                   ]}
                                 >
                                   Reviewed{" "}
@@ -1050,11 +1154,13 @@ export default function RunnerDocumentsScreen() {
                           })}
                         </View>
 
-                        <Ionicons
-                          name="chevron-forward"
-                          size={20}
-                          color={colors.textMuted}
-                        />
+                        {canUploadDocuments ? (
+                          <Ionicons
+                            name="chevron-forward"
+                            size={20}
+                            color={supportingText}
+                          />
+                        ) : null}
                       </Pressable>
                     );
                   })}
@@ -1072,7 +1178,7 @@ export default function RunnerDocumentsScreen() {
                   <Text
                     style={[
                       styles.feedbackErrorText,
-                      { color: colors.textMuted },
+                      { color: supportingText },
                     ]}
                   >
                     Review comments could not be refreshed. Refresh this
@@ -1091,7 +1197,7 @@ export default function RunnerDocumentsScreen() {
                 <Ionicons
                   name="shield-checkmark-outline"
                   size={19}
-                  color={colors.blue}
+                  color={actionBlue}
                 />
 
                 <Text
@@ -1133,8 +1239,8 @@ export default function RunnerDocumentsScreen() {
           ) : null}
         </ScrollView>
 
-        {/* Bottom bar */}
-        {!loading && !loadError && data ? (
+        {/* Contextual action bar */}
+        {!loading && data ? (
           <View
             style={[
               styles.bottomBar,
@@ -1144,54 +1250,86 @@ export default function RunnerDocumentsScreen() {
               },
             ]}
           >
-            <Pressable
-              accessibilityRole="button"
-              accessibilityLabel={
-                allRequiredDocumentsComplete
-                  ? "Review application"
-                  : "Complete required documents"
-              }
-              accessibilityHint={
-                allRequiredDocumentsComplete
-                  ? "Opens the review and submit screen"
-                  : "Upload every required document to enable this step"
-              }
-              accessibilityState={{
-                disabled: !allRequiredDocumentsComplete,
-              }}
-              disabled={!allRequiredDocumentsComplete}
-              onPress={continueToReview}
-              style={({ pressed }) => [
-                styles.primaryButton,
-                { backgroundColor: colors.blue },
-                !allRequiredDocumentsComplete && styles.disabled,
-                pressed &&
-                  allRequiredDocumentsComplete &&
-                  styles.pressed,
-              ]}
-            >
-              <Text style={styles.primaryButtonText}>
-                {allRequiredDocumentsComplete
-                  ? "Review application"
-                  : "Complete required documents"}
+            {sessionExpired ? (
+              <Pressable
+                accessibilityRole="button"
+                accessibilityLabel="Sign in again"
+                onPress={() => router.replace("/(auth)/login")}
+                style={({ pressed }) => [styles.primaryButton, { backgroundColor: buttonBlue }, pressed && styles.pressed]}
+              >
+                <Text style={styles.primaryButtonText}>Sign in again</Text>
+                <Ionicons name="arrow-forward" size={19} color="#FFFFFF" />
+              </Pressable>
+            ) : isApproved ? (
+              <Pressable
+                accessibilityRole="button"
+                onPress={() => router.replace("/(app)")}
+                style={({ pressed }) => [styles.primaryButton, { backgroundColor: buttonBlue }, pressed && styles.pressed]}
+              >
+                <Text style={styles.primaryButtonText}>Open Runner dashboard</Text>
+                <Ionicons name="arrow-forward" size={19} color="#FFFFFF" />
+              </Pressable>
+            ) : isPendingReview ? (
+              <Pressable
+                accessibilityRole="button"
+                onPress={() => router.push({ pathname: "/(app)/profile-setup", params: { mode: "status" } })}
+                style={({ pressed }) => [styles.primaryButton, { backgroundColor: buttonBlue }, pressed && styles.pressed]}
+              >
+                <Text style={styles.primaryButtonText}>View application status</Text>
+                <Ionicons name="arrow-forward" size={19} color="#FFFFFF" />
+              </Pressable>
+            ) : isRestricted ? null : !hasCategories || !hasTransportDetails ? (
+              <Pressable
+                accessibilityRole="button"
+                onPress={openMissingPrerequisite}
+                style={({ pressed }) => [styles.primaryButton, { backgroundColor: buttonBlue }, pressed && styles.pressed]}
+              >
+                <Text style={styles.primaryButtonText}>
+                  {!hasCategories ? "Choose services" : "Add transport details"}
+                </Text>
+                <Ionicons name="arrow-forward" size={19} color="#FFFFFF" />
+              </Pressable>
+            ) : (
+              <Pressable
+                accessibilityRole="button"
+                accessibilityLabel={
+                  allRequiredDocumentsComplete
+                    ? "Review application"
+                    : "Complete required documents"
+                }
+                accessibilityHint="Opens the application review when all required documents have been submitted"
+                accessibilityState={{ disabled: !allRequiredDocumentsComplete }}
+                disabled={!allRequiredDocumentsComplete}
+                onPress={continueToReview}
+                style={({ pressed }) => [
+                  styles.primaryButton,
+                  { backgroundColor: buttonBlue },
+                  !allRequiredDocumentsComplete && styles.disabled,
+                  pressed && allRequiredDocumentsComplete && styles.pressed,
+                ]}
+              >
+                <Text style={styles.primaryButtonText}>
+                  {allRequiredDocumentsComplete
+                    ? "Review application"
+                    : "Complete required documents"}
+                </Text>
+                <Ionicons name="arrow-forward" size={19} color="#FFFFFF" />
+              </Pressable>
+            )}
+
+            {!isRestricted ? (
+              <Text style={[styles.bottomHint, { color: supportingText }]}>
+                {sessionExpired
+                  ? "Your saved application data remains available. Sign in to resume securely."
+                  : isApproved
+                    ? "Your account is approved. You can return to this checklist at any time."
+                    : isPendingReview
+                      ? "Your submitted documents remain available to view during Operations review."
+                      : !hasCategories || !hasTransportDetails
+                        ? "Your progress is saved. You can return to this screen whenever you are ready."
+                        : "Submit every required document before reviewing your application."}
               </Text>
-
-              <Ionicons
-                name="arrow-forward"
-                size={19}
-                color="#FFFFFF"
-              />
-            </Pressable>
-
-            <Text
-              style={[
-                styles.bottomHint,
-                { color: colors.textMuted },
-              ]}
-            >
-              Optional supporting documents do not block your
-              application.
-            </Text>
+            ) : null}
           </View>
         ) : null}
       </View>
@@ -1247,49 +1385,64 @@ const styles = StyleSheet.create({
 
   headerSpacer: { width: BACK_SIZE },
 
-  // Progress
-  progressSection: { gap: 10 },
-
-  progressTrack: {
-    height: 6,
-    borderRadius: 6,
-    overflow: "hidden",
-  },
-
-  progressFill: {
-    width: "100%",
-    height: "100%",
-    borderRadius: 6,
-  },
-
-  progressMeta: {
+  // Page context
+  pageContext: {
     flexDirection: "row",
     alignItems: "center",
-    justifyContent: "space-between",
+    gap: 8,
+    minHeight: 28,
   },
 
-  progressText: {
+  pageContextText: {
     fontSize: 10.5,
     fontWeight: "900",
     letterSpacing: 1.2,
   },
 
-  progressDots: {
+  stateNotice: {
+    borderWidth: 1,
+    borderRadius: 15,
+    padding: 14,
+    flexDirection: "row",
+    alignItems: "flex-start",
+    gap: 11,
+  },
+
+  stateNoticeCopy: {
+    flex: 1,
+    gap: 6,
+  },
+
+  stateNoticeTitle: {
+    fontSize: 13,
+    lineHeight: 18,
+    fontWeight: "900",
+  },
+
+  stateNoticeBody: {
+    fontSize: 12,
+    lineHeight: 18,
+  },
+
+  noticeAction: {
+    fontSize: 12,
+    lineHeight: 18,
+    fontWeight: "900",
+    paddingTop: 2,
+  },
+
+  inlineRefreshError: {
+    borderRadius: 12,
+    padding: 12,
     flexDirection: "row",
     alignItems: "center",
-    gap: 5,
+    gap: 9,
   },
 
-  stepDot: {
-    width: 6,
-    height: 6,
-    borderRadius: 3,
-  },
-
-  stepDotCurrent: {
-    width: 16,
-    height: 6,
-    borderRadius: 3,
+  inlineRefreshErrorText: {
+    flex: 1,
+    fontSize: 11.5,
+    lineHeight: 17,
   },
 
   // Intro
@@ -1415,11 +1568,6 @@ const styles = StyleSheet.create({
   requiredMark: {
     fontSize: 11,
     fontWeight: "900",
-  },
-
-  optionalMark: {
-    fontSize: 11,
-    fontWeight: "700",
   },
 
   documentDescription: {

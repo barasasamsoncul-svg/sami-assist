@@ -40,26 +40,33 @@ function formatCountdown(seconds: number): string {
 }
 
 export default function VerifyRunnerScreen() {
-  const { colors } = useRunnerTheme();
+  const { colors, mode } = useRunnerTheme();
+  const isDark = mode === "dark";
+  const supportingText = isDark ? "#C1CCDA" : "#526176";
+  const actionBlue = isDark ? "#8AB8F8" : "#1F5EAB";
+  const buttonBlue = isDark ? "#1D5DAD" : "#174F9F";
 
   const params = useLocalSearchParams<{
-    challengeId?: string;
-    destination?: string;
-    purpose?: string;
-    fullName?: string;
-    email?: string;
-    phone?: string;
+    challengeId?: string | string[];
+    destination?: string | string[];
+    purpose?: string | string[];
+    fullName?: string | string[];
+    email?: string | string[];
+    phone?: string | string[];
   }>();
 
-  const initialChallengeId = String(params.challengeId || "");
-  const initialDestination = String(
-    params.destination || "your email address",
-  );
-  const isRegistration = params.purpose === "register";
+  const firstParam = (value?: string | string[]) =>
+    Array.isArray(value) ? value[0] ?? "" : value ?? "";
 
-  const fullName = String(params.fullName || "").trim();
-  const email = String(params.email || "").trim().toLowerCase();
-  const phone = String(params.phone || "").trim();
+  const initialChallengeId = firstParam(params.challengeId).trim();
+  const initialDestination =
+    firstParam(params.destination) || "your email address";
+  const purpose = firstParam(params.purpose);
+  const isRegistration = purpose === "register";
+
+  const fullName = firstParam(params.fullName).trim();
+  const email = firstParam(params.email).trim().toLowerCase();
+  const phone = firstParam(params.phone).trim();
 
   const [challengeId, setChallengeId] = useState(initialChallengeId);
   const [destination, setDestination] = useState(initialDestination);
@@ -74,16 +81,22 @@ export default function VerifyRunnerScreen() {
   const [inputFocused, setInputFocused] = useState(false);
 
   const [resendAvailableAt, setResendAvailableAt] = useState(
-    () => Date.now() + OTP_RESEND_COOLDOWN_SECONDS * 1000,
+    () =>
+      initialChallengeId
+        ? Date.now() + OTP_RESEND_COOLDOWN_SECONDS * 1000
+        : Date.now(),
   );
   const [resendCountdown, setResendCountdown] = useState(
-    OTP_RESEND_COOLDOWN_SECONDS,
+    initialChallengeId ? OTP_RESEND_COOLDOWN_SECONDS : 0,
   );
 
   const codeInputRef = useRef<TextInput>(null);
   const mountedRef = useRef(true);
   const verificationInFlightRef = useRef(false);
-  const lastAutoSubmittedCodeRef = useRef<string | null>(null);
+  const resendInFlightRef = useRef(false);
+  // Tracks automatic submissions only. Manual retries remain available after
+  // transient network/server errors without creating an auto-submit loop.
+  const autoSubmittedCodeRef = useRef<string | null>(null);
 
   // Autofocus so the OS one-time-code autofill prompt can fire immediately.
   useEffect(() => {
@@ -94,6 +107,10 @@ export default function VerifyRunnerScreen() {
   }, []);
 
   useEffect(() => {
+    // React Strict Mode runs an effect setup/cleanup cycle in development.
+    // Re-arm the mounted flag on every setup so async results are not ignored.
+    mountedRef.current = true;
+
     return () => {
       mountedRef.current = false;
     };
@@ -120,10 +137,12 @@ export default function VerifyRunnerScreen() {
       busy ||
       resending ||
       verified
-    ) return;
+    ) {
+      return;
+    }
 
     if (!challengeId) {
-      setError("Your verification session is missing. Start again.");
+      setError("Your verification session is missing. Request a new code.");
       return;
     }
 
@@ -132,22 +151,32 @@ export default function VerifyRunnerScreen() {
       return;
     }
 
-    // Manual and automatic submission share the same one-attempt guard.
-    lastAutoSubmittedCodeRef.current = challengeId + ":" + code;
+    // The in-flight ref prevents duplicate requests. A completed failed
+    // request can be retried manually because network failures do not prove
+    // that the OTP itself was invalid.
     verificationInFlightRef.current = true;
     setBusy(true);
     setError("");
     setNotice("");
 
     try {
+      // POST /api/runner/auth/verify-otp validates the challenge and six-digit
+      // code, consumes the challenge once, and creates a Runner session.
       const result = await verifyRunnerOtp(challengeId, code);
 
-      if (!result.sessionToken) {
+      if (
+        !result?.ok ||
+        typeof result.sessionToken !== "string" ||
+        result.sessionToken.length < 40 ||
+        !result.runner?.id
+      ) {
         throw new Error(
-          "The verification server did not return a valid session.",
+          "The verification server did not return a complete Runner session. Request a new code and try again.",
         );
       }
 
+      // The backend issues a 32-byte base64url token (43 characters).
+      // saveRunnerSession validates and stores it in Expo SecureStore.
       await saveRunnerSession(result.sessionToken);
 
       if (!mountedRef.current) return;
@@ -159,10 +188,12 @@ export default function VerifyRunnerScreen() {
 
       if (!mountedRef.current) return;
 
-      router.dismissAll();
+      // Replace the OTP route. The root session gate reads the newly saved
+      // token and resolves the user's actual onboarding/account state.
       router.replace("/");
     } catch (cause) {
       if (!mountedRef.current) return;
+
       setError(
         cause instanceof Error
           ? cause.message
@@ -176,28 +207,36 @@ export default function VerifyRunnerScreen() {
     }
   }
 
-  // Auto-submit each completed code only once. In particular, do not retry
-  // a consumed/invalid challenge just because busy changes back to false.
+  // Auto-submit each completed six-digit code once. Manual submission is
+  // still allowed after a failed request, including a temporary network error.
   useEffect(() => {
     if (code.length !== CODE_LENGTH) return;
-    if (busy || resending || verified) return;
-    if (!challengeId) return;
+    if (busy || resending || verified || !challengeId) return;
 
-    const submissionKey = challengeId + ":" + code;
-    if (lastAutoSubmittedCodeRef.current === submissionKey) return;
+    const submissionKey = `${challengeId}:${code}`;
+    if (autoSubmittedCodeRef.current === submissionKey) return;
 
-    const t = setTimeout(() => {
-      if (lastAutoSubmittedCodeRef.current === submissionKey) return;
-      lastAutoSubmittedCodeRef.current = submissionKey;
+    const timeout = setTimeout(() => {
+      autoSubmittedCodeRef.current = submissionKey;
       void verify();
     }, CODE_AUTOSUBMIT_DELAY_MS);
 
-    return () => clearTimeout(t);
+    return () => clearTimeout(timeout);
+    // verify intentionally uses the challenge/code from this render.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [code, busy, resending, verified, challengeId]);
 
   async function resendCode() {
-    if (busy || resending || resendCountdown > 0 || verified) return;
+    if (
+      resendInFlightRef.current ||
+      verificationInFlightRef.current ||
+      busy ||
+      resending ||
+      resendCountdown > 0 ||
+      verified
+    ) {
+      return;
+    }
 
     if (!email) {
       setError(
@@ -213,6 +252,7 @@ export default function VerifyRunnerScreen() {
       return;
     }
 
+    resendInFlightRef.current = true;
     setResending(true);
     setError("");
     setNotice("");
@@ -226,20 +266,22 @@ export default function VerifyRunnerScreen() {
           })
         : await requestRunnerOtp(email);
 
-      if (!result.challengeId) {
+      if (
+        !result?.ok ||
+        (isRegistration && result.purpose !== "register") ||
+        !result.challengeId ||
+        !result.destination
+      ) {
         throw new Error(
-          "A new verification session could not be created.",
+          "The server did not confirm a new verification challenge. Please try again.",
         );
       }
 
       if (!mountedRef.current) return;
 
       setChallengeId(result.challengeId);
-
-      if (result.destination) {
-        setDestination(result.destination);
-      }
-
+      setDestination(result.destination);
+      autoSubmittedCodeRef.current = null;
       setCode("");
       setResendAvailableAt(
         Date.now() + OTP_RESEND_COOLDOWN_SECONDS * 1000,
@@ -253,25 +295,40 @@ export default function VerifyRunnerScreen() {
       setTimeout(() => codeInputRef.current?.focus(), 200);
     } catch (cause) {
       if (!mountedRef.current) return;
-      setError(
+
+      const message =
         cause instanceof Error
           ? cause.message
-          : "A new verification code could not be sent.",
-      );
+          : "A new verification code could not be sent.";
+
+      // Mirror the server's resend throttles locally after a 429 so a tap
+      // cannot immediately repeat a request the server has already refused.
+      if (/maximum of five codes|hour/i.test(message)) {
+        setResendAvailableAt(Date.now() + 60 * 60 * 1000);
+      } else if (/please wait|too many verification requests|429/i.test(message)) {
+        setResendAvailableAt(
+          Date.now() + OTP_RESEND_COOLDOWN_SECONDS * 1000,
+        );
+      }
+
+      setError(message);
     } finally {
       if (mountedRef.current) {
         setResending(false);
       }
+      resendInFlightRef.current = false;
     }
   }
 
   const resendLabel =
     resendCountdown > 0
       ? `Resend code in ${formatCountdown(resendCountdown)}`
-      : "Resend code";
+      : challengeId
+        ? "Resend code"
+        : "Request a verification code";
 
   const disabled = busy || resending || verified;
-  const isDarkPaper = colors.paper === "#080F1D";
+  const verifyDisabled = disabled || !challengeId || code.length !== CODE_LENGTH;
 
   return (
     <SafeAreaView
@@ -279,7 +336,7 @@ export default function VerifyRunnerScreen() {
       style={[styles.safeArea, { backgroundColor: colors.paper }]}
     >
       <StatusBar
-        barStyle={isDarkPaper ? "light-content" : "dark-content"}
+        barStyle={isDark ? "light-content" : "dark-content"}
         backgroundColor={colors.paper}
       />
 
@@ -297,7 +354,15 @@ export default function VerifyRunnerScreen() {
             accessibilityRole="button"
             accessibilityLabel="Go back"
             disabled={disabled}
-            onPress={() => router.back()}
+            onPress={() => {
+              if (router.canGoBack()) {
+                router.back();
+              } else {
+                router.replace(
+                  isRegistration ? "/(auth)/register" : "/(auth)/login",
+                );
+              }
+            }}
             hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}
             style={({ pressed }) => [
               styles.backButton,
@@ -329,11 +394,11 @@ export default function VerifyRunnerScreen() {
                     : "mail-open-outline"
                 }
                 size={29}
-                color={colors.blue}
+                color={actionBlue}
               />
             </View>
 
-            <Text style={[styles.eyebrow, { color: colors.blue }]}>
+            <Text style={[styles.eyebrow, { color: actionBlue }]}>
               {isRegistration
                 ? "REGISTRATION VERIFICATION"
                 : "RUNNER SIGN IN"}
@@ -344,7 +409,7 @@ export default function VerifyRunnerScreen() {
             </Text>
 
             <Text
-              style={[styles.subtitle, { color: colors.textMuted }]}
+              style={[styles.subtitle, { color: supportingText }]}
             >
               {isRegistration
                 ? "Enter the six-digit code we sent to "
@@ -366,15 +431,34 @@ export default function VerifyRunnerScreen() {
                 <Ionicons
                   name="information-circle-outline"
                   size={18}
-                  color={colors.blue}
+                  color={actionBlue}
                 />
 
                 <Text
                   style={[styles.infoText, { color: colors.text }]}
                 >
                   Verifying your email creates your Runner account.
-                  You will then complete your task selection, transport
-                  details and document verification.
+                  Next, choose one service: Pick Up & Deliver or Shop & Deliver.
+                  Then complete your transport details and required documents.
+                </Text>
+              </View>
+            ) : null}
+
+            {!challengeId ? (
+              <View
+                accessibilityRole="alert"
+                style={[
+                  styles.noticeContainer,
+                  { backgroundColor: colors.warningSoft },
+                ]}
+              >
+                <Ionicons
+                  name="information-circle-outline"
+                  size={18}
+                  color={colors.warning}
+                />
+                <Text style={[styles.notice, { color: colors.text }]}>
+                  This screen has no active verification challenge. Request a new code below.
                 </Text>
               </View>
             ) : null}
@@ -387,7 +471,6 @@ export default function VerifyRunnerScreen() {
               ref={codeInputRef}
               value={code}
               onChangeText={(value) => {
-                lastAutoSubmittedCodeRef.current = null;
                 setCode(
                   value.replace(/[^0-9]/g, "").slice(0, CODE_LENGTH),
                 );
@@ -421,9 +504,9 @@ export default function VerifyRunnerScreen() {
                 {
                   backgroundColor: colors.surface,
                   borderColor: verified
-                    ? colors.blue
+                    ? actionBlue
                     : inputFocused
-                      ? colors.blue
+                      ? actionBlue
                       : error
                         ? colors.red
                         : colors.border,
@@ -432,7 +515,7 @@ export default function VerifyRunnerScreen() {
                 (inputFocused || verified) &&
                   Platform.select({
                     ios: {
-                      shadowColor: verified ? colors.blue : colors.blue,
+                      shadowColor: actionBlue,
                       shadowOpacity: 0.2,
                       shadowRadius: 8,
                       shadowOffset: { width: 0, height: 2 },
@@ -478,7 +561,7 @@ export default function VerifyRunnerScreen() {
                 <Ionicons
                   name="checkmark-circle-outline"
                   size={18}
-                  color={colors.blue}
+                  color={actionBlue}
                 />
 
                 <Text style={[styles.notice, { color: colors.text }]}>
@@ -497,16 +580,16 @@ export default function VerifyRunnerScreen() {
                     : "Verify and continue"
               }
               accessibilityHint="Submits your six-digit code"
-              accessibilityState={{ busy }}
-              disabled={disabled}
+              accessibilityState={{ busy, disabled: verifyDisabled }}
+              disabled={verifyDisabled}
               onPress={() => void verify()}
               style={({ pressed }) => [
                 styles.primaryButton,
                 {
-                  backgroundColor: verified ? colors.blue : colors.blue,
+                  backgroundColor: buttonBlue,
                 },
-                disabled && !verified && styles.disabled,
-                pressed && !disabled && styles.pressed,
+                verifyDisabled && !verified && styles.disabled,
+                pressed && !verifyDisabled && styles.pressed,
               ]}
             >
               {busy ? (
@@ -561,10 +644,10 @@ export default function VerifyRunnerScreen() {
               ]}
             >
               {resending ? (
-                <ActivityIndicator size="small" color={colors.blue} />
+                <ActivityIndicator size="small" color={actionBlue} />
               ) : (
                 <Text
-                  style={[styles.resendText, { color: colors.blue }]}
+                  style={[styles.resendText, { color: actionBlue }]}
                 >
                   {resendLabel}
                 </Text>
@@ -574,10 +657,10 @@ export default function VerifyRunnerScreen() {
             <Text
               style={[
                 styles.resendHint,
-                { color: colors.textMuted },
+                { color: supportingText },
               ]}
             >
-              You can request up to five codes per hour.
+              The server allows one request every 60 seconds and up to five codes per email per hour.
             </Text>
 
             <Pressable
@@ -602,7 +685,7 @@ export default function VerifyRunnerScreen() {
               ]}
             >
               <Text
-                style={[styles.changeEmailText, { color: colors.blue }]}
+                style={[styles.changeEmailText, { color: actionBlue }]}
               >
                 {isRegistration
                   ? "Change registration details"

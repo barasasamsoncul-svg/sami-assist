@@ -11,7 +11,7 @@ import {
   View,
 } from "react-native";
 
-import { router } from "expo-router";
+import { router, useFocusEffect } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import { SafeAreaView } from "react-native-safe-area-context";
 
@@ -23,119 +23,45 @@ import {
 
 import { useRunnerTheme } from "@/theme";
 
-type TaskCategory = {
+type RunnerService = {
   key: string;
   title: string;
   description: string;
   icon: keyof typeof Ionicons.glyphMap;
 };
 
-const CUSTOMER_CATEGORIES: TaskCategory[] = [
+// SaMi Runner supports exactly these two service types.
+// These keys must match the Runner database catalogue and API validation.
+const RUNNER_SERVICES: RunnerService[] = [
   {
-    key: "groceries",
-    title: "Groceries",
-    description: "Food shopping and everyday essentials.",
-    icon: "basket-outline",
-  },
-  {
-    key: "food_delivery",
-    title: "Food & Delivery",
-    description: "Restaurant orders, meals and food deliveries.",
-    icon: "fast-food-outline",
-  },
-  {
-    key: "pickup_delivery",
-    title: "Pick Up & Drop Off",
-    description: "Parcel collection and item deliveries.",
+    key: "pickup_deliver",
+    title: "Pick Up & Deliver",
+    description:
+      "Collect an item from the sender and deliver it to the customer's chosen destination.",
     icon: "cube-outline",
   },
   {
-    key: "bill_payments",
-    title: "Bills & Payments",
-    description: "Supported bill and payment errands.",
-    icon: "receipt-outline",
-  },
-  {
-    key: "laundry_cleaning",
-    title: "Laundry & Dry Cleaning",
-    description: "Laundry collection and dry-cleaning errands.",
-    icon: "water-outline",
-  },
-  {
-    key: "documents_admin",
-    title: "Documents & Government",
-    description: "Document collection and administrative errands.",
-    icon: "document-text-outline",
-  },
-  {
-    key: "clothing_retail",
-    title: "Clothing & Returns",
-    description: "Clothing purchases, collections and returns.",
-    icon: "shirt-outline",
-  },
-  {
-    key: "shopping_gifts",
-    title: "Shopping & Gifts",
-    description: "Gift shopping and special purchases.",
-    icon: "gift-outline",
-  },
-  {
-    key: "home_services",
-    title: "Home Services",
-    description: "Supported household and home-service errands.",
-    icon: "home-outline",
-  },
-  {
-    key: "pharmacy_health",
-    title: "Pharmacy & Health",
-    description: "Supported pharmacy and health-related errands.",
-    icon: "medkit-outline",
-  },
-  {
-    key: "pet_care",
-    title: "Pet Care",
-    description: "Pet supplies and pet-related assistance.",
-    icon: "paw-outline",
-  },
-  {
-    key: "personal_errand",
-    title: "Personal Assistance",
-    description: "Everyday personal assistance and errands.",
-    icon: "person-outline",
-  },
-  {
-    key: "queue_appointments",
-    title: "Queues & Appointments",
-    description: "Queue assistance and appointment errands.",
-    icon: "time-outline",
-  },
-  {
-    key: "business_support",
-    title: "Business Errands",
-    description: "Errands and assistance for businesses.",
-    icon: "briefcase-outline",
-  },
-  {
-    key: "shopping",
-    title: "Shopping & Essentials",
-    description: "General shopping and purchase requests.",
+    key: "shop_deliver",
+    title: "Shop & Deliver",
+    description:
+      "Shop for the customer's requested items and deliver the order to them.",
     icon: "cart-outline",
-  },
-  {
-    key: "other",
-    title: "Custom Errand",
-    description: "Other customer errands you can handle.",
-    icon: "apps-outline",
   },
 ];
 
 const BACK_SIZE = 44;
 
 export default function RunnerTaskSelectionScreen() {
-  const { colors } = useRunnerTheme();
+  const { colors, mode } = useRunnerTheme();
 
-  const [availableCategories, setAvailableCategories] = useState<
-    TaskCategory[]
+  const isDark = mode === "dark";
+  const supportingText = isDark ? "#C1CCDA" : "#526176";
+  const brandColor = isDark ? "#F5F7FB" : "#000535";
+  const actionBlue = isDark ? "#8AB8F8" : "#1F5EAB";
+  const buttonBlue = isDark ? "#1D5DAD" : "#174F9F";
+
+  const [availableServices, setAvailableServices] = useState<
+    RunnerService[]
   >([]);
 
   const [selectedCategories, setSelectedCategories] = useState<string[]>(
@@ -143,6 +69,7 @@ export default function RunnerTaskSelectionScreen() {
   );
 
   const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
   const [saving, setSaving] = useState(false);
 
   const [error, setError] = useState("");
@@ -150,83 +77,179 @@ export default function RunnerTaskSelectionScreen() {
 
   const scrollRef = useRef<ScrollView>(null);
   const mountedRef = useRef(true);
+  const loadInFlightRef = useRef(false);
+  const hasLoadedOnceRef = useRef(false);
+
+  const [accountState, setAccountState] = useState<{
+    onboardingStatus: string;
+    accountStatus: string;
+  } | null>(null);
 
   useEffect(() => {
+    // Re-arm during setup so Strict Mode's effect cycle cannot leave
+    // asynchronous requests believing the screen is permanently unmounted.
+    mountedRef.current = true;
+
     return () => {
       mountedRef.current = false;
     };
   }, []);
 
   const loadTaskCategories = useCallback(async () => {
-    setLoading(true);
+    if (loadInFlightRef.current) return;
+
+    loadInFlightRef.current = true;
+
+    if (!hasLoadedOnceRef.current) {
+      setLoading(true);
+    } else {
+      setRefreshing(true);
+    }
+
     setLoadError("");
     setError("");
 
     try {
+      // GET /api/runner/categories returns the active two-service catalogue.
+      // GET /api/runner/me/onboarding returns the authenticated Runner's
+      // saved selections and account state.
       const [catalogue, onboarding] = await Promise.all([
         getRunnerCategories(),
         getRunnerOnboarding(),
       ]);
 
-      const activeKeys = new Set(
-        (catalogue.categories || [])
-          .map((category) => category.key)
-          .filter((key): key is string => typeof key === "string"),
-      );
-
-      // Keep Customer's exact task catalogue and order.
-      // Only show categories enabled in the Runner database.
-      const activeOptions = CUSTOMER_CATEGORIES.filter((category) =>
-        activeKeys.has(category.key),
-      );
-
-      if (activeOptions.length === 0) {
+      if (!catalogue.ok || !Array.isArray(catalogue.categories)) {
         throw new Error(
-          "No task categories are currently available. Please try again later.",
+          "The Runner service catalogue returned an invalid response. Please retry.",
         );
       }
 
+      if (
+        !onboarding?.ok ||
+        !onboarding.runner ||
+        !Array.isArray(onboarding.runner.selectedCategories)
+      ) {
+        throw new Error(
+          "Your saved Runner service selection could not be verified. Please retry.",
+        );
+      }
+
+      const activeKeys = new Set(
+        catalogue.categories
+          .map((category) => category.key)
+          .filter(
+            (key): key is string =>
+              typeof key === "string" &&
+              /^[a-z0-9_]{2,60}$/.test(key),
+          ),
+      );
+
+      // The API remains authoritative for active service keys.
+      // The interface exposes only the two agreed Runner services.
+      const missingServices = RUNNER_SERVICES.filter(
+        (service) => !activeKeys.has(service.key),
+      );
+
+      if (missingServices.length > 0) {
+        throw new Error(
+          "The Runner service catalogue is not configured for both Pick Up & Deliver and Shop & Deliver. Please contact SaMi Operations.",
+        );
+      }
+
+      const activeOptions = RUNNER_SERVICES.filter((service) =>
+        activeKeys.has(service.key),
+      );
+
       if (!mountedRef.current) return;
 
-      setAvailableCategories(activeOptions);
+      setAvailableServices(activeOptions);
 
-      const savedSelection = onboarding.runner.selectedCategories || [];
+      const savedSelection = onboarding.runner.selectedCategories;
 
       setSelectedCategories(
-        savedSelection.filter((key) => activeKeys.has(key)),
+        RUNNER_SERVICES
+          .filter(
+            (service) =>
+              activeKeys.has(service.key) &&
+              savedSelection.includes(service.key),
+          )
+          .map((service) => service.key),
       );
+
+      setAccountState({
+        onboardingStatus: onboarding.onboardingStatus,
+        accountStatus: onboarding.runner.accountStatus,
+      });
+
+      hasLoadedOnceRef.current = true;
     } catch (cause) {
       if (!mountedRef.current) return;
+
       setLoadError(
         cause instanceof Error
           ? cause.message
-          : "Task categories could not be loaded.",
+          : "Runner services could not be loaded.",
       );
     } finally {
+      loadInFlightRef.current = false;
+
       if (mountedRef.current) {
         setLoading(false);
+        setRefreshing(false);
       }
     }
   }, []);
 
-  useEffect(() => {
-    void loadTaskCategories();
-  }, [loadTaskCategories]);
+  // Refresh from the server whenever the Runner returns to this screen.
+  useFocusEffect(
+    useCallback(() => {
+      mountedRef.current = true;
+      void loadTaskCategories();
+    }, [loadTaskCategories]),
+  );
 
-  // When a validation or save error appears, scroll it into view.
+  // Scroll validation and save errors into view.
   useEffect(() => {
     if (!error) return;
+
     const frame = requestAnimationFrame(() => {
       scrollRef.current?.scrollToEnd({ animated: true });
     });
+
     return () => cancelAnimationFrame(frame);
   }, [error]);
 
+  const onboardingStatus = accountState?.onboardingStatus ?? "";
+  const accountStatus = accountState?.accountStatus ?? "";
+
+  const isApproved = onboardingStatus === "approved";
+  const isPendingReview = onboardingStatus === "pending_review";
+  const isRestricted = ["suspended", "closed"].includes(accountStatus);
+
+  const sessionExpired =
+    /session has expired|sign in again|no valid runner session/i.test(
+      loadError,
+    );
+
+  const canEditCategories =
+    hasLoadedOnceRef.current &&
+    Boolean(accountState) &&
+    !loading &&
+    !refreshing &&
+    !loadError &&
+    !sessionExpired &&
+    !isApproved &&
+    !isPendingReview &&
+    !isRestricted;
+
   function toggleCategory(key: string) {
+    if (!canEditCategories || saving) return;
+
     setSelectedCategories((current) => {
       if (current.includes(key)) {
         return current.filter((item) => item !== key);
       }
+
       return [...current, key];
     });
 
@@ -234,10 +257,19 @@ export default function RunnerTaskSelectionScreen() {
   }
 
   async function saveTaskSelection() {
-    if (saving) return;
+    if (saving || loading || loadError || !canEditCategories) return;
 
     if (selectedCategories.length === 0) {
-      setError("Select at least one type of errand you can perform.");
+      setError(
+        "Select Pick Up & Deliver, Shop & Deliver, or both.",
+      );
+      return;
+    }
+
+    if (selectedCategories.length > RUNNER_SERVICES.length) {
+      setError(
+        "You can select only the two available Runner services.",
+      );
       return;
     }
 
@@ -245,7 +277,10 @@ export default function RunnerTaskSelectionScreen() {
     setError("");
 
     try {
-      await apiRequest<{
+      // PUT /api/runner/me/categories accepts { categoryKeys: string[] }.
+      // The server validates active keys and application status, then
+      // replaces the saved selection transactionally.
+      const response = await apiRequest<{
         ok: boolean;
         message: string;
         selectedCategories: string[];
@@ -253,20 +288,42 @@ export default function RunnerTaskSelectionScreen() {
       }>("/api/runner/me/categories", {
         method: "PUT",
         body: {
-          categoryKeys: selectedCategories,
+          categoryKeys: [...selectedCategories],
         },
       });
 
+      if (
+        !response?.ok ||
+        !Array.isArray(response.selectedCategories)
+      ) {
+        throw new Error(
+          "The server did not confirm that your Runner services were saved. Refresh your selection before continuing.",
+        );
+      }
+
+      const requested = [...selectedCategories].sort();
+      const confirmed = [...response.selectedCategories].sort();
+
+      if (
+        requested.length !== confirmed.length ||
+        requested.some((key, index) => key !== confirmed[index])
+      ) {
+        throw new Error(
+          "The server saved a different service selection. Refresh your selection before continuing.",
+        );
+      }
+
       if (!mountedRef.current) return;
 
-      // Keep this page in the navigation history.
+      // Continue only after the server confirms the exact selection.
       router.push("/(auth)/transport");
     } catch (cause) {
       if (!mountedRef.current) return;
+
       setError(
         cause instanceof Error
           ? cause.message
-          : "Your task selection could not be saved. Please try again.",
+          : "Your Runner services could not be saved. Please try again.",
       );
     } finally {
       if (mountedRef.current) {
@@ -276,10 +333,14 @@ export default function RunnerTaskSelectionScreen() {
   }
 
   const selectedCount = selectedCategories.length;
-  const saveDisabled =
-    loading || Boolean(loadError) || selectedCount === 0 || saving;
 
-  const isDarkPaper = colors.paper === "#080F1D";
+  const saveDisabled =
+    loading ||
+    refreshing ||
+    Boolean(loadError) ||
+    selectedCount === 0 ||
+    saving ||
+    !canEditCategories;
 
   return (
     <SafeAreaView
@@ -287,7 +348,7 @@ export default function RunnerTaskSelectionScreen() {
       style={[styles.safeArea, { backgroundColor: colors.paper }]}
     >
       <StatusBar
-        barStyle={isDarkPaper ? "light-content" : "dark-content"}
+        barStyle={isDark ? "light-content" : "dark-content"}
         backgroundColor={colors.paper}
       />
 
@@ -304,7 +365,17 @@ export default function RunnerTaskSelectionScreen() {
               accessibilityRole="button"
               accessibilityLabel="Go back"
               disabled={saving}
-              onPress={() => router.back()}
+              onPress={() => {
+                if (router.canGoBack()) {
+                  router.back();
+                } else if (sessionExpired) {
+                  router.replace("/(auth)/login");
+                } else if (isApproved) {
+                  router.replace("/(app)");
+                } else if (isPendingReview) {
+                  router.replace("/(app)/profile-setup?mode=status");
+                }
+              }}
               hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}
               style={({ pressed }) => [
                 styles.backButton,
@@ -323,14 +394,14 @@ export default function RunnerTaskSelectionScreen() {
             </Pressable>
 
             <View style={styles.brand}>
-              <Text style={[styles.brandName, { color: colors.navy }]}>
-                SaMi <Text style={{ color: colors.blue }}>Runner</Text>
+              <Text style={[styles.brandName, { color: brandColor }]}>
+                SaMi <Text style={{ color: actionBlue }}>Runner</Text>
               </Text>
 
               <Text
                 style={[
                   styles.brandTagline,
-                  { color: colors.textMuted },
+                  { color: supportingText },
                 ]}
               >
                 CONSIDER IT DONE
@@ -340,7 +411,7 @@ export default function RunnerTaskSelectionScreen() {
             <View style={styles.headerSpacer} />
           </View>
 
-          {/* Progress — this is step 1 of 3 */}
+          {/* Progress */}
           <View style={styles.progressSection}>
             <View
               style={[
@@ -351,7 +422,7 @@ export default function RunnerTaskSelectionScreen() {
               <View
                 style={[
                   styles.progressFill,
-                  { backgroundColor: colors.blue },
+                  { backgroundColor: buttonBlue },
                 ]}
               />
             </View>
@@ -360,17 +431,23 @@ export default function RunnerTaskSelectionScreen() {
               <Text
                 style={[
                   styles.progressText,
-                  { color: colors.textMuted },
+                  { color: supportingText },
                 ]}
               >
-                STEP 1 OF 3 · TASK CATEGORIES
+                {isApproved
+                  ? "APPROVED · RUNNER SERVICES"
+                  : isPendingReview
+                    ? "UNDER REVIEW · RUNNER SERVICES"
+                    : isRestricted
+                      ? "RESTRICTED · RUNNER SERVICES"
+                      : "RUNNER SERVICES · STEP 1 OF 3"}
               </Text>
 
               <View style={styles.progressDots}>
                 <View
                   style={[
                     styles.stepDotCurrent,
-                    { backgroundColor: colors.blue },
+                    { backgroundColor: buttonBlue },
                   ]}
                 />
                 <View
@@ -400,26 +477,206 @@ export default function RunnerTaskSelectionScreen() {
               <Ionicons
                 name="checkbox-outline"
                 size={27}
-                color={colors.blue}
+                color={actionBlue}
               />
             </View>
 
-            <Text style={[styles.eyebrow, { color: colors.blue }]}>
+            <Text style={[styles.eyebrow, { color: actionBlue }]}>
               YOUR RUNNER SERVICES
             </Text>
 
             <Text style={[styles.title, { color: colors.text }]}>
-              Which tasks can you perform?
+              Which services can you provide?
             </Text>
 
             <Text
-              style={[styles.subtitle, { color: colors.textMuted }]}
+              style={[styles.subtitle, { color: supportingText }]}
             >
-              Choose every type of errand you are comfortable handling.
-              Customers will be able to request services from the
-              categories you select.
+              Choose one or both of the two services SaMi offers. Customers can
+              request these services from you based on your selection.
             </Text>
           </View>
+
+          {sessionExpired ? (
+            <View
+              style={[
+                styles.accountNotice,
+                { backgroundColor: colors.dangerSoft },
+              ]}
+            >
+              <Ionicons
+                name="lock-closed-outline"
+                size={20}
+                color={colors.red}
+              />
+
+              <View style={styles.accountNoticeCopy}>
+                <Text
+                  style={[
+                    styles.accountNoticeTitle,
+                    { color: colors.text },
+                  ]}
+                >
+                  Runner session expired
+                </Text>
+
+                <Text
+                  style={[
+                    styles.accountNoticeText,
+                    { color: supportingText },
+                  ]}
+                >
+                  Your saved task selection is still on your account.
+                  Sign in again to make changes.
+                </Text>
+
+                <Pressable
+                  onPress={() => router.replace("/(auth)/login")}
+                  hitSlop={8}
+                >
+                  <Text
+                    style={[
+                      styles.accountNoticeAction,
+                      { color: actionBlue },
+                    ]}
+                  >
+                    Sign in again
+                  </Text>
+                </Pressable>
+              </View>
+            </View>
+          ) : isApproved ? (
+            <View
+              style={[
+                styles.accountNotice,
+                { backgroundColor: colors.successSoft },
+              ]}
+            >
+              <Ionicons
+                name="checkmark-circle-outline"
+                size={20}
+                color={colors.success}
+              />
+
+              <View style={styles.accountNoticeCopy}>
+                <Text
+                  style={[
+                    styles.accountNoticeTitle,
+                    { color: colors.text },
+                  ]}
+                >
+                  Runner account approved
+                </Text>
+
+                <Text
+                  style={[
+                    styles.accountNoticeText,
+                    { color: supportingText },
+                  ]}
+                >
+                  Your selected Runner services are read-only after approval.
+                </Text>
+
+                <Pressable
+                  onPress={() => router.replace("/(app)")}
+                  hitSlop={8}
+                >
+                  <Text
+                    style={[
+                      styles.accountNoticeAction,
+                      { color: actionBlue },
+                    ]}
+                  >
+                    Open Runner dashboard
+                  </Text>
+                </Pressable>
+              </View>
+            </View>
+          ) : isPendingReview ? (
+            <View
+              style={[
+                styles.accountNotice,
+                { backgroundColor: colors.warningSoft },
+              ]}
+            >
+              <Ionicons
+                name="time-outline"
+                size={20}
+                color={colors.warning}
+              />
+
+              <View style={styles.accountNoticeCopy}>
+                <Text
+                  style={[
+                    styles.accountNoticeTitle,
+                    { color: colors.text },
+                  ]}
+                >
+                  Application under review
+                </Text>
+
+                <Text
+                  style={[
+                    styles.accountNoticeText,
+                    { color: supportingText },
+                  ]}
+                >
+                  Your submitted Runner services cannot be changed while
+                  SaMi Operations reviews your application.
+                </Text>
+
+                <Pressable
+                  onPress={() =>
+                    router.push("/(app)/profile-setup?mode=status")
+                  }
+                  hitSlop={8}
+                >
+                  <Text
+                    style={[
+                      styles.accountNoticeAction,
+                      { color: actionBlue },
+                    ]}
+                  >
+                    View application status
+                  </Text>
+                </Pressable>
+              </View>
+            </View>
+          ) : isRestricted ? (
+            <View
+              style={[
+                styles.accountNotice,
+                { backgroundColor: colors.dangerSoft },
+              ]}
+            >
+              <Ionicons
+                name="lock-closed-outline"
+                size={20}
+                color={colors.red}
+              />
+
+              <View style={styles.accountNoticeCopy}>
+                <Text
+                  style={[
+                    styles.accountNoticeTitle,
+                    { color: colors.text },
+                  ]}
+                >
+                  Account access restricted
+                </Text>
+
+                <Text
+                  style={[
+                    styles.accountNoticeText,
+                    { color: supportingText },
+                  ]}
+                >
+                  Runner services cannot be changed for this account.
+                  Contact SaMi Operations for assistance.
+                </Text>
+              </View>
+            </View>
+          ) : null}
 
           {/* Selection summary */}
           <View
@@ -435,7 +692,7 @@ export default function RunnerTaskSelectionScreen() {
               <Ionicons
                 name="layers-outline"
                 size={21}
-                color={colors.blue}
+                color={actionBlue}
               />
             </View>
 
@@ -444,21 +701,23 @@ export default function RunnerTaskSelectionScreen() {
                 style={[styles.summaryTitle, { color: colors.text }]}
               >
                 {selectedCount === 0
-                  ? "No task types selected"
-                  : `${selectedCount} task ${
-                      selectedCount === 1 ? "type" : "types"
+                  ? "No Runner services selected"
+                  : `${selectedCount} Runner service${
+                      selectedCount === 1 ? "" : "s"
                     } selected`}
               </Text>
 
               <Text
                 style={[
                   styles.summarySubtitle,
-                  { color: colors.textMuted },
+                  { color: supportingText },
                 ]}
               >
-                {selectedCount === 0
-                  ? "Select at least one to continue."
-                  : "Tap a selected card to remove it."}
+                {!canEditCategories
+                  ? "Your saved task selection is read-only."
+                  : selectedCount === 0
+                    ? "Select at least one service to continue."
+                    : "Tap a selected card to remove it."}
               </Text>
             </View>
           </View>
@@ -468,17 +727,17 @@ export default function RunnerTaskSelectionScreen() {
             <View
               style={styles.loadingState}
               accessibilityRole="progressbar"
-              accessibilityLabel="Loading task categories"
+              accessibilityLabel="Loading Runner services"
             >
-              <ActivityIndicator size="large" color={colors.blue} />
+              <ActivityIndicator size="large" color={actionBlue} />
 
               <Text
                 style={[
                   styles.loadingText,
-                  { color: colors.textMuted },
+                  { color: supportingText },
                 ]}
               >
-                Loading task categories...
+                Loading Runner services...
               </Text>
             </View>
           ) : loadError ? (
@@ -505,43 +764,57 @@ export default function RunnerTaskSelectionScreen() {
 
               <Pressable
                 accessibilityRole="button"
-                accessibilityLabel="Retry loading categories"
+                accessibilityLabel={
+                  sessionExpired
+                    ? "Sign in again"
+                    : "Retry loading Runner services"
+                }
                 hitSlop={10}
-                onPress={() => void loadTaskCategories()}
+                onPress={() =>
+                  sessionExpired
+                    ? router.replace("/(auth)/login")
+                    : void loadTaskCategories()
+                }
                 style={({ pressed }) => [
                   styles.retryButton,
                   { opacity: pressed ? 0.55 : 1 },
                 ]}
               >
                 <Text
-                  style={[styles.retryText, { color: colors.blue }]}
+                  style={[styles.retryText, { color: actionBlue }]}
                 >
-                  Retry
+                  {sessionExpired ? "Sign in" : "Retry"}
                 </Text>
               </Pressable>
             </View>
           ) : (
-            <View style={styles.categoryGrid}>
-              {availableCategories.map((category) => {
+            <View style={styles.serviceGrid}>
+              {availableServices.map((service) => {
                 const selected = selectedCategories.includes(
-                  category.key,
+                  service.key,
                 );
 
                 return (
                   <Pressable
-                    key={category.key}
+                    key={service.key}
                     accessibilityRole="checkbox"
-                    accessibilityState={{ checked: selected }}
-                    accessibilityLabel={`${category.title}. ${category.description}`}
-                    onPress={() => toggleCategory(category.key)}
+                    accessibilityState={{
+                      checked: selected,
+                      disabled: !canEditCategories || saving || refreshing,
+                    }}
+                    accessibilityLabel={`${service.title}. ${service.description}`}
+                    disabled={
+                      !canEditCategories || saving || refreshing
+                    }
+                    onPress={() => toggleCategory(service.key)}
                     style={({ pressed }) => [
-                      styles.categoryCard,
+                      styles.serviceCard,
                       {
                         backgroundColor: selected
                           ? colors.blueSoft
                           : colors.surface,
                         borderColor: selected
-                          ? colors.blue
+                          ? actionBlue
                           : colors.border,
                         opacity: pressed ? 0.88 : 1,
                         transform: [{ scale: pressed ? 0.985 : 1 }],
@@ -561,39 +834,39 @@ export default function RunnerTaskSelectionScreen() {
                   >
                     <View
                       style={[
-                        styles.categoryIcon,
+                        styles.serviceIcon,
                         {
                           backgroundColor: selected
-                            ? colors.blue
+                            ? buttonBlue
                             : colors.paper,
                         },
                       ]}
                     >
                       <Ionicons
-                        name={category.icon}
+                        name={service.icon}
                         size={23}
-                        color={selected ? "#FFFFFF" : colors.blue}
+                        color={selected ? "#FFFFFF" : actionBlue}
                       />
                     </View>
 
                     <Text
                       numberOfLines={2}
                       style={[
-                        styles.categoryTitle,
+                        styles.serviceTitle,
                         { color: colors.text },
                       ]}
                     >
-                      {category.title}
+                      {service.title}
                     </Text>
 
                     <Text
                       numberOfLines={3}
                       style={[
-                        styles.categoryDescription,
-                        { color: colors.textMuted },
+                        styles.serviceDescription,
+                        { color: supportingText },
                       ]}
                     >
-                      {category.description}
+                      {service.description}
                     </Text>
 
                     <View
@@ -601,10 +874,10 @@ export default function RunnerTaskSelectionScreen() {
                         styles.checkbox,
                         {
                           backgroundColor: selected
-                            ? colors.blue
+                            ? buttonBlue
                             : "transparent",
                           borderColor: selected
-                            ? colors.blue
+                            ? actionBlue
                             : colors.border,
                         },
                       ]}
@@ -650,15 +923,14 @@ export default function RunnerTaskSelectionScreen() {
             <Ionicons
               name="information-circle-outline"
               size={17}
-              color={colors.textMuted}
+              color={supportingText}
             />
 
             <Text
-              style={[styles.noteText, { color: colors.textMuted }]}
+              style={[styles.noteText, { color: supportingText }]}
             >
-              Your selections determine which category-specific documents
-              may be required later. Shared identity documents will only
-              be requested once.
+              Your selected services help SaMi determine the relevant setup
+              requirements. Shared identity documents are requested only once.
             </Text>
           </View>
         </ScrollView>
@@ -673,41 +945,93 @@ export default function RunnerTaskSelectionScreen() {
             },
           ]}
         >
-          <Pressable
-            accessibilityRole="button"
-            accessibilityLabel="Save and continue"
-            accessibilityHint="Saves your task selection and opens the transport step"
-            disabled={saveDisabled}
-            onPress={() => void saveTaskSelection()}
-            style={({ pressed }) => [
-              styles.primaryButton,
-              { backgroundColor: colors.blue },
-              saveDisabled && styles.disabled,
-              pressed && !saveDisabled && styles.pressed,
-            ]}
-          >
-            {saving ? (
-              <ActivityIndicator color="#FFFFFF" />
-            ) : (
-              <>
-                <Text style={styles.primaryButtonText}>
-                  Save and continue
-                </Text>
+          {sessionExpired ? (
+            <Pressable
+              accessibilityRole="button"
+              onPress={() => router.replace("/(auth)/login")}
+              style={({ pressed }) => [
+                styles.primaryButton,
+                { backgroundColor: buttonBlue },
+                pressed && styles.pressed,
+              ]}
+            >
+              <Text style={styles.primaryButtonText}>Sign in again</Text>
+              <Ionicons name="arrow-forward" size={19} color="#FFFFFF" />
+            </Pressable>
+          ) : isApproved ? (
+            <Pressable
+              accessibilityRole="button"
+              onPress={() => router.replace("/(app)")}
+              style={({ pressed }) => [
+                styles.primaryButton,
+                { backgroundColor: buttonBlue },
+                pressed && styles.pressed,
+              ]}
+            >
+              <Text style={styles.primaryButtonText}>
+                Open Runner dashboard
+              </Text>
+              <Ionicons name="arrow-forward" size={19} color="#FFFFFF" />
+            </Pressable>
+          ) : isPendingReview ? (
+            <Pressable
+              accessibilityRole="button"
+              onPress={() =>
+                router.push("/(app)/profile-setup?mode=status")
+              }
+              style={({ pressed }) => [
+                styles.primaryButton,
+                { backgroundColor: buttonBlue },
+                pressed && styles.pressed,
+              ]}
+            >
+              <Text style={styles.primaryButtonText}>
+                View application status
+              </Text>
+              <Ionicons name="arrow-forward" size={19} color="#FFFFFF" />
+            </Pressable>
+          ) : isRestricted ? null : (
+            <Pressable
+              accessibilityRole="button"
+              accessibilityLabel="Save and continue"
+              accessibilityHint="Saves your task selection and opens the transport step"
+              disabled={saveDisabled}
+              onPress={() => void saveTaskSelection()}
+              style={({ pressed }) => [
+                styles.primaryButton,
+                { backgroundColor: buttonBlue },
+                saveDisabled && styles.disabled,
+                pressed && !saveDisabled && styles.pressed,
+              ]}
+            >
+              {saving ? (
+                <ActivityIndicator color="#FFFFFF" />
+              ) : (
+                <>
+                  <Text style={styles.primaryButtonText}>
+                    Save and continue
+                  </Text>
+                  <Ionicons
+                    name="arrow-forward"
+                    size={19}
+                    color="#FFFFFF"
+                  />
+                </>
+              )}
+            </Pressable>
+          )}
 
-                <Ionicons
-                  name="arrow-forward"
-                  size={19}
-                  color="#FFFFFF"
-                />
-              </>
-            )}
-          </Pressable>
-
-          <Text
-            style={[styles.bottomHint, { color: colors.textMuted }]}
-          >
-            Select at least one task category to continue.
-          </Text>
+          {!isRestricted ? (
+            <Text style={[styles.bottomHint, { color: supportingText }]}>
+              {sessionExpired
+                ? "Your saved application data remains on your account."
+                : isApproved
+                  ? "Your selected Runner services remain available for reference."
+                  : isPendingReview
+                    ? "Your application is being reviewed. You can leave this screen and return later."
+                    : "Select at least one Runner service to continue."}
+            </Text>
+          ) : null}
         </View>
       </View>
     </SafeAreaView>
@@ -837,6 +1161,36 @@ const styles = StyleSheet.create({
     lineHeight: 21,
   },
 
+  accountNotice: {
+    borderRadius: 14,
+    padding: 14,
+    flexDirection: "row",
+    alignItems: "flex-start",
+    gap: 10,
+  },
+
+  accountNoticeCopy: {
+    flex: 1,
+    gap: 5,
+  },
+
+  accountNoticeTitle: {
+    fontSize: 13,
+    fontWeight: "900",
+    lineHeight: 18,
+  },
+
+  accountNoticeText: {
+    fontSize: 12,
+    lineHeight: 18,
+  },
+
+  accountNoticeAction: {
+    fontSize: 12,
+    fontWeight: "900",
+    paddingTop: 2,
+  },
+
   // Selection summary
   selectionSummary: {
     minHeight: 76,
@@ -900,15 +1254,15 @@ const styles = StyleSheet.create({
     fontWeight: "900",
   },
 
-  // Category grid
-  categoryGrid: {
+  // Runner service cards
+  serviceGrid: {
     flexDirection: "row",
     flexWrap: "wrap",
     justifyContent: "space-between",
     rowGap: 12,
   },
 
-  categoryCard: {
+  serviceCard: {
     width: "48%",
     minHeight: 164,
     borderWidth: 1,
@@ -918,7 +1272,7 @@ const styles = StyleSheet.create({
     position: "relative",
   },
 
-  categoryIcon: {
+  serviceIcon: {
     width: 44,
     height: 44,
     borderRadius: 13,
@@ -927,14 +1281,14 @@ const styles = StyleSheet.create({
     marginBottom: 4,
   },
 
-  categoryTitle: {
+  serviceTitle: {
     fontSize: 13.5,
     lineHeight: 18,
     fontWeight: "900",
     paddingRight: 24,
   },
 
-  categoryDescription: {
+  serviceDescription: {
     fontSize: 11.5,
     lineHeight: 16,
     paddingRight: 2,

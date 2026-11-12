@@ -17,6 +17,38 @@ type ApiOptions = {
   body?: unknown;
 };
 
+/* -------------------------------------------------------------------------- */
+/* RUNNER DOMAIN TYPES                                                        */
+/* -------------------------------------------------------------------------- */
+
+export const RUNNER_SERVICE_KEYS = [
+  "pickup_deliver",
+  "shop_deliver",
+] as const;
+
+export type RunnerServiceKey =
+  (typeof RUNNER_SERVICE_KEYS)[number];
+
+export const RUNNER_VEHICLE_TYPES = [
+  "bike",
+  "motorbike",
+  "vehicle",
+] as const;
+
+export type RunnerVehicleType =
+  (typeof RUNNER_VEHICLE_TYPES)[number];
+
+/**
+ * Values retained by older Runner database records.
+ * New onboarding requests should use RunnerVehicleType.
+ */
+export type LegacyRunnerVehicleType =
+  | "bicycle"
+  | "motorcycle"
+  | "car"
+  | "van"
+  | "other";
+
 export type RunnerProfile = {
   id: string;
   phone: string | null;
@@ -77,7 +109,7 @@ export type RunnerOtpChallenge = {
 
 /**
  * Registration captures identity and contact details only.
- * Task categories are selected after email verification.
+ * Service selection happens after email verification.
  */
 export type RunnerRegistrationInput = {
   fullName: string;
@@ -186,6 +218,150 @@ export type RunnerOnboardingSubmissionResult = {
   };
 };
 
+export type RunnerOnboardingUpdateResult = {
+  ok: boolean;
+  message: string;
+  requirements: RunnerDocumentRequirement[];
+};
+
+export type RunnerCategoriesUpdateResult = {
+  ok: boolean;
+  message: string;
+  categories?: RunnerCategory[];
+};
+
+/* -------------------------------------------------------------------------- */
+/* RUNNER VALUE NORMALIZATION                                                 */
+/* -------------------------------------------------------------------------- */
+
+/**
+ * Normalize legacy database transport values to the three Runner choices.
+ *
+ * bike      <- bicycle
+ * motorbike <- motorcycle
+ * vehicle   <- car, van, other
+ *
+ * This keeps older account records readable while the database migration
+ * is handled separately.
+ */
+export function normalizeRunnerVehicleType(
+  value: string | null | undefined,
+): RunnerVehicleType | null {
+  switch (value?.trim().toLowerCase()) {
+    case "bike":
+    case "bicycle":
+      return "bike";
+
+    case "motorbike":
+    case "motorcycle":
+      return "motorbike";
+
+    case "vehicle":
+    case "car":
+    case "van":
+    case "other":
+      return "vehicle";
+
+    default:
+      return null;
+  }
+}
+
+function normalizeRunnerAccount<T extends {
+  vehicleType: string | null;
+}>(runner: T): T {
+  const normalizedVehicle = normalizeRunnerVehicleType(
+    runner.vehicleType,
+  );
+
+  return {
+    ...runner,
+    vehicleType: normalizedVehicle ?? runner.vehicleType,
+  };
+}
+
+function normalizeRequirements(
+  requirements: RunnerDocumentRequirement[],
+): RunnerDocumentRequirement[] {
+  // Client-side safeguard: optional requirements are never exposed
+  // through the onboarding helper.
+  return requirements.filter(
+    (requirement) => requirement.required === true,
+  );
+}
+
+function normalizeOnboardingData(
+  data: RunnerOnboardingData,
+): RunnerOnboardingData {
+  return {
+    ...data,
+    runner: normalizeRunnerAccount(data.runner),
+    requirements: normalizeRequirements(
+      Array.isArray(data.requirements) ? data.requirements : [],
+    ),
+    documents: Array.isArray(data.documents) ? data.documents : [],
+  };
+}
+
+function assertRunnerServiceKeys(
+  categoryKeys: string[],
+): asserts categoryKeys is RunnerServiceKey[] {
+  if (!Array.isArray(categoryKeys) || categoryKeys.length === 0) {
+    throw new Error("Select at least one Runner service.");
+  }
+
+  if (categoryKeys.some(
+    (key) => !RUNNER_SERVICE_KEYS.includes(key as RunnerServiceKey),
+  )) {
+    throw new Error(
+      "Only Pick Up & Deliver and Shop & Deliver are supported Runner services.",
+    );
+  }
+
+  if (new Set(categoryKeys).size !== categoryKeys.length) {
+    throw new Error("A Runner service cannot be selected more than once.");
+  }
+}
+
+function assertRunnerVehicleType(
+  vehicleType: string,
+): asserts vehicleType is RunnerVehicleType {
+  if (!RUNNER_VEHICLE_TYPES.includes(vehicleType as RunnerVehicleType)) {
+    throw new Error(
+      "Choose Bike, Motorbike or Vehicle.",
+    );
+  }
+}
+
+function assertRunnerTransportInput(input: {
+  serviceArea: string;
+  vehicleType: string;
+  vehicleRegistration?: string;
+}) {
+  const serviceArea = input.serviceArea.trim();
+  const registration = input.vehicleRegistration?.trim() ?? "";
+
+  if (serviceArea.length < 2) {
+    throw new Error("Enter your main service area.");
+  }
+
+  assertRunnerVehicleType(input.vehicleType);
+
+  if (
+    (input.vehicleType === "motorbike" ||
+      input.vehicleType === "vehicle") &&
+    !registration
+  ) {
+    throw new Error(
+      "Vehicle registration is required for Motorbike and Vehicle.",
+    );
+  }
+}
+
+/* -------------------------------------------------------------------------- */
+/* API CONFIGURATION AND SESSION                                              */
+/* -------------------------------------------------------------------------- */
+
 function apiBase(): string {
   const value = process.env.EXPO_PUBLIC_SAMI_API_URL
     ?.trim()
@@ -238,12 +414,15 @@ function getApiError(
   return fallback;
 }
 
+/* -------------------------------------------------------------------------- */
+/* KENYAN PHONE NORMALIZATION                                                 */
+/* -------------------------------------------------------------------------- */
+
 /**
  * Normalize common Kenyan mobile number formats to E.164.
  *
- * Examples:
- * 0712345678   -> +254712345678
- * 0112345678   -> +254112345678
+ * 0712345678    -> +254712345678
+ * 0112345678    -> +254112345678
  * 254712345678 -> +254712345678
  * +254712345678 -> +254712345678
  */
@@ -273,6 +452,10 @@ function normalizeKenyanPhone(value: string): string {
   );
 }
 
+/* -------------------------------------------------------------------------- */
+/* SESSION ACCESS                                                             */
+/* -------------------------------------------------------------------------- */
+
 export async function getRunnerSession(): Promise<string | null> {
   return SecureStore.getItemAsync(SESSION_KEY).catch(
     () => null,
@@ -291,6 +474,12 @@ export async function saveRunnerSession(
   await SecureStore.setItemAsync(SESSION_KEY, token);
 }
 
+/**
+ * Explicit logout.
+ *
+ * Normal navigation and screen changes must not call this function.
+ * Local credentials are cleared even if the device is offline.
+ */
 export async function clearRunnerSession(): Promise<void> {
   const token = await getRunnerSession();
 
@@ -333,6 +522,10 @@ export async function clearRunnerSession(): Promise<void> {
     await clearSession();
   }
 }
+
+/* -------------------------------------------------------------------------- */
+/* JSON API REQUEST                                                           */
+/* -------------------------------------------------------------------------- */
 
 export async function apiRequest<T>(
   path: string,
@@ -388,6 +581,8 @@ export async function apiRequest<T>(
     const isPublicAuthRequest =
       PUBLIC_AUTH_PATHS.includes(path);
 
+    // A rejected authenticated request clears the expired or invalid
+    // credential. Ordinary navigation does not clear the session.
     if (
       response.status === 401 &&
       token &&
@@ -407,19 +602,18 @@ export async function apiRequest<T>(
   return payload as T;
 }
 
-/* -----------------------------------------
-   MULTIPART DOCUMENT UPLOAD
------------------------------------------- */
+/* -------------------------------------------------------------------------- */
+/* MULTIPART DOCUMENT UPLOAD                                                  */
+/* -------------------------------------------------------------------------- */
 
 /**
- * Expo SDK 57 uses the standard File/Blob implementation
- * with expo/fetch. A React Native { uri, name, type }
- * object cast to Blob is not a real Blob and cannot be
- * reliably serialized into multipart FormData.
+ * Expo SDK 57 uses the standard File/Blob implementation with expo/fetch.
  *
- * Convert the selected local URI into an Expo File before
- * appending it. This is shared by regular documents and
- * the two-sided National ID submission.
+ * A React Native { uri, name, type } object cast to Blob is not a real
+ * Blob and cannot be reliably serialized into multipart FormData.
+ *
+ * Convert the selected local URI into an Expo File before appending it.
+ * This is shared by regular documents and the two-sided National ID.
  */
 function appendRunnerFile(
   formData: FormData,
@@ -455,9 +649,9 @@ function appendRunnerFile(
     nativeFile.name ||
     "runner-document";
 
-  // Expo File is a real File/Blob compatible part.
-  // Do not manually set the multipart Content-Type header;
-  // expo/fetch must generate the boundary.
+  // Expo File is a real File/Blob-compatible part.
+  // Do not manually set multipart Content-Type; expo/fetch generates
+  // the multipart boundary.
   formData.append(fieldName, nativeFile, filename);
 }
 
@@ -520,9 +714,9 @@ async function uploadRunnerFile<T>(
   }
 }
 
-/* -----------------------------------------
-   RUNNER EMAIL AUTHENTICATION
------------------------------------------- */
+/* -------------------------------------------------------------------------- */
+/* RUNNER EMAIL AUTHENTICATION                                                */
+/* -------------------------------------------------------------------------- */
 
 export async function requestRunnerOtp(
   email: string,
@@ -589,7 +783,7 @@ export async function verifyRunnerOtp(
   challengeId: string,
   code: string,
 ): Promise<RunnerOtpVerificationResult> {
-  return apiRequest<RunnerOtpVerificationResult>(
+  const result = await apiRequest<RunnerOtpVerificationResult>(
     "/api/runner/auth/verify-otp",
     {
       method: "POST",
@@ -599,11 +793,16 @@ export async function verifyRunnerOtp(
       },
     },
   );
+
+  return {
+    ...result,
+    runner: normalizeRunnerAccount(result.runner),
+  };
 }
 
-/* -----------------------------------------
-   RUNNER TASK CATEGORIES
------------------------------------------- */
+/* -------------------------------------------------------------------------- */
+/* RUNNER TASK CATEGORIES                                                     */
+/* -------------------------------------------------------------------------- */
 
 export async function getRunnerCategories(): Promise<{
   ok: boolean;
@@ -612,56 +811,100 @@ export async function getRunnerCategories(): Promise<{
   return apiRequest("/api/runner/categories");
 }
 
-/* -----------------------------------------
-   RUNNER PROFILE
------------------------------------------- */
+/**
+ * Save the Runner's supported service selections.
+ *
+ * The API accepts only the two current Runner service keys.
+ */
+export async function updateRunnerCategories(
+  categoryKeys: RunnerServiceKey[],
+): Promise<RunnerCategoriesUpdateResult> {
+  assertRunnerServiceKeys(categoryKeys);
+
+  return apiRequest<RunnerCategoriesUpdateResult>(
+    "/api/runner/me/categories",
+    {
+      method: "PUT",
+      body: {
+        categoryKeys,
+      },
+    },
+  );
+}
+
+/* -------------------------------------------------------------------------- */
+/* RUNNER PROFILE                                                             */
+/* -------------------------------------------------------------------------- */
 
 export async function getRunnerMe(): Promise<{
   runner: RunnerMe;
 }> {
-  return apiRequest<{ runner: RunnerMe }>(
+  const result = await apiRequest<{ runner: RunnerMe }>(
     "/api/runner/me",
   );
+
+  return {
+    ...result,
+    runner: normalizeRunnerAccount(result.runner),
+  };
 }
 
 export async function updateRunnerProfile(input: {
   fullName: string;
   serviceArea: string;
-  vehicleType: string;
+  vehicleType: RunnerVehicleType;
   vehicleRegistration?: string;
 }): Promise<void> {
+  assertRunnerTransportInput(input);
+
   await apiRequest("/api/runner/me", {
     method: "PUT",
-    body: input,
+    body: {
+      fullName: input.fullName.trim(),
+      serviceArea: input.serviceArea.trim(),
+      vehicleType: input.vehicleType,
+      vehicleRegistration: input.vehicleRegistration?.trim() || undefined,
+    },
   });
 }
 
-/* -----------------------------------------
-   RUNNER ONBOARDING
------------------------------------------- */
+/* -------------------------------------------------------------------------- */
+/* RUNNER ONBOARDING                                                          */
+/* -------------------------------------------------------------------------- */
 
 export async function getRunnerOnboarding(): Promise<RunnerOnboardingData> {
-  return apiRequest<RunnerOnboardingData>(
+  const result = await apiRequest<RunnerOnboardingData>(
     "/api/runner/me/onboarding",
   );
+
+  return normalizeOnboardingData(result);
 }
 
 export async function updateRunnerOnboarding(input: {
   serviceArea: string;
-  vehicleType: string;
+  vehicleType: RunnerVehicleType;
   vehicleRegistration?: string;
-}): Promise<{
-  ok: boolean;
-  message: string;
-  requirements: RunnerDocumentRequirement[];
-}> {
-  return apiRequest(
+}): Promise<RunnerOnboardingUpdateResult> {
+  assertRunnerTransportInput(input);
+
+  const result = await apiRequest<RunnerOnboardingUpdateResult>(
     "/api/runner/me/onboarding",
     {
       method: "PUT",
-      body: input,
+      body: {
+        serviceArea: input.serviceArea.trim(),
+        vehicleType: input.vehicleType,
+        vehicleRegistration: input.vehicleRegistration?.trim() || undefined,
+      },
     },
   );
+
+  return {
+    ...result,
+    requirements: normalizeRequirements(
+      Array.isArray(result.requirements) ? result.requirements : [],
+    ),
+  };
 }
 
 /**
@@ -692,6 +935,10 @@ export async function uploadRunnerDocument(input: {
     );
   }
 
+  if (!input.file?.uri) {
+    throw new Error("Select a document to upload.");
+  }
+
   const formData = new FormData();
 
   formData.append("requirementKey", requirementKey);
@@ -711,8 +958,8 @@ export async function uploadRunnerDocument(input: {
 /**
  * Upload both sides of a National ID in a single request.
  *
- * The backend validates both files and creates both
- * document records in one database transaction.
+ * The backend validates both files and creates both document
+ * records in one database transaction.
  */
 export async function uploadRunnerNationalId(input: {
   front: RunnerDocumentFile;
@@ -754,10 +1001,18 @@ export async function uploadRunnerNationalId(input: {
       formData,
     );
 
+  const uploadedKeys = new Set(
+    (result.documents ?? []).map(
+      (document) => document.requirementKey,
+    ),
+  );
+
   if (
     !Array.isArray(result.documents) ||
     result.documents.length !== 2 ||
-    result.uploadCount !== 2
+    result.uploadCount !== 2 ||
+    !uploadedKeys.has("identity_national_id_front") ||
+    !uploadedKeys.has("identity_national_id_back")
   ) {
     throw new Error(
       "The server did not confirm both National ID sides. Refresh your document checklist before continuing.",
@@ -777,9 +1032,9 @@ export async function submitRunnerOnboarding(): Promise<RunnerOnboardingSubmissi
   );
 }
 
-/* -----------------------------------------
-   RUNNER AVAILABILITY
------------------------------------------- */
+/* -------------------------------------------------------------------------- */
+/* RUNNER AVAILABILITY                                                        */
+/* -------------------------------------------------------------------------- */
 
 export async function setRunnerAvailability(
   isOnline: boolean,
@@ -798,9 +1053,9 @@ export async function setRunnerAvailability(
   );
 }
 
-/* -----------------------------------------
-   RUNNER ERRANDS
------------------------------------------- */
+/* -------------------------------------------------------------------------- */
+/* RUNNER ERRANDS                                                             */
+/* -------------------------------------------------------------------------- */
 
 export async function getRunnerJobs(): Promise<{
   offers: RunnerJob[];
@@ -812,6 +1067,10 @@ export async function getRunnerJobs(): Promise<{
 export async function acceptRunnerJob(
   jobId: string,
 ): Promise<void> {
+  if (!jobId.trim()) {
+    throw new Error("A valid Runner job is required.");
+  }
+
   await apiRequest(
     "/api/runner/jobs/" +
       encodeURIComponent(jobId) +
@@ -827,6 +1086,10 @@ export async function updateRunnerJobStatus(
   jobId: string,
   action: "start" | "submit_completion",
 ): Promise<void> {
+  if (!jobId.trim()) {
+    throw new Error("A valid Runner job is required.");
+  }
+
   await apiRequest(
     "/api/runner/jobs/" +
       encodeURIComponent(jobId) +
@@ -838,9 +1101,9 @@ export async function updateRunnerJobStatus(
   );
 }
 
-/* -----------------------------------------
-   RUNNER LIVE LOCATION
------------------------------------------- */
+/* -------------------------------------------------------------------------- */
+/* RUNNER LIVE LOCATION                                                       */
+/* -------------------------------------------------------------------------- */
 
 export async function publishRunnerLocation(input: {
   latitude: number;
@@ -849,6 +1112,17 @@ export async function publishRunnerLocation(input: {
   heading?: number | null;
   speed?: number | null;
 }): Promise<void> {
+  if (
+    !Number.isFinite(input.latitude) ||
+    !Number.isFinite(input.longitude) ||
+    input.latitude < -90 ||
+    input.latitude > 90 ||
+    input.longitude < -180 ||
+    input.longitude > 180
+  ) {
+    throw new Error("A valid Runner location is required.");
+  }
+
   await apiRequest("/api/runner/location", {
     method: "POST",
     body: input,

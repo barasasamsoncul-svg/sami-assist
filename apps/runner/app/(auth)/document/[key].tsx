@@ -18,7 +18,7 @@ import {
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import * as ImagePicker from "expo-image-picker";
-import { useLocalSearchParams, useRouter } from "expo-router";
+import { useFocusEffect, useLocalSearchParams, useRouter } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 
 import {
@@ -124,11 +124,14 @@ function statusLabel(status: UploadedDocument["reviewStatus"] | null) {
   }
 }
 
-function getMimeType(name: string, providedType?: string | null) {
-  if (providedType) return providedType;
+function getMimeType(name: string, providedType?: string | null): string | null {
+  const normalizedType = providedType?.trim().toLowerCase();
+  if (normalizedType === "image/jpg") return "image/jpeg";
+  if (["image/jpeg", "image/png", "image/webp"].includes(normalizedType ?? "")) {
+    return normalizedType!;
+  }
 
   const extension = name.split(".").pop()?.toLowerCase();
-
   switch (extension) {
     case "png":
       return "image/png";
@@ -136,8 +139,9 @@ function getMimeType(name: string, providedType?: string | null) {
       return "image/webp";
     case "jpg":
     case "jpeg":
-    default:
       return "image/jpeg";
+    default:
+      return null;
   }
 }
 
@@ -154,6 +158,8 @@ function PickedFileCard({
   description,
   file,
   colors,
+  supportingText,
+  actionBlue,
   onCamera,
   onGallery,
   onClear,
@@ -163,6 +169,8 @@ function PickedFileCard({
   description: string;
   file: PickedFile | null;
   colors: ThemeColors;
+  supportingText: string;
+  actionBlue: string;
   onCamera: () => void;
   onGallery: () => void;
   onClear?: () => void;
@@ -174,7 +182,7 @@ function PickedFileCard({
         styles.fileCard,
         {
           backgroundColor: colors.surface,
-          borderColor: file ? colors.blue : colors.border,
+          borderColor: file ? actionBlue : colors.border,
         },
         file &&
           Platform.select({
@@ -194,7 +202,7 @@ function PickedFileCard({
       </Text>
 
       <Text
-        style={[styles.fileDescription, { color: colors.textMuted }]}
+        style={[styles.fileDescription, { color: supportingText }]}
       >
         {description}
       </Text>
@@ -251,7 +259,7 @@ function PickedFileCard({
               <Ionicons
                 name="close-circle"
                 size={22}
-                color={colors.textMuted}
+                color={supportingText}
               />
             </Pressable>
           ) : null}
@@ -269,12 +277,12 @@ function PickedFileCard({
           <Ionicons
             name="image-outline"
             size={26}
-            color={colors.textMuted}
+            color={supportingText}
           />
           <Text
             style={[
               styles.emptyPreviewText,
-              { color: colors.textMuted },
+              { color: supportingText },
             ]}
           >
             No image selected
@@ -348,16 +356,24 @@ function PickedFileCard({
 export default function RunnerDocumentDetailScreen() {
   const router = useRouter();
   const params = useLocalSearchParams<{ key?: string | string[] }>();
-  const { colors } = useRunnerTheme();
+  const { colors, mode } = useRunnerTheme();
+
+  const isDark = mode === "dark";
+  const supportingText = isDark ? "#C1CCDA" : "#526176";
+  const brandColor = isDark ? "#F5F7FB" : "#000535";
+  const actionBlue = isDark ? "#8AB8F8" : "#1F5EAB";
+  const buttonBlue = isDark ? "#1D5DAD" : "#174F9F";
 
   const routeKey = Array.isArray(params.key)
     ? params.key[0]
     : params.key;
-
   const isNationalIdentity = routeKey === "national_identity";
 
   const [requirements, setRequirements] = useState<Requirement[]>([]);
   const [documents, setDocuments] = useState<UploadedDocument[]>([]);
+  const [onboardingStatus, setOnboardingStatus] = useState("");
+  const [accountStatus, setAccountStatus] = useState("");
+  const [verificationStatus, setVerificationStatus] = useState("");
 
   const [frontFile, setFrontFile] = useState<PickedFile | null>(null);
   const [backFile, setBackFile] = useState<PickedFile | null>(null);
@@ -370,28 +386,54 @@ export default function RunnerDocumentDetailScreen() {
 
   const scrollRef = useRef<ScrollView>(null);
   const mountedRef = useRef(true);
+  const loadInFlightRef = useRef(false);
+  const uploadInFlightRef = useRef(false);
+  const pickerInFlightRef = useRef(false);
+  const hasLoadedOnceRef = useRef(false);
 
   useEffect(() => {
+    mountedRef.current = true;
     return () => {
       mountedRef.current = false;
     };
   }, []);
 
   const loadOnboarding = useCallback(async () => {
-    setLoading(true);
+    if (loadInFlightRef.current) return;
+    loadInFlightRef.current = true;
+
+    if (!hasLoadedOnceRef.current) {
+      setLoading(true);
+    }
     setPageError(null);
 
     try {
+      // GET /api/runner/me/onboarding returns the authenticated Runner's
+      // dynamic requirements and newest-first document review records.
       const response = await getRunnerOnboarding();
-
       if (!mountedRef.current) return;
 
+      if (
+        !response?.ok ||
+        !response.runner ||
+        !Array.isArray(response.requirements) ||
+        !Array.isArray(response.documents)
+      ) {
+        throw new Error("The server returned an invalid onboarding response.");
+      }
+
+      // Fail closed: only explicitly mandatory requirements are available here.
+      // Optional or malformed entries cannot be opened or uploaded from this screen.
       setRequirements(
-        Array.isArray(response.requirements) ? response.requirements : [],
+        response.requirements.filter(
+          (item) => item.required === true,
+        ),
       );
-      setDocuments(
-        Array.isArray(response.documents) ? response.documents : [],
-      );
+      setDocuments(response.documents);
+      setOnboardingStatus(response.onboardingStatus);
+      setAccountStatus(response.runner.accountStatus);
+      setVerificationStatus(response.runner.verificationStatus);
+      hasLoadedOnceRef.current = true;
     } catch (cause) {
       if (!mountedRef.current) return;
       setPageError(
@@ -400,17 +442,20 @@ export default function RunnerDocumentDetailScreen() {
           : "Could not load your document requirements.",
       );
     } finally {
-      if (mountedRef.current) {
-        setLoading(false);
-      }
+      loadInFlightRef.current = false;
+      if (mountedRef.current) setLoading(false);
     }
   }, []);
 
-  useEffect(() => {
-    void loadOnboarding();
-  }, [loadOnboarding]);
+  // Recheck document and account state whenever this screen becomes active.
+  // This catches an Operations decision made while the user was elsewhere.
+  useFocusEffect(
+    useCallback(() => {
+      mountedRef.current = true;
+      void loadOnboarding();
+    }, [loadOnboarding]),
+  );
 
-  // Scroll any inline error into view so it's never off-screen.
   useEffect(() => {
     if (!error) return;
     const frame = requestAnimationFrame(() => {
@@ -423,12 +468,10 @@ export default function RunnerDocumentDetailScreen() {
     () => requirements.find((item) => item.key === NATIONAL_ID_FRONT_KEY),
     [requirements],
   );
-
   const backRequirement = useMemo(
     () => requirements.find((item) => item.key === NATIONAL_ID_BACK_KEY),
     [requirements],
   );
-
   const singleRequirement = useMemo(
     () => requirements.find((item) => item.key === (routeKey ?? "")),
     [requirements, routeKey],
@@ -450,10 +493,9 @@ export default function RunnerDocumentDetailScreen() {
     ? getRejectionReason(documents, routeKey)
     : null;
 
-  const nationalIdentityLocked =
+  const nationalIdentityDocumentLocked =
     ["pending", "approved"].includes(frontStatus ?? "") &&
     ["pending", "approved"].includes(backStatus ?? "");
-
   const singleDocumentLocked = ["pending", "approved"].includes(
     singleStatus ?? "",
   );
@@ -466,20 +508,43 @@ export default function RunnerDocumentDetailScreen() {
     singleRequirement?.title ??
     DOCUMENT_TITLES[routeKey ?? ""] ??
     "Document";
-
   const singleDescription =
     singleRequirement?.instructions ??
     "Upload a clear, readable image of this document.";
 
+  const isApproved =
+    onboardingStatus === "approved" || verificationStatus === "approved";
+  const isPendingReview =
+    onboardingStatus === "pending_review" || verificationStatus === "submitted";
+  const isRestricted = ["suspended", "closed"].includes(accountStatus);
+  const sessionExpired = /session has expired|sign in again|no valid runner session/i.test(
+    `${pageError ?? ""} ${error ?? ""}`,
+  );
+
+  const accountReadOnly = isApproved || isPendingReview || isRestricted;
+  const documentAlreadySubmitted = isNationalIdentity
+    ? nationalIdentityDocumentLocked
+    : singleDocumentLocked;
+  const locked =
+    accountReadOnly || documentAlreadySubmitted || sessionExpired;
+  const canUpload =
+    hasLoadedOnceRef.current &&
+    !loading &&
+    !uploading &&
+    !pageError &&
+    documentExists &&
+    !locked;
+
   function goBack() {
     if (router.canGoBack()) {
       router.back();
-      return;
+    } else {
+      router.replace("/(auth)/documents");
     }
-    router.replace("/(auth)/documents");
   }
 
   function clearFile(side: "front" | "back" | "single") {
+    if (uploading) return;
     if (side === "front") setFrontFile(null);
     else if (side === "back") setBackFile(null);
     else setSingleFile(null);
@@ -490,6 +555,8 @@ export default function RunnerDocumentDetailScreen() {
     side: "front" | "back" | "single",
     source: "camera" | "gallery",
   ) => {
+    if (!canUpload || pickerInFlightRef.current) return;
+    pickerInFlightRef.current = true;
     setError(null);
 
     try {
@@ -503,8 +570,8 @@ export default function RunnerDocumentDetailScreen() {
       if (!permission.granted) {
         setError(
           source === "camera"
-            ? "Camera permission is required to take a document photo."
-            : "Photo library permission is required to select an image.",
+            ? "Camera permission is required to take a document photo. Enable camera access in your device settings."
+            : "Photo library permission is required to select an image. Enable photo access in your device settings.",
         );
         return;
       }
@@ -522,32 +589,36 @@ export default function RunnerDocumentDetailScreen() {
               quality: 0.9,
             });
 
-      if (!mountedRef.current) return;
-      if (result.canceled || !result.assets?.length) return;
-
-      const asset = result.assets[0];
-      const name =
-        asset.fileName ??
-        `${side}-${routeKey ?? "document"}-${Date.now()}.jpg`;
-      const mimeType = getMimeType(name, asset.mimeType);
-
-      if (asset.fileSize && asset.fileSize > MAX_FILE_SIZE) {
-        setError(
-          "This image is larger than 10 MB. Choose a smaller image.",
-        );
+      if (!mountedRef.current || result.canceled || !result.assets?.length) {
         return;
       }
 
-      if (
-        !["image/jpeg", "image/png", "image/webp"].includes(mimeType)
-      ) {
-        setError("Choose a JPEG, PNG or WEBP image.");
+      const asset = result.assets[0];
+      const name =
+        asset.fileName?.trim() ||
+        `${side}-${routeKey ?? "document"}-${Date.now()}.jpg`;
+      const mimeType = getMimeType(name, asset.mimeType);
+
+      if (asset.fileSize !== undefined && asset.fileSize <= 0) {
+        setError("The selected image is empty. Choose another image.");
+        return;
+      }
+
+      if (asset.fileSize !== undefined && asset.fileSize > MAX_FILE_SIZE) {
+        setError("This image is larger than 10 MB. Choose a smaller image.");
+        return;
+      }
+
+      if (!mimeType) {
+        setError("Choose a JPEG, PNG or WEBP image. HEIC and other image formats are not supported.");
         return;
       }
 
       const picked: PickedFile = {
         uri: asset.uri,
-        name,
+        name: name.includes(".")
+          ? name
+          : `${name}.${mimeType.split("/")[1] === "jpeg" ? "jpg" : mimeType.split("/")[1]}`,
         mimeType,
         size: asset.fileSize,
       };
@@ -562,23 +633,22 @@ export default function RunnerDocumentDetailScreen() {
           ? cause.message
           : "The image could not be selected.",
       );
+    } finally {
+      pickerInFlightRef.current = false;
     }
   };
 
   const submitDocument = async () => {
+    if (!canUpload || uploadInFlightRef.current) return;
     setError(null);
 
     if (isNationalIdentity) {
       if (!frontFile || !backFile) {
-        setError(
-          "Select both the front and back of your National ID.",
-        );
+        setError("Select both the front and back of your National ID.");
         return;
       }
       if (!frontRequirement || !backRequirement) {
-        setError(
-          "The National ID requirements could not be loaded.",
-        );
+        setError("The National ID requirements could not be loaded.");
         return;
       }
     } else {
@@ -592,50 +662,75 @@ export default function RunnerDocumentDetailScreen() {
       }
     }
 
+    uploadInFlightRef.current = true;
     setUploading(true);
 
     try {
       if (isNationalIdentity && frontFile && backFile) {
-        await uploadRunnerNationalId({
+        // The API helper sends both multipart parts in one request. The
+        // backend validates both files and inserts both records atomically.
+        const result = await uploadRunnerNationalId({
           front: toApiFile(frontFile),
           back: toApiFile(backFile),
         });
+
+        const keys = new Set(
+          (result.documents ?? []).map((item) => item.requirementKey),
+        );
+        if (
+          !result.ok ||
+          result.uploadCount !== 2 ||
+          !keys.has(NATIONAL_ID_FRONT_KEY) ||
+          !keys.has(NATIONAL_ID_BACK_KEY)
+        ) {
+          throw new Error(
+            "The server did not confirm both National ID sides. Refresh your document checklist before continuing.",
+          );
+        }
       } else if (routeKey && singleFile) {
-        await uploadRunnerDocument({
+        const result = await uploadRunnerDocument({
           requirementKey: routeKey,
           file: toApiFile(singleFile),
         });
+
+        if (
+          !result.ok ||
+          result.document?.requirementKey !== routeKey ||
+          result.document?.reviewStatus !== "pending"
+        ) {
+          throw new Error(
+            "The server did not confirm this document upload. Refresh your document checklist before continuing.",
+          );
+        }
       }
 
       if (!mountedRef.current) return;
-
+      // Return to the overview only after the backend confirms the upload.
+      // The overview refreshes its server state when it receives focus.
       router.replace("/(auth)/documents");
     } catch (cause) {
       if (!mountedRef.current) return;
-      setError(
-        cause instanceof Error
-          ? cause.message
-          : "Your document could not be submitted. Please try again.",
-      );
-    } finally {
-      if (mountedRef.current) {
-        setUploading(false);
+      const message = cause instanceof Error
+        ? cause.message
+        : "Your document could not be submitted. Please try again.";
+      setError(message);
+
+      // A 401 clears the local token in uploadRunnerFile(). Refreshing the
+      // authenticated onboarding endpoint exposes the expired-session state.
+      // A 403/409 can also mean Operations changed the account state while
+      // this screen was open, so refresh the server snapshot in that case.
+      if (/session has expired|sign in again|no valid runner session|already approved|operations review|cannot upload|account cannot upload/i.test(message)) {
+        void loadOnboarding();
       }
+    } finally {
+      uploadInFlightRef.current = false;
+      if (mountedRef.current) setUploading(false);
     }
   };
 
-  const locked = isNationalIdentity
-    ? nationalIdentityLocked
-    : singleDocumentLocked;
-
   const submitDisabled =
-    uploading ||
-    loading ||
-    !documentExists ||
-    locked ||
+    !canUpload ||
     (isNationalIdentity ? !frontFile || !backFile : !singleFile);
-
-  const isDarkPaper = colors.paper === "#080F1D";
 
   return (
     <SafeAreaView
@@ -643,7 +738,7 @@ export default function RunnerDocumentDetailScreen() {
       edges={["top", "bottom"]}
     >
       <StatusBar
-        barStyle={isDarkPaper ? "light-content" : "dark-content"}
+        barStyle={isDark ? "light-content" : "dark-content"}
         backgroundColor={colors.paper}
       />
 
@@ -664,23 +759,14 @@ export default function RunnerDocumentDetailScreen() {
             },
           ]}
         >
-          <Ionicons
-            name="chevron-back"
-            size={22}
-            color={colors.text}
-          />
+          <Ionicons name="chevron-back" size={22} color={colors.text} />
         </Pressable>
 
         <View style={styles.brand}>
-          <Text style={[styles.brandName, { color: colors.navy }]}>
-            SaMi <Text style={{ color: colors.blue }}>Runner</Text>
+          <Text style={[styles.brandName, { color: brandColor }]}>
+            SaMi <Text style={{ color: actionBlue }}>Runner</Text>
           </Text>
-          <Text
-            style={[
-              styles.brandTagline,
-              { color: colors.textMuted },
-            ]}
-          >
+          <Text style={[styles.brandTagline, { color: supportingText }]}>
             CONSIDER IT DONE
           </Text>
         </View>
@@ -694,34 +780,24 @@ export default function RunnerDocumentDetailScreen() {
           accessibilityRole="progressbar"
           accessibilityLabel="Loading document requirement"
         >
-          <ActivityIndicator size="large" color={colors.blue} />
-          <Text
-            style={[styles.loadingText, { color: colors.textMuted }]}
-          >
+          <ActivityIndicator size="large" color={actionBlue} />
+          <Text style={[styles.loadingText, { color: supportingText }]}>
             Loading document requirement…
           </Text>
         </View>
       ) : pageError ? (
         <View style={styles.center}>
           <View
-            style={[
-              styles.errorIconWrap,
-              { backgroundColor: colors.dangerSoft },
-            ]}
+            style={[styles.errorIconWrap, { backgroundColor: colors.dangerSoft }]}
           >
-            <Ionicons
-              name="alert-circle-outline"
-              size={26}
-              color={colors.red}
-            />
+            <Ionicons name="alert-circle-outline" size={26} color={colors.red} />
           </View>
 
           <Text style={[styles.errorTitle, { color: colors.text }]}>
-            Could not open this document
+            {sessionExpired ? "Sign in again" : "Could not open this document"}
           </Text>
-
           <Text
-            style={[styles.bodyText, { color: colors.textMuted }]}
+            style={[styles.bodyText, { color: supportingText }]}
             numberOfLines={4}
           >
             {pageError}
@@ -729,50 +805,44 @@ export default function RunnerDocumentDetailScreen() {
 
           <Pressable
             accessibilityRole="button"
-            accessibilityLabel="Try again"
-            onPress={() => void loadOnboarding()}
+            accessibilityLabel={sessionExpired ? "Sign in again" : "Try again"}
+            onPress={() =>
+              sessionExpired
+                ? router.replace("/(auth)/login")
+                : void loadOnboarding()
+            }
             style={({ pressed }) => [
               styles.primaryButton,
-              { backgroundColor: colors.blue },
+              { backgroundColor: buttonBlue },
               pressed && styles.pressed,
             ]}
           >
-            <Text style={styles.primaryButtonText}>Try again</Text>
+            <Text style={styles.primaryButtonText}>
+              {sessionExpired ? "Sign in" : "Try again"}
+            </Text>
           </Pressable>
         </View>
       ) : !documentExists ? (
         <View style={styles.center}>
           <View
-            style={[
-              styles.errorIconWrap,
-              { backgroundColor: colors.blueSoft },
-            ]}
+            style={[styles.errorIconWrap, { backgroundColor: colors.blueSoft }]}
           >
-            <Ionicons
-              name="document-text-outline"
-              size={26}
-              color={colors.blue}
-            />
+            <Ionicons name="document-text-outline" size={26} color={actionBlue} />
           </View>
 
           <Text style={[styles.errorTitle, { color: colors.text }]}>
             Requirement not found
           </Text>
-
-          <Text
-            style={[styles.bodyText, { color: colors.textMuted }]}
-          >
-            This document is not part of your current onboarding
-            requirements.
+          <Text style={[styles.bodyText, { color: supportingText }]}>
+            This document is not part of your current mandatory onboarding requirements.
           </Text>
-
           <Pressable
             accessibilityRole="button"
             accessibilityLabel="Back to documents"
             onPress={goBack}
             style={({ pressed }) => [
               styles.primaryButton,
-              { backgroundColor: colors.blue },
+              { backgroundColor: buttonBlue },
               pressed && styles.pressed,
             ]}
           >
@@ -788,110 +858,139 @@ export default function RunnerDocumentDetailScreen() {
         >
           {/* Heading */}
           <View style={styles.headingBlock}>
-            <Text style={[styles.eyebrow, { color: colors.blue }]}>
+            <Text style={[styles.eyebrow, { color: actionBlue }]}>
               RUNNER VERIFICATION
             </Text>
-
             <Text style={[styles.title, { color: colors.text }]}>
               {isNationalIdentity ? "National ID" : singleTitle}
             </Text>
-
-            <Text
-              style={[styles.bodyText, { color: colors.textMuted }]}
-            >
+            <Text style={[styles.bodyText, { color: supportingText }]}>
               {isNationalIdentity
                 ? "Submit both sides of your National ID together. Make sure the details are clear and all edges are visible."
                 : singleDescription}
             </Text>
           </View>
 
-          {/* Body */}
-          {locked ? (
+          {/* Account state takes precedence over an individual document state. */}
+          {sessionExpired ? (
             <View
-              style={[
-                styles.statusCard,
-                { backgroundColor: colors.blueSoft },
-              ]}
+              style={[styles.stateNotice, { backgroundColor: colors.dangerSoft }]}
+            >
+              <Ionicons name="lock-closed-outline" size={21} color={colors.red} />
+              <View style={styles.stateNoticeCopy}>
+                <Text style={[styles.stateNoticeTitle, { color: colors.text }]}>
+                  Runner session expired
+                </Text>
+                <Text style={[styles.stateNoticeText, { color: supportingText }]}>
+                  Sign in again to continue uploading documents. Your saved application remains on your account.
+                </Text>
+                <Pressable onPress={() => router.replace("/(auth)/login")} hitSlop={8}>
+                  <Text style={[styles.stateNoticeAction, { color: actionBlue }]}>
+                    Sign in again
+                  </Text>
+                </Pressable>
+              </View>
+            </View>
+          ) : isApproved ? (
+            <View
+              style={[styles.stateNotice, { backgroundColor: colors.successSoft }]}
+            >
+              <Ionicons name="checkmark-circle-outline" size={21} color={colors.success} />
+              <View style={styles.stateNoticeCopy}>
+                <Text style={[styles.stateNoticeTitle, { color: colors.text }]}>
+                  Runner account approved
+                </Text>
+                <Text style={[styles.stateNoticeText, { color: supportingText }]}>
+                  Documents are read-only after approval. You can return to the Runner dashboard.
+                </Text>
+                <Pressable onPress={() => router.replace("/(app)")} hitSlop={8}>
+                  <Text style={[styles.stateNoticeAction, { color: actionBlue }]}>
+                    Open Runner dashboard
+                  </Text>
+                </Pressable>
+              </View>
+            </View>
+          ) : isPendingReview ? (
+            <View
+              style={[styles.stateNotice, { backgroundColor: colors.warningSoft }]}
+            >
+              <Ionicons name="time-outline" size={21} color={colors.warning} />
+              <View style={styles.stateNoticeCopy}>
+                <Text style={[styles.stateNoticeTitle, { color: colors.text }]}>
+                  Application under review
+                </Text>
+                <Text style={[styles.stateNoticeText, { color: supportingText }]}>
+                  Uploads are paused while SaMi Operations reviews your application.
+                </Text>
+                <Pressable
+                  onPress={() => router.push("/(app)/profile-setup?mode=status")}
+                  hitSlop={8}
+                >
+                  <Text style={[styles.stateNoticeAction, { color: actionBlue }]}>
+                    View application status
+                  </Text>
+                </Pressable>
+              </View>
+            </View>
+          ) : isRestricted ? (
+            <View
+              style={[styles.stateNotice, { backgroundColor: colors.dangerSoft }]}
+            >
+              <Ionicons name="lock-closed-outline" size={21} color={colors.red} />
+              <View style={styles.stateNoticeCopy}>
+                <Text style={[styles.stateNoticeTitle, { color: colors.text }]}>
+                  Account access restricted
+                </Text>
+                <Text style={[styles.stateNoticeText, { color: supportingText }]}>
+                  Document uploads are unavailable for this account. Contact SaMi Operations for assistance.
+                </Text>
+              </View>
+            </View>
+          ) : documentAlreadySubmitted ? (
+            <View
+              style={[styles.statusCard, { backgroundColor: colors.blueSoft }]}
             >
               <View style={styles.statusHeader}>
-                <Ionicons
-                  name="time-outline"
-                  size={20}
-                  color={colors.blue}
-                />
-                <Text
-                  style={[styles.statusTitle, { color: colors.text }]}
-                >
+                <Ionicons name="time-outline" size={20} color={actionBlue} />
+                <Text style={[styles.statusTitle, { color: colors.text }]}>
                   {isNationalIdentity
                     ? "National ID already submitted"
                     : "Document already submitted"}
                 </Text>
               </View>
-
-              <Text
-                style={[
-                  styles.bodyText,
-                  { color: colors.textMuted },
-                ]}
-              >
+              <Text style={[styles.bodyText, { color: supportingText }]}>
                 {isNationalIdentity
                   ? `Front: ${statusLabel(frontStatus)} · Back: ${statusLabel(backStatus)}.`
                   : `${statusLabel(singleStatus)}.`}{" "}
-                You can upload a replacement if the review team
-                rejects it.
+                You can upload a replacement if the review team requests one.
               </Text>
             </View>
-          ) : (
+          ) : null}
+
+          {/* Upload controls only appear when the account and requirement are editable. */}
+          {!locked ? (
             <>
               {isNationalIdentity ? (
                 <>
                   {frontRejectionReason || backRejectionReason ? (
                     <View
-                      style={[
-                        styles.rejectionCard,
-                        { backgroundColor: colors.dangerSoft },
-                      ]}
+                      style={[styles.rejectionCard, { backgroundColor: colors.dangerSoft }]}
                     >
                       <View style={styles.rejectionHeader}>
-                        <Ionicons
-                          name="alert-circle-outline"
-                          size={18}
-                          color={colors.red}
-                        />
-                        <Text
-                          style={[
-                            styles.rejectionTitle,
-                            { color: colors.red },
-                          ]}
-                        >
+                        <Ionicons name="alert-circle-outline" size={18} color={colors.red} />
+                        <Text style={[styles.rejectionTitle, { color: colors.red }]}>
                           National ID changes requested
                         </Text>
                       </View>
-
                       {frontRejectionReason ? (
-                        <Text
-                          style={[
-                            styles.rejectionText,
-                            { color: colors.text },
-                          ]}
-                        >
-                          <Text style={{ fontWeight: "800" }}>
-                            Front:{" "}
-                          </Text>
+                        <Text style={[styles.rejectionText, { color: colors.text }]}>
+                          <Text style={{ fontWeight: "800" }}>Front: </Text>
                           {frontRejectionReason}
                         </Text>
                       ) : null}
-
                       {backRejectionReason ? (
-                        <Text
-                          style={[
-                            styles.rejectionText,
-                            { color: colors.text },
-                          ]}
-                        >
-                          <Text style={{ fontWeight: "800" }}>
-                            Back:{" "}
-                          </Text>
+                        <Text style={[styles.rejectionText, { color: colors.text }]}>
+                          <Text style={{ fontWeight: "800" }}>Back: </Text>
                           {backRejectionReason}
                         </Text>
                       ) : null}
@@ -903,28 +1002,23 @@ export default function RunnerDocumentDetailScreen() {
                     description="Capture the side showing your photograph and personal details."
                     file={frontFile}
                     colors={colors}
-                    disabled={uploading}
-                    onCamera={() =>
-                      void pickImage("front", "camera")
-                    }
-                    onGallery={() =>
-                      void pickImage("front", "gallery")
-                    }
+                    supportingText={supportingText}
+                    actionBlue={actionBlue}
+                    disabled={uploading || !canUpload}
+                    onCamera={() => void pickImage("front", "camera")}
+                    onGallery={() => void pickImage("front", "gallery")}
                     onClear={() => clearFile("front")}
                   />
-
                   <PickedFileCard
                     title="Back of National ID"
                     description="Capture the reverse side, including the printed details."
                     file={backFile}
                     colors={colors}
-                    disabled={uploading}
-                    onCamera={() =>
-                      void pickImage("back", "camera")
-                    }
-                    onGallery={() =>
-                      void pickImage("back", "gallery")
-                    }
+                    supportingText={supportingText}
+                    actionBlue={actionBlue}
+                    disabled={uploading || !canUpload}
+                    onCamera={() => void pickImage("back", "camera")}
+                    onGallery={() => void pickImage("back", "gallery")}
                     onClear={() => clearFile("back")}
                   />
                 </>
@@ -932,33 +1026,15 @@ export default function RunnerDocumentDetailScreen() {
                 <>
                   {singleRejectionReason ? (
                     <View
-                      style={[
-                        styles.rejectionCard,
-                        { backgroundColor: colors.dangerSoft },
-                      ]}
+                      style={[styles.rejectionCard, { backgroundColor: colors.dangerSoft }]}
                     >
                       <View style={styles.rejectionHeader}>
-                        <Ionicons
-                          name="alert-circle-outline"
-                          size={18}
-                          color={colors.red}
-                        />
-                        <Text
-                          style={[
-                            styles.rejectionTitle,
-                            { color: colors.red },
-                          ]}
-                        >
+                        <Ionicons name="alert-circle-outline" size={18} color={colors.red} />
+                        <Text style={[styles.rejectionTitle, { color: colors.red }]}>
                           Changes requested
                         </Text>
                       </View>
-
-                      <Text
-                        style={[
-                          styles.rejectionText,
-                          { color: colors.text },
-                        ]}
-                      >
+                      <Text style={[styles.rejectionText, { color: colors.text }]}>
                         {singleRejectionReason}
                       </Text>
                     </View>
@@ -969,76 +1045,51 @@ export default function RunnerDocumentDetailScreen() {
                     description={singleDescription}
                     file={singleFile}
                     colors={colors}
-                    disabled={uploading}
-                    onCamera={() =>
-                      void pickImage("single", "camera")
-                    }
-                    onGallery={() =>
-                      void pickImage("single", "gallery")
-                    }
+                    supportingText={supportingText}
+                    actionBlue={actionBlue}
+                    disabled={uploading || !canUpload}
+                    onCamera={() => void pickImage("single", "camera")}
+                    onGallery={() => void pickImage("single", "gallery")}
                     onClear={() => clearFile("single")}
                   />
                 </>
               )}
             </>
-          )}
+          ) : null}
 
           {/* Guidance */}
-          <View
-            style={[
-              styles.guidanceCard,
-              {
-                backgroundColor: colors.surface,
-                borderColor: colors.border,
-              },
-            ]}
-          >
-            <Text
-              style={[styles.guidanceTitle, { color: colors.text }]}
+          {!accountReadOnly && !sessionExpired && !documentAlreadySubmitted ? (
+            <View
+              style={[
+                styles.guidanceCard,
+                { backgroundColor: colors.surface, borderColor: colors.border },
+              ]}
             >
-              Before submitting
-            </Text>
-
-            <View style={styles.guidanceList}>
-              {GUIDANCE_ITEMS.map((item) => (
-                <View key={item} style={styles.guidanceRow}>
-                  <View
-                    style={[
-                      styles.guidanceDot,
-                      { backgroundColor: colors.blue },
-                    ]}
-                  />
-                  <Text
-                    style={[
-                      styles.guidanceText,
-                      { color: colors.textMuted },
-                    ]}
-                  >
-                    {item}
-                  </Text>
-                </View>
-              ))}
+              <Text style={[styles.guidanceTitle, { color: colors.text }]}>
+                Before submitting
+              </Text>
+              <View style={styles.guidanceList}>
+                {GUIDANCE_ITEMS.map((item) => (
+                  <View key={item} style={styles.guidanceRow}>
+                    <View style={[styles.guidanceDot, { backgroundColor: actionBlue }]} />
+                    <Text style={[styles.guidanceText, { color: supportingText }]}>
+                      {item}
+                    </Text>
+                  </View>
+                ))}
+              </View>
             </View>
-          </View>
+          ) : null}
 
           {/* Error */}
           {error ? (
             <View
               accessibilityRole="alert"
               accessibilityLiveRegion="polite"
-              style={[
-                styles.errorCard,
-                { backgroundColor: colors.dangerSoft },
-              ]}
+              style={[styles.errorCard, { backgroundColor: colors.dangerSoft }]}
             >
-              <Ionicons
-                name="alert-circle-outline"
-                size={18}
-                color={colors.red}
-              />
-              <Text
-                style={[styles.errorText, { color: colors.red }]}
-              >
+              <Ionicons name="alert-circle-outline" size={18} color={colors.red} />
+              <Text style={[styles.errorText, { color: colors.red }]}>
                 {error}
               </Text>
             </View>
@@ -1052,11 +1103,11 @@ export default function RunnerDocumentDetailScreen() {
               onPress={goBack}
               style={({ pressed }) => [
                 styles.primaryButton,
-                { backgroundColor: colors.blue },
+                { backgroundColor: buttonBlue },
                 pressed && styles.pressed,
               ]}
             >
-              <Text style={styles.primaryButtonText}>Back</Text>
+              <Text style={styles.primaryButtonText}>Back to documents</Text>
             </Pressable>
           ) : (
             <Pressable
@@ -1068,16 +1119,13 @@ export default function RunnerDocumentDetailScreen() {
                     ? "Submit National ID"
                     : "Submit document"
               }
-              accessibilityHint="Uploads the selected image(s) to SaMi Runner verification"
-              accessibilityState={{
-                busy: uploading,
-                disabled: submitDisabled,
-              }}
+              accessibilityHint="Uploads the selected image or images to SaMi Runner verification"
+              accessibilityState={{ busy: uploading, disabled: submitDisabled }}
               disabled={submitDisabled}
               onPress={() => void submitDocument()}
               style={({ pressed }) => [
                 styles.primaryButton,
-                { backgroundColor: colors.blue },
+                { backgroundColor: buttonBlue },
                 submitDisabled && styles.disabled,
                 pressed && !submitDisabled && styles.pressed,
               ]}
@@ -1085,15 +1133,11 @@ export default function RunnerDocumentDetailScreen() {
               {uploading ? (
                 <>
                   <ActivityIndicator color="#FFFFFF" size="small" />
-                  <Text style={styles.primaryButtonText}>
-                    Uploading…
-                  </Text>
+                  <Text style={styles.primaryButtonText}>Uploading…</Text>
                 </>
               ) : (
                 <Text style={styles.primaryButtonText}>
-                  {isNationalIdentity
-                    ? "Submit National ID"
-                    : "Submit document"}
+                  {isNationalIdentity ? "Submit National ID" : "Submit document"}
                 </Text>
               )}
             </Pressable>
@@ -1339,6 +1383,36 @@ const styles = StyleSheet.create({
   statusTitle: {
     fontSize: 15,
     fontWeight: "900",
+  },
+
+  stateNotice: {
+    borderRadius: 15,
+    padding: 14,
+    flexDirection: "row",
+    alignItems: "flex-start",
+    gap: 10,
+  },
+
+  stateNoticeCopy: {
+    flex: 1,
+    gap: 5,
+  },
+
+  stateNoticeTitle: {
+    fontSize: 13,
+    lineHeight: 18,
+    fontWeight: "900",
+  },
+
+  stateNoticeText: {
+    fontSize: 12,
+    lineHeight: 18,
+  },
+
+  stateNoticeAction: {
+    fontSize: 12,
+    fontWeight: "900",
+    paddingTop: 2,
   },
 
   // Error

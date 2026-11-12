@@ -31,30 +31,55 @@ type IoniconName = keyof typeof Ionicons.glyphMap;
 const BACK_SIZE = 44;
 const MAX_REVIEWS_SHOWN = 10;
 
+const RUNNER_SERVICE_KEYS = ["pickup_deliver", "shop_deliver"] as const;
+const RUNNER_VEHICLE_TYPES = ["bike", "motorbike", "vehicle"] as const;
+
+function isSupportedServiceKey(value: string) {
+  return RUNNER_SERVICE_KEYS.includes(
+    value as (typeof RUNNER_SERVICE_KEYS)[number],
+  );
+}
+
+function isSupportedVehicleType(value: string) {
+  return (
+    RUNNER_VEHICLE_TYPES.includes(
+      value as (typeof RUNNER_VEHICLE_TYPES)[number],
+    ) || ["bicycle", "motorcycle", "car", "van", "other"].includes(value)
+  );
+}
+
+function vehicleRequiresRegistration(value: string) {
+  return ["motorbike", "vehicle", "motorcycle", "car", "van", "other"].includes(
+    value,
+  );
+}
+
 function getResumeRoute(data: RunnerOnboardingData) {
   const runner = data.runner;
+  const selectedServices = (runner.selectedCategories ?? []).filter(
+    isSupportedServiceKey,
+  );
 
-  if (!runner.selectedCategories?.length) {
+  if (selectedServices.length === 0) {
     return "/(auth)/tasks" as const;
   }
 
   const vehicleType = runner.vehicleType ?? "";
   const serviceArea = runner.serviceArea?.trim() ?? "";
-
-  const requiresRegistration = ["motorcycle", "car", "van"].includes(
-    vehicleType,
-  );
+  const requiresRegistration = vehicleRequiresRegistration(vehicleType);
 
   const transportComplete =
     serviceArea.length >= 2 &&
-    Boolean(vehicleType) &&
+    isSupportedVehicleType(vehicleType) &&
     (!requiresRegistration || Boolean(runner.vehicleRegistration?.trim()));
 
   if (!transportComplete) {
     return "/(auth)/transport" as const;
   }
 
-  const requiredDocuments = data.requirements.filter((item) => item.required);
+  const requiredDocuments = data.requirements.filter(
+    (item) => item.required === true,
+  );
 
   if (requiredDocuments.length === 0) {
     return "/(auth)/documents" as const;
@@ -164,6 +189,13 @@ function ReviewReasonCard({
   if (!feedback) return null;
 
   const applicationReview = feedback.applicationReview;
+  const applicationApproved = applicationReview?.decision === "approved";
+  const applicationDecisionColor = applicationApproved
+    ? colors.success
+    : colors.red;
+  const applicationDecisionBackground = applicationApproved
+    ? colors.successSoft
+    : colors.dangerSoft;
   const allDocumentReviews = feedback.documentReviews;
   const documentReviews = allDocumentReviews.slice(0, MAX_REVIEWS_SHOWN);
   const capped = allDocumentReviews.length > MAX_REVIEWS_SHOWN;
@@ -210,7 +242,7 @@ function ReviewReasonCard({
         <View
           style={[
             styles.applicationReview,
-            { backgroundColor: colors.dangerSoft },
+            { backgroundColor: applicationDecisionBackground },
           ]}
         >
           <View style={styles.reviewHeadingRow}>
@@ -221,15 +253,17 @@ function ReviewReasonCard({
             </Text>
 
             <Text
-              style={[styles.reviewDecision, { color: colors.red }]}
+              style={[styles.reviewDecision, { color: applicationDecisionColor }]}
             >
-              REJECTED
+              {applicationApproved ? "APPROVED" : "REJECTED"}
             </Text>
           </View>
 
           <Text style={[styles.reviewReason, { color: colors.text }]}>
             {applicationReview.reason ||
-              "Your application requires changes before it can be submitted again."}
+              (applicationApproved
+                ? "Your Runner application has been approved."
+                : "Your application requires changes before it can be submitted again.")}
           </Text>
 
           <Text
@@ -385,8 +419,11 @@ export default function RunnerApplicationStatusScreen() {
 
   const scrollRef = useRef<ScrollView>(null);
   const mountedRef = useRef(true);
+  const loadInFlightRef = useRef(false);
 
   useEffect(() => {
+    mountedRef.current = true;
+
     return () => {
       mountedRef.current = false;
     };
@@ -394,6 +431,9 @@ export default function RunnerApplicationStatusScreen() {
 
   const loadStatus = useCallback(
     async (refresh = false) => {
+      if (loadInFlightRef.current) return;
+      loadInFlightRef.current = true;
+
       if (refresh) {
         setRefreshing(true);
       } else {
@@ -429,8 +469,9 @@ export default function RunnerApplicationStatusScreen() {
         }
 
         if (
-          runner.accountStatus === "active" &&
-          runner.verificationStatus === "approved"
+          runner.verificationStatus === "approved" &&
+          runner.accountStatus !== "suspended" &&
+          runner.accountStatus !== "closed"
         ) {
           router.replace("/(app)");
           return;
@@ -467,6 +508,7 @@ export default function RunnerApplicationStatusScreen() {
             : "Your application status could not be loaded.",
         );
       } finally {
+        loadInFlightRef.current = false;
         if (mountedRef.current) {
           setLoading(false);
           setRefreshing(false);
@@ -525,12 +567,28 @@ export default function RunnerApplicationStatusScreen() {
   const outstandingReviewAction =
     data && feedback ? hasOutstandingReviewAction(data, feedback) : false;
 
-  const submittedDocuments =
-    data?.documents.filter(
-      (item) =>
-        item.reviewStatus === "pending" ||
-        item.reviewStatus === "approved",
-    ).length ?? 0;
+  const requiredDocumentKeys = new Set(
+    (data?.requirements ?? [])
+      .filter((requirement) => requirement.required === true)
+      .map((requirement) => requirement.key),
+  );
+
+  const submittedDocuments = data
+    ? Array.from(requiredDocumentKeys).filter((requirementKey) => {
+        const document = data.documents.find(
+          (item) => item.requirementKey === requirementKey,
+        );
+
+        return (
+          document?.reviewStatus === "pending" ||
+          document?.reviewStatus === "approved"
+        );
+      }).length
+    : 0;
+
+  const selectedServiceCount = (data?.runner.selectedCategories ?? []).filter(
+    isSupportedServiceKey,
+  ).length;
 
   const isDarkPaper = colors.paper === "#080F1D";
 
@@ -811,10 +869,8 @@ export default function RunnerApplicationStatusScreen() {
           />
 
           <StatusInfoRow
-            label="Tasks selected"
-            value={String(
-              data.runner.selectedCategories?.length ?? 0,
-            )}
+            label="Services selected"
+            value={String(selectedServiceCount)}
             colors={colors}
           />
         </View>

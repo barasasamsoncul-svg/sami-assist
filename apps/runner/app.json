@@ -1,3 +1,4 @@
+
 {
   "expo": {
     "name": "SaMi Runner",
@@ -5,11 +6,16 @@
     "scheme": "samirunner",
     "version": "1.0.0",
     "orientation": "portrait",
-    "platforms": ["android", "ios"],
-    "userInterfaceStyle": "automatic",
+    "platforms": [
+      "android",
+      "ios"
+    ],
+    "userInterfaceStyle": "light",
     "icon": "./assets/icon.png",
+
     "plugins": [
       "expo-router",
+
       [
         "expo-splash-screen",
         {
@@ -23,27 +29,51 @@
           }
         }
       ],
+
       [
         "expo-location",
         {
-          "locationWhenInUsePermission": "SaMi Runner uses your location while you are working on an accepted errand so the customer can follow the progress."
+          "locationWhenInUsePermission": "SaMi Runner uses your location while you are online and while completing errands so SaMi can match suitable requests and share progress with customers.",
+          "locationAlwaysAndWhenInUsePermission": "SaMi Runner uses your location while you are online or completing an accepted errand, including when the app is in the background. This allows SaMi to maintain your dispatch availability and share live progress with customers. Tracking stops when you go offline or finish your errand.",
+          "isIosBackgroundLocationEnabled": true,
+          "isAndroidBackgroundLocationEnabled": true,
+          "isAndroidForegroundServiceEnabled": true
         }
       ],
+
       [
         "expo-secure-store",
         {
           "configureAndroidBackup": true
         }
+      ],
+
+      "@maplibre/maplibre-react-native",
+
+      [
+        "@config-plugins/react-native-webrtc",
+        {
+          "cameraPermission": "SaMi Runner uses the camera to capture errand evidence and support optional in-app video calls.",
+          "microphonePermission": "SaMi Runner uses the microphone when you choose to use in-app voice or video calling."
+        }
+      ],
+
+      [
+        "expo-image-picker",
+        {
+          "photosPermission": "SaMi Runner accesses selected photos when you attach errand evidence or documents.",
+          "cameraPermission": "SaMi Runner uses the camera to capture purchase receipts and delivery evidence, and support optional video calls.",
+          "microphonePermission": "SaMi Runner uses the microphone when you choose to use in-app voice or video calling."
+        }
       ]
     ],
+
     "ios": {
       "supportsTablet": false,
       "bundleIdentifier": "com.sami.runner",
-      "infoPlist": {
-        "NSLocationWhenInUseUsageDescription": "SaMi Runner shares your location with the customer during an active errand."
-      },
       "backgroundColor": "#000535"
     },
+
     "android": {
       "package": "com.sami.runner",
       "permissions": [
@@ -57,29 +87,37 @@
         "backgroundColor": "#000535"
       }
     },
+
     "experiments": {
       "typedRoutes": true
     },
+
     "backgroundColor": "#000535",
+
     "web": {
       "backgroundColor": "#000535"
     },
+
     "runtimeVersion": {
       "policy": "fingerprint"
     },
+
     "updates": {
       "url": "https://u.expo.dev/8fcd647e-3514-4436-b1ce-c1b417f6c1d3",
       "enabled": true,
       "checkAutomatically": "ON_LOAD",
       "fallbackToCacheTimeout": 0
     },
+
     "extra": {
       "router": {},
       "eas": {
         "projectId": "8fcd647e-3514-4436-b1ce-c1b417f6c1d3"
       }
     },
+
     "owner": "sami-assist",
+
     "androidStatusBar": {
       "backgroundColor": "#000535",
       "barStyle": "light-content",

@@ -1,4 +1,3 @@
-
 import { NextResponse } from "next/server";
 
 import { authenticateRunner } from "@/apps/runner/server/auth";
@@ -8,9 +7,14 @@ import { errorResponse, isRecord } from "@/apps/runner/server/http";
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
-const MAX_CATEGORIES = 16;
+const RUNNER_SERVICE_TYPES = [
+  "pickup_deliver",
+  "shop_deliver",
+] as const;
 
-const CATEGORY_KEY_PATTERN = /^[a-z0-9_]{2,60}$/;
+const ALLOWED_SERVICE_KEYS = new Set<string>(
+  RUNNER_SERVICE_TYPES,
+);
 
 function response(
   body: Record<string, unknown>,
@@ -37,7 +41,7 @@ export async function PUT(request: Request) {
     )
   ) {
     return errorResponse(
-      "This Runner account cannot update its task categories.",
+      "This Runner account cannot update its services.",
       403,
     );
   }
@@ -51,7 +55,7 @@ export async function PUT(request: Request) {
     !Array.isArray(body.categoryKeys)
   ) {
     return errorResponse(
-      "Choose the task categories you can perform.",
+      "Choose Pick Up & Deliver, Shop & Deliver, or both.",
     );
   }
 
@@ -59,18 +63,19 @@ export async function PUT(request: Request) {
 
   if (
     rawKeys.length < 1 ||
-    rawKeys.length > MAX_CATEGORIES ||
+    rawKeys.length > RUNNER_SERVICE_TYPES.length ||
     !rawKeys.every(
       (key): key is string =>
         typeof key === "string" &&
-        CATEGORY_KEY_PATTERN.test(key),
+        key.trim().length > 0,
     )
   ) {
     return errorResponse(
-      "Select between 1 and 16 valid task categories.",
+      "Select one or both of the two available Runner services.",
     );
   }
 
+  // Normalize service keys before validation.
   const categoryKeys = rawKeys.map((key) =>
     key.trim().toLowerCase(),
   );
@@ -83,7 +88,18 @@ export async function PUT(request: Request) {
     uniqueCategoryKeys.length !== categoryKeys.length
   ) {
     return errorResponse(
-      "A task category has been selected more than once.",
+      "A Runner service has been selected more than once.",
+    );
+  }
+
+  // Only these two service types are permitted.
+  if (
+    !uniqueCategoryKeys.every((key) =>
+      ALLOWED_SERVICE_KEYS.has(key),
+    )
+  ) {
+    return errorResponse(
+      "Only Pick Up & Deliver and Shop & Deliver are available Runner services.",
     );
   }
 
@@ -92,7 +108,8 @@ export async function PUT(request: Request) {
   try {
     await client.query("BEGIN");
 
-    // Lock the account while replacing its category selection.
+    // Lock the Runner account while validating and replacing
+    // the service selection.
     const accountResult = await client.query<{
       account_status: string;
       verification_status: string;
@@ -126,7 +143,7 @@ export async function PUT(request: Request) {
       await client.query("ROLLBACK");
 
       return errorResponse(
-        "This Runner account cannot update its task categories.",
+        "This Runner account cannot update its services.",
         403,
       );
     }
@@ -139,12 +156,12 @@ export async function PUT(request: Request) {
       await client.query("ROLLBACK");
 
       return errorResponse(
-        "Task categories cannot be changed after an application has been submitted or approved.",
+        "Runner services cannot be changed after an application has been submitted or approved.",
         409,
       );
     }
 
-    // Only active Runner categories can be saved.
+    // Verify that every requested service exists and is active.
     const activeCategoriesResult =
       await client.query<{
         category_key: string;
@@ -164,13 +181,12 @@ export async function PUT(request: Request) {
       await client.query("ROLLBACK");
 
       return errorResponse(
-        "One or more selected task categories are no longer available. Refresh the list and try again.",
+        "One or more selected Runner services are unavailable. Refresh the list and try again.",
         409,
       );
     }
 
-    // Replace the full selection in one transaction so an
-    // interrupted save cannot leave a partial selection behind.
+    // Replace the complete selection transactionally.
     await client.query(
       `DELETE FROM public.runner_account_service_categories
        WHERE runner_id = $1`,
@@ -198,7 +214,7 @@ export async function PUT(request: Request) {
 
     return response({
       ok: true,
-      message: "Your task categories have been saved.",
+      message: "Your Runner services have been saved.",
       selectedCategories: uniqueCategoryKeys,
       nextStep: "transport",
     });
@@ -208,14 +224,14 @@ export async function PUT(request: Request) {
     );
 
     console.error(
-      "[SaMi Runner task categories] Save failed.",
+      "[SaMi Runner services] Save failed.",
       cause instanceof Error
         ? cause.message
         : "unknown error",
     );
 
     return errorResponse(
-      "Your task categories could not be saved. Please try again.",
+      "Your Runner services could not be saved. Please try again.",
       503,
     );
   } finally {

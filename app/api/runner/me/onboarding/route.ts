@@ -45,22 +45,66 @@ type DocumentRow = {
   reviewed_at: string | null;
 };
 
-const VEHICLE_TYPES = new Set([
-  "motorcycle",
-  "bicycle",
-  "car",
-  "van",
-  "other",
-]);
+type RunnerVehicleType = "bike" | "motorbike" | "vehicle";
+
+type StoredVehicleType = "bicycle" | "motorcycle" | "car";
+
+/**
+ * Public Runner transport choices are deliberately limited to three.
+ *
+ * The database still stores its existing values until the corresponding
+ * database migration is applied. This adapter keeps existing profiles and
+ * the current database CHECK constraint compatible during the transition.
+ */
+function normalizeVehicleType(
+  value: string | null | undefined,
+): RunnerVehicleType | null {
+  switch (value) {
+    case "bike":
+    case "bicycle":
+      return "bike";
+
+    case "motorbike":
+    case "motorcycle":
+      return "motorbike";
+
+    case "vehicle":
+    case "car":
+    case "van":
+    case "other":
+      return "vehicle";
+
+    default:
+      return null;
+  }
+}
+
+function toStoredVehicleType(
+  value: RunnerVehicleType,
+): StoredVehicleType {
+  switch (value) {
+    case "bike":
+      return "bicycle";
+
+    case "motorbike":
+      return "motorcycle";
+
+    case "vehicle":
+      return "car";
+  }
+}
 
 function onboardingState(status: string) {
   switch (status) {
     case "approved":
       return "approved";
+
     case "submitted":
       return "pending_review";
+
     case "rejected":
       return "changes_required";
+
     default:
       return "incomplete";
   }
@@ -82,7 +126,7 @@ function response(
  * GET /api/runner/me/onboarding
  *
  * Returns the authenticated Runner's category selections,
- * vehicle information, dynamic document requirements and
+ * vehicle information, mandatory document requirements and
  * uploaded document review results.
  */
 export async function GET(request: Request) {
@@ -133,6 +177,7 @@ export async function GET(request: Request) {
       (row) => row.category_key,
     );
 
+    // Return mandatory documents only.
     const requirementsResult =
       await query<RequirementRow>(
         `SELECT
@@ -145,6 +190,7 @@ export async function GET(request: Request) {
            is_required
          FROM public.runner_onboarding_document_requirements
          WHERE is_active = true
+           AND is_required = true
            AND (
              category_key IS NULL
              OR category_key = ANY($1::text[])
@@ -216,7 +262,7 @@ export async function GET(request: Request) {
         accountStatus: profile.account_status,
         verificationStatus: profile.verification_status,
         serviceArea: profile.service_area,
-        vehicleType: profile.vehicle_type,
+        vehicleType: normalizeVehicleType(profile.vehicle_type),
         vehicleRegistration: profile.vehicle_registration,
         selectedCategories: categories,
       },
@@ -242,6 +288,11 @@ export async function GET(request: Request) {
  * PUT /api/runner/me/onboarding
  *
  * Saves service-area and transport details.
+ *
+ * Public transport values:
+ * - bike
+ * - motorbike
+ * - vehicle
  *
  * Changes are allowed during initial onboarding and after
  * a rejection, but not while Operations is reviewing the
@@ -273,9 +324,19 @@ export async function PUT(request: Request) {
     .replace(/\s+/g, " ")
     .slice(0, 120);
 
-  const vehicleType = body.vehicleType
+  const requestedVehicleType = body.vehicleType
     .trim()
     .toLowerCase();
+
+  const vehicleType = normalizeVehicleType(requestedVehicleType);
+
+  if (!vehicleType) {
+    return errorResponse(
+      "Choose Bike, Motorbike or Vehicle as your transport type.",
+    );
+  }
+
+  const storedVehicleType = toStoredVehicleType(vehicleType);
 
   const vehicleRegistration =
     typeof body.vehicleRegistration === "string"
@@ -292,14 +353,8 @@ export async function PUT(request: Request) {
     );
   }
 
-  if (!VEHICLE_TYPES.has(vehicleType)) {
-    return errorResponse(
-      "Choose a valid transport type.",
-    );
-  }
-
   if (
-    ["motorcycle", "car", "van"].includes(vehicleType) &&
+    (vehicleType === "motorbike" || vehicleType === "vehicle") &&
     vehicleRegistration.length < 3
   ) {
     return errorResponse(
@@ -391,7 +446,7 @@ export async function PUT(request: Request) {
       [
         auth.runner.id,
         serviceArea,
-        vehicleType,
+        storedVehicleType,
         vehicleRegistration || null,
       ],
     );
@@ -419,6 +474,7 @@ export async function PUT(request: Request) {
       (row) => row.category_key,
     );
 
+    // Return mandatory requirements only.
     const requirementsResult =
       await client.query<RequirementRow>(
         `SELECT
@@ -431,6 +487,7 @@ export async function PUT(request: Request) {
            is_required
          FROM public.runner_onboarding_document_requirements
          WHERE is_active = true
+           AND is_required = true
            AND (
              category_key IS NULL
              OR category_key = ANY($1::text[])
@@ -445,7 +502,7 @@ export async function PUT(request: Request) {
            requirement_key`,
         [
           categories,
-          vehicleType,
+          storedVehicleType,
         ],
       );
 
@@ -494,10 +551,6 @@ export async function PUT(request: Request) {
  * POST /api/runner/me/onboarding
  *
  * Submits a completed application for Operations review.
- *
- * The Runner account is locked before checking the profile
- * and latest document records. This serializes submission
- * against document uploads and Admin review transactions.
  *
  * Every active required document must have a latest
  * pending or approved document record.
@@ -596,7 +649,7 @@ export async function POST(request: Request) {
     }
 
     if (
-      ["motorcycle", "car", "van"].includes(
+      ["motorcycle", "car", "van", "other"].includes(
         profile.vehicle_type,
       ) &&
       !profile.vehicle_registration
@@ -627,6 +680,35 @@ export async function POST(request: Request) {
       return errorResponse(
         "Select at least one task category before submitting.",
         409,
+      );
+    }
+
+    // Prevent submission when no mandatory requirements exist
+    // for the selected services and transport.
+    const requiredCountResult = await client.query<{
+      total: number;
+    }>(
+      `SELECT COUNT(*)::int AS total
+       FROM public.runner_onboarding_document_requirements AS r
+       WHERE r.is_active = true
+         AND r.is_required = true
+         AND (
+           r.category_key IS NULL
+           OR r.category_key = ANY($1::text[])
+         )
+         AND (
+           r.vehicle_type = 'any'
+           OR r.vehicle_type = $2
+         )`,
+      [categories, profile.vehicle_type],
+    );
+
+    if ((requiredCountResult.rows[0]?.total ?? 0) === 0) {
+      await client.query("ROLLBACK");
+
+      return errorResponse(
+        "No mandatory verification documents are configured for your selected services and transport. Contact SaMi Operations before submitting.",
+        503,
       );
     }
 

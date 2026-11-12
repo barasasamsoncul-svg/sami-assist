@@ -23,6 +23,7 @@ type Requirement = {
   vehicle_type: string;
   document_type: string;
   title: string;
+  is_required: boolean;
 };
 
 type SupportedDocument = {
@@ -493,10 +494,12 @@ export async function POST(request: Request) {
            category_key,
            vehicle_type,
            document_type,
-           title
+           title,
+           is_required
          FROM public.runner_onboarding_document_requirements
          WHERE requirement_key = ANY($1::text[])
            AND is_active = true
+           AND is_required = true
            AND (
              category_key IS NULL
              OR category_key = ANY($2::text[])
@@ -524,11 +527,23 @@ export async function POST(request: Request) {
     }
 
     const requirementMap = new Map(
-      requirementResult.rows.map((item) => [
-        item.requirement_key,
-        item,
-      ]),
+      requirementResult.rows
+        .filter((item) => item.is_required === true)
+        .map((item) => [
+          item.requirement_key,
+          item,
+        ]),
     );
+
+    // Enforce the mandatory-document rule again in application code.
+    // This prevents an optional requirement from being uploaded even if
+    // the query is changed incorrectly in a future edit.
+    if (requirementMap.size !== preparedUploads.length) {
+      return await rejectTransaction(
+        "Optional documents cannot be submitted during Runner onboarding. Upload only the mandatory documents shown in your checklist.",
+        403,
+      );
+    }
 
     if (parsed.isNationalIdPair) {
       const front = requirementMap.get(

@@ -7,8 +7,7 @@ import {
 } from "react";
 import {
   ActivityIndicator,
-  BackHandler,
-  Platform,
+  StatusBar,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -44,33 +43,36 @@ type ReviewDocumentRow = {
 const BACK_SIZE = 44;
 
 const CATEGORY_LABELS: Record<string, string> = {
-  groceries: "Groceries",
-  food_delivery: "Food & Delivery",
-  pickup_delivery: "Pick Up & Drop Off",
-  bill_payments: "Bills & Payments",
-  laundry_cleaning: "Laundry & Dry Cleaning",
-  documents_admin: "Documents & Government",
-  clothing_retail: "Clothing & Returns",
-  shopping_gifts: "Shopping & Gifts",
-  home_services: "Home Services",
-  pharmacy_health: "Pharmacy & Health",
-  pet_care: "Pet Care",
-  personal_errand: "Personal Assistance",
-  queue_appointments: "Queues & Appointments",
-  business_support: "Business Errands",
-  shopping: "Shopping & Essentials",
-  other: "Custom Errand",
+  pickup_deliver: "Pick Up & Deliver",
+  shop_deliver: "Shop & Deliver",
 };
+
+const SUPPORTED_SERVICE_KEYS = new Set(Object.keys(CATEGORY_LABELS));
+const SUPPORTED_VEHICLE_TYPES = new Set([
+  "bike",
+  "motorbike",
+  "vehicle",
+  // Legacy values are accepted only for compatibility with existing records.
+  "bicycle",
+  "motorcycle",
+  "car",
+  "van",
+  "other",
+]);
 
 const NATIONAL_ID_FRONT_KEY = "identity_national_id_front";
 const NATIONAL_ID_BACK_KEY = "identity_national_id_back";
 
 const VEHICLE_LABELS: Record<string, string> = {
-  motorcycle: "Motorcycle",
-  bicycle: "Bicycle",
-  car: "Car",
-  van: "Van",
-  other: "Other transport",
+  bike: "Bike",
+  motorbike: "Motorbike",
+  vehicle: "Vehicle",
+  // Legacy database values remain readable while stored records are migrated.
+  bicycle: "Bike",
+  motorcycle: "Motorbike",
+  car: "Vehicle",
+  van: "Vehicle",
+  other: "Vehicle",
 };
 
 function getLatestDocument(
@@ -126,7 +128,7 @@ function buildDocumentRows(
   requirements: RunnerDocumentRequirement[],
   documents: RunnerUploadedDocument[],
 ): ReviewDocumentRow[] {
-  const required = requirements.filter((item) => item.required);
+  const required = requirements.filter((item) => item.required === true);
 
   const frontRequirement = required.find(
     (item) => item.key === NATIONAL_ID_FRONT_KEY,
@@ -329,28 +331,51 @@ function DocumentStatus({
 
 export default function RunnerApplicationReviewScreen() {
   const router = useRouter();
-  const { colors } = useRunnerTheme();
+  const { colors, mode } = useRunnerTheme();
+
+  const isDark = mode === "dark";
+  const supportingText = isDark ? "#C1CCDA" : "#526176";
+  const brandColor = isDark ? "#F5F7FB" : "#000535";
+  const actionBlue = isDark ? "#8AB8F8" : "#1F5EAB";
+  const buttonBlue = isDark ? "#1D5DAD" : "#174F9F";
 
   const [data, setData] = useState<RunnerOnboardingData | null>(null);
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [submissionComplete, setSubmissionComplete] = useState(false);
 
   const scrollRef = useRef<ScrollView>(null);
   const mountedRef = useRef(true);
+  const loadInFlightRef = useRef(false);
+  const hasLoadedOnceRef = useRef(false);
 
   useEffect(() => {
+    mountedRef.current = true;
+
     return () => {
       mountedRef.current = false;
     };
   }, []);
 
+  // Use normal navigation rather than forcing a destination or clearing
+  // the history stack. Fall back only when this screen has no back history.
   const goToDocuments = useCallback(() => {
-    router.dismissTo("/(auth)/documents");
+    if (router.canGoBack()) {
+      router.back();
+    } else {
+      router.replace("/(auth)/documents");
+    }
   }, [router]);
 
   const loadReview = useCallback(async () => {
-    setLoading(true);
+    if (loadInFlightRef.current) return;
+    loadInFlightRef.current = true;
+
+    // Keep previously loaded details visible during a background refresh.
+    if (!hasLoadedOnceRef.current) {
+      setLoading(true);
+    }
     setError(null);
 
     try {
@@ -359,14 +384,7 @@ export default function RunnerApplicationReviewScreen() {
       if (!mountedRef.current) return;
 
       setData(result);
-
-      if (result.onboardingStatus === "approved") {
-        router.dismissAll();
-        router.replace("/(app)");
-      } else if (result.onboardingStatus === "pending_review") {
-        router.dismissAll();
-        router.replace("/(app)/profile-setup?mode=status");
-      }
+      hasLoadedOnceRef.current = true;
     } catch (cause) {
       if (!mountedRef.current) return;
       setError(
@@ -375,11 +393,12 @@ export default function RunnerApplicationReviewScreen() {
           : "Your application details could not be loaded.",
       );
     } finally {
+      loadInFlightRef.current = false;
       if (mountedRef.current) {
         setLoading(false);
       }
     }
-  }, [router]);
+  }, []);
 
   useFocusEffect(
     useCallback(() => {
@@ -387,21 +406,7 @@ export default function RunnerApplicationReviewScreen() {
     }, [loadReview]),
   );
 
-  useFocusEffect(
-    useCallback(() => {
-      const subscription = BackHandler.addEventListener(
-        "hardwareBackPress",
-        () => {
-          if (submitting) return true;
-          goToDocuments();
-          return true;
-        },
-      );
-      return () => subscription.remove();
-    }, [goToDocuments, submitting]),
-  );
-
-  // Scroll the error banner into view whenever a save error appears.
+  // Scroll the error banner into view whenever an error appears.
   useEffect(() => {
     if (!error) return;
     const frame = requestAnimationFrame(() => {
@@ -414,21 +419,15 @@ export default function RunnerApplicationReviewScreen() {
 
   const categories = useMemo(
     () =>
-      (runner?.selectedCategories ?? []).map(
-        (key) => CATEGORY_LABELS[key] ?? key,
-      ),
+      (runner?.selectedCategories ?? [])
+        .filter((key) => SUPPORTED_SERVICE_KEYS.has(key))
+        .map((key) => CATEGORY_LABELS[key]),
     [runner?.selectedCategories],
   );
 
   const documentRows = useMemo(
     () =>
       data ? buildDocumentRows(data.requirements, data.documents) : [],
-    [data],
-  );
-
-  const optionalDocumentCount = useMemo(
-    () =>
-      data?.requirements.filter((item) => !item.required).length ?? 0,
     [data],
   );
 
@@ -440,14 +439,32 @@ export default function RunnerApplicationReviewScreen() {
 
   const vehicleType = runner?.vehicleType ?? "";
   const serviceArea = runner?.serviceArea?.trim() ?? "";
-  const needsRegistration = ["motorcycle", "car", "van"].includes(
-    vehicleType,
-  );
+  const needsRegistration = [
+    "motorbike",
+    "vehicle",
+    // Legacy stored vehicle types retain the correct registration rule.
+    "motorcycle",
+    "car",
+    "van",
+    "other",
+  ].includes(vehicleType);
 
   const transportComplete =
     serviceArea.length >= 2 &&
-    Boolean(vehicleType) &&
+    SUPPORTED_VEHICLE_TYPES.has(vehicleType) &&
     (!needsRegistration || Boolean(runner?.vehicleRegistration?.trim()));
+
+  const isApproved =
+    data?.onboardingStatus === "approved" ||
+    data?.runner.verificationStatus === "approved";
+
+  const isPendingReview =
+    data?.onboardingStatus === "pending_review" ||
+    data?.runner.verificationStatus === "submitted";
+
+  const isRestricted =
+    data?.runner.accountStatus === "suspended" ||
+    data?.runner.accountStatus === "closed";
 
   const canSubmit =
     Boolean(data) &&
@@ -456,8 +473,10 @@ export default function RunnerApplicationReviewScreen() {
     requiredDocumentsComplete &&
     !loading &&
     !submitting &&
-    data?.onboardingStatus !== "pending_review" &&
-    data?.onboardingStatus !== "approved";
+    !submissionComplete &&
+    !isPendingReview &&
+    !isApproved &&
+    !isRestricted;
 
   const submitApplication = async () => {
     if (!canSubmit) return;
@@ -470,16 +489,40 @@ export default function RunnerApplicationReviewScreen() {
 
       if (!mountedRef.current) return;
 
-      router.dismissAll();
-      router.replace("/(app)/profile-setup?mode=status");
+      // Submission is complete, but do not take control of navigation.
+      // The Runner can choose when to open application status.
+      setSubmissionComplete(true);
+
+      try {
+        const refreshed = await getRunnerOnboarding();
+        if (mountedRef.current) {
+          setData(refreshed);
+        }
+      } catch {
+        // The submission itself succeeded. Keep the success state visible
+        // even if the follow-up refresh temporarily fails.
+      }
     } catch (cause) {
       if (!mountedRef.current) return;
-      setError(
+
+      const message =
         cause instanceof Error
           ? cause.message
-          : "Your application could not be submitted. Please try again.",
-      );
-      await loadReview();
+          : "Your application could not be submitted. Please try again.";
+
+      // Refresh the server snapshot without clearing the submission error.
+      try {
+        const refreshed = await getRunnerOnboarding();
+        if (mountedRef.current) {
+          setData(refreshed);
+        }
+      } catch {
+        // Keep the existing review data and show the original submit error.
+      }
+
+      if (mountedRef.current) {
+        setError(message);
+      }
     } finally {
       if (mountedRef.current) {
         setSubmitting(false);
@@ -491,11 +534,12 @@ export default function RunnerApplicationReviewScreen() {
     (item) => item.status === "complete",
   ).length;
   const missingCount = documentRows.length - completedCount;
+  const showSubmittedNotice = submissionComplete || isPendingReview;
 
   // The first missing thing determines where the "not ready" shortcut goes.
   const blockedShortcut: { label: string; route: string } | null =
     !hasCategories
-      ? { label: "Review tasks", route: "/(auth)/tasks" }
+      ? { label: "Review services", route: "/(auth)/tasks" }
       : !transportComplete
         ? { label: "Review transport", route: "/(auth)/transport" }
         : !requiredDocumentsComplete
@@ -503,7 +547,7 @@ export default function RunnerApplicationReviewScreen() {
           : null;
 
   const blockedMessage = !hasCategories
-    ? "Select at least one task category."
+    ? "Select at least one service."
     : !transportComplete
       ? "Complete your service area and transport details."
       : !requiredDocumentsComplete
@@ -523,9 +567,9 @@ export default function RunnerApplicationReviewScreen() {
           accessibilityRole="progressbar"
           accessibilityLabel="Preparing your application review"
         >
-          <ActivityIndicator size="large" color={colors.blue} />
+          <ActivityIndicator size="large" color={actionBlue} />
           <Text
-            style={[styles.loadingText, { color: colors.textMuted }]}
+            style={[styles.loadingText, { color: supportingText }]}
           >
             Preparing your application review…
           </Text>
@@ -559,7 +603,7 @@ export default function RunnerApplicationReviewScreen() {
           </Text>
 
           <Text
-            style={[styles.bodyText, { color: colors.textMuted }]}
+            style={[styles.bodyText, { color: supportingText }]}
             numberOfLines={4}
           >
             {error ||
@@ -572,7 +616,7 @@ export default function RunnerApplicationReviewScreen() {
             onPress={() => void loadReview()}
             style={({ pressed }) => [
               styles.primaryButton,
-              { backgroundColor: colors.blue },
+              { backgroundColor: buttonBlue },
               pressed && styles.pressed,
             ]}
           >
@@ -591,7 +635,7 @@ export default function RunnerApplicationReviewScreen() {
             ]}
           >
             <Text
-              style={[styles.secondaryLinkText, { color: colors.blue }]}
+              style={[styles.secondaryLinkText, { color: actionBlue }]}
             >
               Back to documents
             </Text>
@@ -601,13 +645,15 @@ export default function RunnerApplicationReviewScreen() {
     );
   }
 
-  const isDarkPaper = colors.paper === "#080F1D";
-
   return (
     <SafeAreaView
       style={[styles.safeArea, { backgroundColor: colors.paper }]}
       edges={["top", "bottom"]}
     >
+      <StatusBar
+        barStyle={isDark ? "light-content" : "dark-content"}
+        backgroundColor={colors.paper}
+      />
       <ScrollView
         ref={scrollRef}
         contentContainerStyle={styles.content}
@@ -618,8 +664,7 @@ export default function RunnerApplicationReviewScreen() {
         <View style={styles.header}>
           <Pressable
             accessibilityRole="button"
-            accessibilityLabel="Back to documents"
-            disabled={submitting}
+            accessibilityLabel="Go back"
             onPress={goToDocuments}
             hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}
             style={({ pressed }) => [
@@ -627,7 +672,7 @@ export default function RunnerApplicationReviewScreen() {
               {
                 backgroundColor: colors.surface,
                 borderColor: colors.border,
-                opacity: pressed ? 0.6 : submitting ? 0.5 : 1,
+                opacity: pressed ? 0.6 : 1,
               },
             ]}
           >
@@ -640,14 +685,14 @@ export default function RunnerApplicationReviewScreen() {
 
           <View style={styles.brand}>
             <Text
-              style={[styles.brandName, { color: colors.navy }]}
+              style={[styles.brandName, { color: brandColor }]}
             >
-              SaMi <Text style={{ color: colors.blue }}>Runner</Text>
+              SaMi <Text style={{ color: actionBlue }}>Runner</Text>
             </Text>
             <Text
               style={[
                 styles.brandTagline,
-                { color: colors.textMuted },
+                { color: supportingText },
               ]}
             >
               CONSIDER IT DONE
@@ -657,7 +702,7 @@ export default function RunnerApplicationReviewScreen() {
           <View style={styles.headerSpacer} />
         </View>
 
-        {/* Progress — final step */}
+        {/* Progress */}
         <View style={styles.progressSection}>
           <View
             style={[
@@ -668,7 +713,7 @@ export default function RunnerApplicationReviewScreen() {
             <View
               style={[
                 styles.progressFillFull,
-                { backgroundColor: colors.blue },
+                { backgroundColor: buttonBlue },
               ]}
             />
           </View>
@@ -677,29 +722,33 @@ export default function RunnerApplicationReviewScreen() {
             <Text
               style={[
                 styles.progressLabel,
-                { color: colors.textMuted },
+                { color: supportingText },
               ]}
             >
-              FINAL STEP · REVIEW & SUBMIT
+              {isApproved
+                ? "APPLICATION APPROVED"
+                : isPendingReview || submissionComplete
+                  ? "APPLICATION SUBMITTED"
+                  : "FINAL STEP · REVIEW & SUBMIT"}
             </Text>
 
             <View style={styles.progressDots}>
               <View
                 style={[
                   styles.stepDotDone,
-                  { backgroundColor: colors.blue },
+                  { backgroundColor: buttonBlue },
                 ]}
               />
               <View
                 style={[
                   styles.stepDotDone,
-                  { backgroundColor: colors.blue },
+                  { backgroundColor: buttonBlue },
                 ]}
               />
               <View
                 style={[
                   styles.stepDotDone,
-                  { backgroundColor: colors.blue },
+                  { backgroundColor: buttonBlue },
                 ]}
               />
             </View>
@@ -708,8 +757,12 @@ export default function RunnerApplicationReviewScreen() {
 
         {/* Heading */}
         <View style={styles.headingBlock}>
-          <Text style={[styles.eyebrow, { color: colors.blue }]}>
-            FINAL STEP
+          <Text style={[styles.eyebrow, { color: actionBlue }]}>
+            {isApproved
+              ? "APPROVED APPLICATION"
+              : isPendingReview || submissionComplete
+                ? "APPLICATION SUBMITTED"
+                : "FINAL STEP"}
           </Text>
 
           <Text style={[styles.title, { color: colors.text }]}>
@@ -717,7 +770,7 @@ export default function RunnerApplicationReviewScreen() {
           </Text>
 
           <Text
-            style={[styles.bodyText, { color: colors.textMuted }]}
+            style={[styles.bodyText, { color: supportingText }]}
           >
             Check your details before sending your Runner application to
             SaMi Operations for verification.
@@ -779,7 +832,7 @@ export default function RunnerApplicationReviewScreen() {
             <Text
               style={[
                 styles.progressDescription,
-                { color: colors.textMuted },
+                { color: supportingText },
               ]}
             >
               {missingCount === 0
@@ -818,7 +871,7 @@ export default function RunnerApplicationReviewScreen() {
           />
         </View>
 
-        {/* Tasks */}
+        {/* Selected services */}
         <View
           style={[
             styles.sectionCard,
@@ -829,11 +882,13 @@ export default function RunnerApplicationReviewScreen() {
           ]}
         >
           <SectionHeading
-            title="Tasks you selected"
+            title="Services you selected"
             icon="layers-outline"
             action="Edit"
             onAction={() => router.push("/(auth)/tasks")}
-            disabled={submitting}
+            disabled={
+              submitting || isPendingReview || isApproved || submissionComplete
+            }
             colors={colors}
           />
 
@@ -850,7 +905,7 @@ export default function RunnerApplicationReviewScreen() {
                   <Text
                     style={[
                       styles.categoryChipText,
-                      { color: colors.blue },
+                      { color: actionBlue },
                     ]}
                   >
                     {category}
@@ -860,7 +915,7 @@ export default function RunnerApplicationReviewScreen() {
             </View>
           ) : (
             <Text style={[styles.inlineError, { color: colors.red }]}>
-              No task categories have been selected.
+              No services have been selected.
             </Text>
           )}
         </View>
@@ -880,7 +935,9 @@ export default function RunnerApplicationReviewScreen() {
             icon="navigate-outline"
             action="Edit"
             onAction={() => router.push("/(auth)/transport")}
-            disabled={submitting}
+            disabled={
+              submitting || isPendingReview || isApproved || submissionComplete
+            }
             colors={colors}
           />
 
@@ -995,7 +1052,7 @@ export default function RunnerApplicationReviewScreen() {
                     <Ionicons
                       name="chevron-forward"
                       size={16}
-                      color={colors.textMuted}
+                      color={supportingText}
                     />
                   </View>
                 </Pressable>
@@ -1009,19 +1066,6 @@ export default function RunnerApplicationReviewScreen() {
             </Text>
           )}
 
-          {optionalDocumentCount > 0 ? (
-            <Text
-              style={[
-                styles.optionalText,
-                { color: colors.textMuted },
-              ]}
-            >
-              There are also {optionalDocumentCount} optional document
-              requirement
-              {optionalDocumentCount === 1 ? "" : "s"} for your selected
-              tasks and transport.
-            </Text>
-          ) : null}
         </View>
 
         {/* What happens next */}
@@ -1035,10 +1079,10 @@ export default function RunnerApplicationReviewScreen() {
             What happens next?
           </Text>
           <Text
-            style={[styles.noticeText, { color: colors.textMuted }]}
+            style={[styles.noticeText, { color: supportingText }]}
           >
             After you submit, SaMi Operations will review your application
-            and documents. Runner errand access remains unavailable until
+            and documents. Runner service access remains unavailable until
             your application is approved.
           </Text>
         </View>
@@ -1065,7 +1109,12 @@ export default function RunnerApplicationReviewScreen() {
         ) : null}
 
         {/* Blocked card */}
-        {!canSubmit && blockedShortcut ? (
+        {!canSubmit &&
+        !isPendingReview &&
+        !isApproved &&
+        !isRestricted &&
+        !submissionComplete &&
+        blockedShortcut ? (
           <View
             style={[
               styles.blockedCard,
@@ -1082,7 +1131,7 @@ export default function RunnerApplicationReviewScreen() {
             </Text>
 
             <Text
-              style={[styles.bodyText, { color: colors.textMuted }]}
+              style={[styles.bodyText, { color: supportingText }]}
             >
               {blockedMessage}
             </Text>
@@ -1105,7 +1154,7 @@ export default function RunnerApplicationReviewScreen() {
               <Text
                 style={[
                   styles.secondaryActionText,
-                  { color: colors.blue },
+                  { color: actionBlue },
                 ]}
               >
                 {blockedShortcut.label}
@@ -1114,59 +1163,126 @@ export default function RunnerApplicationReviewScreen() {
           </View>
         ) : null}
 
-        {/* Submit */}
-        <Pressable
-          accessibilityRole="button"
-          accessibilityLabel="Submit application"
-          accessibilityHint="Sends your application to SaMi Operations for review"
-          accessibilityState={{ busy: submitting, disabled: !canSubmit }}
-          disabled={!canSubmit}
-          onPress={() => void submitApplication()}
-          style={({ pressed }) => [
-            styles.primaryButton,
-            { backgroundColor: colors.blue },
-            !canSubmit && styles.primaryButtonDisabled,
-            pressed && canSubmit && styles.pressed,
-          ]}
-        >
-          {submitting ? (
-            <ActivityIndicator color="#FFFFFF" />
-          ) : (
-            <Text style={styles.primaryButtonText}>
-              Submit application
-            </Text>
-          )}
-        </Pressable>
+        {/* Restricted account notice */}
+        {isRestricted ? (
+          <View
+            accessibilityRole="alert"
+            style={[
+              styles.successCard,
+              { backgroundColor: colors.dangerSoft },
+            ]}
+          >
+            <Ionicons
+              name="lock-closed-outline"
+              size={21}
+              color={colors.red}
+            />
+            <View style={styles.successCopy}>
+              <Text style={[styles.successTitle, { color: colors.text }]}>
+                Application actions are restricted
+              </Text>
+              <Text style={[styles.successBody, { color: supportingText }]}>
+                This Runner account cannot submit or change its application at the moment. Contact SaMi Operations for assistance.
+              </Text>
+            </View>
+          </View>
+        ) : null}
+
+        {/* Submission success and status actions */}
+        {showSubmittedNotice ? (
+          <View
+            accessibilityRole="alert"
+            style={[
+              styles.successCard,
+              { backgroundColor: colors.successSoft },
+            ]}
+          >
+            <Ionicons
+              name={isApproved ? "checkmark-circle" : "time-outline"}
+              size={21}
+              color={colors.success}
+            />
+            <View style={styles.successCopy}>
+              <Text style={[styles.successTitle, { color: colors.text }]}>
+                {isApproved
+                  ? "Your Runner account is approved"
+                  : "Your application has been submitted"}
+              </Text>
+              <Text style={[styles.successBody, { color: supportingText }]}>
+                {isApproved
+                  ? "Your application has been approved. Open the Runner dashboard whenever you are ready."
+                  : "Your application is with SaMi Operations for verification. You can leave this screen and return whenever you need to."}
+              </Text>
+            </View>
+          </View>
+        ) : null}
+
+        {isRestricted ? null : isApproved ? (
+          <Pressable
+            accessibilityRole="button"
+            onPress={() => router.replace("/(app)")}
+            style={({ pressed }) => [
+              styles.primaryButton,
+              { backgroundColor: buttonBlue },
+              pressed && styles.pressed,
+            ]}
+          >
+            <Text style={styles.primaryButtonText}>Open Runner dashboard</Text>
+            <Ionicons name="arrow-forward" size={18} color="#FFFFFF" />
+          </Pressable>
+        ) : isPendingReview || submissionComplete ? (
+          <Pressable
+            accessibilityRole="button"
+            onPress={() =>
+              router.push("/(app)/profile-setup?mode=status")
+            }
+            style={({ pressed }) => [
+              styles.primaryButton,
+              { backgroundColor: buttonBlue },
+              pressed && styles.pressed,
+            ]}
+          >
+            <Text style={styles.primaryButtonText}>View application status</Text>
+            <Ionicons name="arrow-forward" size={18} color="#FFFFFF" />
+          </Pressable>
+        ) : (
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel="Submit application"
+            accessibilityHint="Sends your application to SaMi Operations for review"
+            accessibilityState={{ busy: submitting, disabled: !canSubmit }}
+            disabled={!canSubmit}
+            onPress={() => void submitApplication()}
+            style={({ pressed }) => [
+              styles.primaryButton,
+              { backgroundColor: buttonBlue },
+              !canSubmit && styles.primaryButtonDisabled,
+              pressed && canSubmit && styles.pressed,
+            ]}
+          >
+            {submitting ? (
+              <ActivityIndicator color="#FFFFFF" />
+            ) : (
+              <Text style={styles.primaryButtonText}>
+                Submit application
+              </Text>
+            )}
+          </Pressable>
+        )}
 
         <Text
-          style={[styles.footerText, { color: colors.textMuted }]}
+          style={[styles.footerText, { color: supportingText }]}
         >
           By submitting, you confirm that the details and documents
           provided are accurate and belong to you.
         </Text>
       </ScrollView>
-
-      {/* Status bar colour matches theme */}
-      <View
-        pointerEvents="none"
-        style={[
-          styles.statusBarFix,
-          { backgroundColor: isDarkPaper ? colors.paper : colors.paper },
-        ]}
-      />
     </SafeAreaView>
   );
 }
 
 const styles = StyleSheet.create({
   safeArea: { flex: 1 },
-  statusBarFix: {
-    position: "absolute",
-    top: 0,
-    left: 0,
-    right: 0,
-    height: 0,
-  },
 
   content: {
     paddingHorizontal: 20,
@@ -1443,12 +1559,6 @@ const styles = StyleSheet.create({
     fontWeight: "800",
   },
 
-  optionalText: {
-    fontSize: 12,
-    lineHeight: 17,
-    marginTop: 2,
-  },
-
   inlineWarning: {
     fontSize: 12.5,
     lineHeight: 18,
@@ -1528,6 +1638,8 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     paddingHorizontal: 18,
     marginTop: 2,
+    flexDirection: "row",
+    gap: 9,
   },
 
   primaryButtonDisabled: {
@@ -1556,6 +1668,30 @@ const styles = StyleSheet.create({
     lineHeight: 16,
     textAlign: "center",
     paddingHorizontal: 8,
+  },
+
+  successCard: {
+    borderRadius: 14,
+    padding: 14,
+    flexDirection: "row",
+    alignItems: "flex-start",
+    gap: 10,
+  },
+
+  successCopy: {
+    flex: 1,
+    gap: 5,
+  },
+
+  successTitle: {
+    fontSize: 13,
+    lineHeight: 18,
+    fontWeight: "900",
+  },
+
+  successBody: {
+    fontSize: 12,
+    lineHeight: 18,
   },
 
   // Center (loading + no data)
