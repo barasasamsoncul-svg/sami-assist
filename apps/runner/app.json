@@ -19,12 +19,12 @@
         "expo-splash-screen",
         {
           "backgroundColor": "#000535",
-          "image": "./assets/icon.png",
-          "imageWidth": 160,
+          "image": "./assets/splash-logo.png",
+          "imageWidth": 280,
           "resizeMode": "contain",
           "dark": {
             "backgroundColor": "#000535",
-            "image": "./assets/icon.png"
+            "image": "./assets/splash-logo.png"
           }
         }
       ],
@@ -32,7 +32,7 @@
         "expo-location",
         {
           "locationWhenInUsePermission": "SaMi Runner uses your location while you are online and while completing errands so SaMi can match suitable requests and share progress with customers.",
-          "locationAlwaysAndWhenInUsePermission": "SaMi Runner uses your location while you are online or completing an accepted errand, including when the app is in the background. This allows SaMi to maintain your dispatch availability and share live progress with customers. Tracking stops when you go offline or finish your errand.",
+          "locationAlwaysAndWhenInUsePermission": "SaMi Runner uses your location while you are online or completing an accepted errand, including when the app is in the background. This allows SaMi to maintain its dispatch availability and share live progress with customers. Tracking stops when you go offline or finish your errand.",
           "isIosBackgroundLocationEnabled": true,
           "isAndroidBackgroundLocationEnabled": true,
           "isAndroidForegroundServiceEnabled": true

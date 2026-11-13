@@ -1,59 +1,50 @@
 
+import { useCallback, useRef } from "react";
 import { Stack } from "expo-router";
-import { StatusBar, View } from "react-native";
-
+import { StatusBar, StyleSheet, View } from "react-native";
 import * as SplashScreen from "expo-splash-screen";
 
-import { SafeAreaProvider } from "react-native-safe-area-context";
+const BRAND_NAVY = "#000535";
 
-import {
-  RunnerThemeProvider,
-  useRunnerTheme,
-} from "@/theme";
+// Keep the native splash visible until the React Native root is ready.
+void SplashScreen.preventAutoHideAsync();
 
-void SplashScreen.preventAutoHideAsync().catch(
-  () => undefined,
-);
+export default function RootLayout() {
+  const hasHiddenSplash = useRef(false);
 
-function RunnerRootNavigator() {
-  const { colors, mode } = useRunnerTheme();
+  const handleRootLayout = useCallback(() => {
+    if (hasHiddenSplash.current) {
+      return;
+    }
+
+    hasHiddenSplash.current = true;
+    SplashScreen.hide();
+  }, []);
 
   return (
-    <View
-      style={{
-        flex: 1,
-        backgroundColor: colors.paper,
-      }}
-    >
+    <View style={styles.root} onLayout={handleRootLayout}>
       <StatusBar
-        barStyle={
-          mode === "dark" ? "light-content" : "dark-content"
-        }
-        backgroundColor={colors.paper}
+        barStyle="light-content"
+        backgroundColor={BRAND_NAVY}
         translucent={false}
-        hidden={false}
       />
 
       <Stack
         screenOptions={{
           headerShown: false,
           contentStyle: {
-            backgroundColor: colors.paper,
+            backgroundColor: BRAND_NAVY,
           },
-          animation: "fade",
-          animationDuration: 200,
+          animation: "none",
         }}
       />
     </View>
   );
 }
 
-export default function RootLayout() {
-  return (
-    <SafeAreaProvider>
-      <RunnerThemeProvider>
-        <RunnerRootNavigator />
-      </RunnerThemeProvider>
-    </SafeAreaProvider>
-  );
-}
+const styles = StyleSheet.create({
+  root: {
+    flex: 1,
+    backgroundColor: BRAND_NAVY,
+  },
+});
