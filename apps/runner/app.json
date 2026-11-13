@@ -21,7 +21,7 @@
   {
     "backgroundColor": "#000535",
     "image": "./assets/splash-logo.png",
-    "imageWidth": 320,
+    "imageWidth": 288,
     "resizeMode": "contain",
     "dark": {
       "backgroundColor": "#000535",
