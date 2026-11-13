@@ -1,20 +1,20 @@
 
 import React, { useState } from "react";
 import {
-  Alert,
   Image,
   ImageBackground,
   Modal,
   Pressable,
-  SafeAreaView,
   StyleSheet,
   Text,
   View,
   useWindowDimensions,
 } from "react-native";
+import { SafeAreaView } from "react-native-safe-area-context";
 
 const NAVY = "#000535";
 const WHITE = "#FFFFFF";
+const ACCENT = "#25A9FF";
 
 const BACKGROUND = require("../../assets/welcome-background.png");
 const WORDMARK = require("../../assets/sami-wordmark.png");
@@ -29,34 +29,50 @@ export default function WelcomeScreen({
   onSignIn,
 }: WelcomeScreenProps) {
   const [helpVisible, setHelpVisible] = useState(false);
-  const { height } = useWindowDimensions();
+  const { width, height } = useWindowDimensions();
 
-  const compact = height < 760;
+  const compact = height < 780;
+  const narrow = width < 360;
 
   return (
     <ImageBackground
       source={BACKGROUND}
       resizeMode="cover"
       style={styles.background}
+      imageStyle={styles.backgroundImage}
     >
-      {/* Subtle navy treatment keeps the text readable. */}
-      <View pointerEvents="none" style={styles.backgroundOverlay} />
+      <View
+        pointerEvents="none"
+        style={styles.backgroundTint}
+      />
 
-      <SafeAreaView style={styles.safeArea}>
-        <View style={styles.content}>
+      <SafeAreaView
+        style={styles.safeArea}
+        edges={["top", "bottom"]}
+      >
+        <View style={[
+          styles.content,
+          narrow && styles.contentNarrow,
+        ]}>
           {/* BRAND HEADER */}
           <View style={styles.header}>
             <Image
               source={WORDMARK}
               resizeMode="contain"
+              accessibilityRole="image"
               accessibilityLabel="SaMi"
-              style={styles.wordmark}
+              style={[
+                styles.wordmark,
+                narrow && styles.wordmarkNarrow,
+              ]}
             />
 
             <Pressable
               accessibilityRole="button"
-              accessibilityLabel="Open help"
+              accessibilityLabel="Help"
+              accessibilityHint="Opens SaMi Runner help information"
               onPress={() => setHelpVisible(true)}
+              hitSlop={8}
               style={({ pressed }) => [
                 styles.helpButton,
                 pressed && styles.pressed,
@@ -70,7 +86,7 @@ export default function WelcomeScreen({
             </Pressable>
           </View>
 
-          {/* WELCOME MESSAGE */}
+          {/* MAIN MESSAGE — KEPT IN THE DARK SKY */}
           <View style={[
             styles.hero,
             compact && styles.heroCompact,
@@ -81,10 +97,14 @@ export default function WelcomeScreen({
               </Text>
             </View>
 
-            <Text style={[
-              styles.heading,
-              compact && styles.headingCompact,
-            ]}>
+            <Text
+              accessibilityRole="header"
+              style={[
+                styles.heading,
+                compact && styles.headingCompact,
+                narrow && styles.headingNarrow,
+              ]}
+            >
               Make every{"\n"}task count
               <Text style={styles.headingAccent}>.</Text>
             </Text>
@@ -92,12 +112,16 @@ export default function WelcomeScreen({
             <Text style={[
               styles.description,
               compact && styles.descriptionCompact,
+              narrow && styles.descriptionNarrow,
             ]}>
               Shop, pick up, assist and complete
               everyday tasks for your community
               with SaMi.
             </Text>
           </View>
+
+          {/* FLEXIBLE SPACE KEEPS ACTIONS AT THE BOTTOM */}
+          <View style={styles.spacer} />
 
           {/* PRIMARY ACTIONS */}
           <View style={styles.actions}>
@@ -143,23 +167,29 @@ export default function WelcomeScreen({
         onRequestClose={() => setHelpVisible(false)}
       >
         <View style={styles.modalOverlay}>
-          <View style={styles.modalCard}>
+          <View
+            style={styles.modalCard}
+            accessibilityRole="summary"
+          >
             <Text style={styles.modalTitle}>
               SaMi Runner Help
             </Text>
 
             <Text style={styles.modalDescription}>
-              New to SaMi Runner? Choose Get started
-              to begin your registration.
+              New to SaMi Runner? Select Get started
+              to begin registration.
               {"\n\n"}
-              Already have an account? Choose Sign in
-              to access your Runner account.
+              Already registered? Select Sign in
+              to access your account.
             </Text>
 
             <Pressable
               accessibilityRole="button"
               onPress={() => setHelpVisible(false)}
-              style={styles.modalButton}
+              style={({ pressed }) => [
+                styles.modalButton,
+                pressed && styles.pressed,
+              ]}
             >
               <Text style={styles.modalButtonText}>
                 Got it
@@ -178,9 +208,14 @@ const styles = StyleSheet.create({
     backgroundColor: NAVY,
   },
 
-  backgroundOverlay: {
+  backgroundImage: {
+    width: "100%",
+    height: "100%",
+  },
+
+  backgroundTint: {
     ...StyleSheet.absoluteFill,
-    backgroundColor: "rgba(0, 5, 53, 0.12)",
+    backgroundColor: "rgba(0, 5, 53, 0.07)",
   },
 
   safeArea: {
@@ -190,29 +225,36 @@ const styles = StyleSheet.create({
   content: {
     flex: 1,
     paddingHorizontal: 25,
-    paddingTop: 12,
-    paddingBottom: 15,
-    justifyContent: "space-between",
+    paddingTop: 7,
+    paddingBottom: 10,
+  },
+
+  contentNarrow: {
+    paddingHorizontal: 21,
   },
 
   header: {
-    minHeight: 68,
+    minHeight: 62,
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
   },
 
   wordmark: {
-    width: 158,
-    height: 68,
+    width: 150,
+    height: 63,
+  },
+
+  wordmarkNarrow: {
+    width: 137,
   },
 
   helpButton: {
-    minHeight: 42,
-    paddingHorizontal: 15,
-    borderWidth: 1.2,
-    borderColor: "rgba(255,255,255,0.85)",
-    borderRadius: 25,
+    minHeight: 43,
+    paddingHorizontal: 13,
+    borderWidth: 1.3,
+    borderColor: "rgba(255,255,255,0.92)",
+    borderRadius: 24,
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "center",
@@ -224,15 +266,16 @@ const styles = StyleSheet.create({
     height: 21,
     borderWidth: 1.4,
     borderColor: WHITE,
-    borderRadius: 11,
-    justifyContent: "center",
+    borderRadius: 12,
     alignItems: "center",
+    justifyContent: "center",
   },
 
   helpQuestion: {
     color: WHITE,
     fontSize: 14,
-    fontWeight: "700",
+    fontWeight: "800",
+    lineHeight: 18,
   },
 
   helpText: {
@@ -242,104 +285,125 @@ const styles = StyleSheet.create({
   },
 
   hero: {
-    marginTop: 32,
-    marginBottom: 20,
     alignItems: "flex-start",
+    marginTop: 22,
+    maxWidth: 350,
   },
 
   heroCompact: {
-    marginTop: 20,
+    marginTop: 17,
   },
 
   appLabel: {
-    backgroundColor: "rgba(0,5,53,0.78)",
+    backgroundColor: "rgba(0, 91, 199, 0.82)",
     borderWidth: 1,
-    borderColor: "rgba(255,255,255,0.28)",
-    paddingHorizontal: 17,
-    paddingVertical: 8,
-    borderRadius: 24,
-    marginBottom: 23,
+    borderColor: "rgba(87, 180, 255, 0.5)",
+    borderRadius: 22,
+    paddingHorizontal: 15,
+    paddingVertical: 7,
+    marginBottom: 17,
   },
 
   appLabelText: {
     color: WHITE,
-    fontSize: 14,
-    fontWeight: "700",
-    letterSpacing: 0.5,
+    fontSize: 13,
+    fontWeight: "800",
+    letterSpacing: 0.35,
   },
 
   heading: {
     color: WHITE,
-    fontSize: 43,
-    lineHeight: 49,
+    fontSize: 40,
+    lineHeight: 45,
     fontWeight: "900",
-    letterSpacing: -1.2,
-  },
-
-  headingCompact: {
-    fontSize: 37,
-    lineHeight: 43,
-  },
-
-  headingAccent: {
-    color: "#268BFF",
-  },
-
-  description: {
-    color: WHITE,
-    fontSize: 17,
-    lineHeight: 26,
-    fontWeight: "500",
-    marginTop: 19,
-    maxWidth: 345,
-    textShadowColor: "rgba(0,0,0,0.35)",
-    textShadowRadius: 8,
+    letterSpacing: -1.1,
+    textShadowColor: "rgba(0, 0, 0, 0.2)",
+    textShadowRadius: 5,
     textShadowOffset: { width: 0, height: 2 },
   },
 
-  descriptionCompact: {
-    fontSize: 15,
+  headingCompact: {
+    fontSize: 36,
+    lineHeight: 41,
+  },
+
+  headingNarrow: {
+    fontSize: 35,
+    lineHeight: 40,
+  },
+
+  headingAccent: {
+    color: ACCENT,
+  },
+
+  description: {
+    color: "#F0F3FF",
+    fontSize: 15.5,
     lineHeight: 23,
-    marginTop: 15,
+    fontWeight: "500",
+    marginTop: 13,
+    maxWidth: 335,
+    textShadowColor: "rgba(0, 0, 0, 0.25)",
+    textShadowRadius: 5,
+    textShadowOffset: { width: 0, height: 1 },
+  },
+
+  descriptionCompact: {
+    fontSize: 14.5,
+    lineHeight: 21,
+    marginTop: 11,
+  },
+
+  descriptionNarrow: {
+    fontSize: 14,
+    lineHeight: 21,
+  },
+
+  spacer: {
+    flex: 1,
+    minHeight: 20,
   },
 
   actions: {
     width: "100%",
-    gap: 14,
-    paddingBottom: 10,
+    gap: 13,
+    paddingBottom: 7,
   },
 
   primaryButton: {
-    height: 60,
+    width: "100%",
+    minHeight: 59,
     borderRadius: 17,
     backgroundColor: WHITE,
     alignItems: "center",
     justifyContent: "center",
     flexDirection: "row",
     position: "relative",
-    elevation: 5,
+    elevation: 4,
   },
 
   primaryButtonText: {
     color: NAVY,
     fontSize: 17,
     fontWeight: "800",
+    letterSpacing: 0.1,
   },
 
   arrow: {
     position: "absolute",
-    right: 22,
+    right: 21,
     color: NAVY,
     fontSize: 25,
     fontWeight: "600",
   },
 
   secondaryButton: {
-    height: 58,
+    width: "100%",
+    minHeight: 57,
     borderRadius: 17,
     borderWidth: 1.5,
     borderColor: WHITE,
-    backgroundColor: "rgba(0,5,53,0.42)",
+    backgroundColor: "rgba(0, 5, 53, 0.48)",
     alignItems: "center",
     justifyContent: "center",
   },
@@ -357,10 +421,10 @@ const styles = StyleSheet.create({
 
   modalOverlay: {
     flex: 1,
-    backgroundColor: "rgba(0,0,0,0.68)",
+    backgroundColor: "rgba(0, 0, 0, 0.72)",
     justifyContent: "center",
     alignItems: "center",
-    padding: 25,
+    paddingHorizontal: 24,
   },
 
   modalCard: {
@@ -381,14 +445,14 @@ const styles = StyleSheet.create({
   },
 
   modalDescription: {
-    color: "#E3E7F2",
+    color: "#E3E9FA",
     fontSize: 15,
     lineHeight: 24,
   },
 
   modalButton: {
+    minHeight: 48,
     backgroundColor: WHITE,
-    height: 48,
     borderRadius: 13,
     justifyContent: "center",
     alignItems: "center",

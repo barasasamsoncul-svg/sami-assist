@@ -21,14 +21,34 @@ import Svg, {
 const AnimatedPath = Animated.createAnimatedComponent(Path);
 const AnimatedGroup = Animated.createAnimatedComponent(G);
 
-const COLORS = {
-  navy: "#000535",
-  white: "#FFFFFF",
-  arrowStart: "#0879FF",
-  arrowEnd: "#1746C5",
-  orbitStart: "#0879FF",
-  orbitEnd: "#40B5FF",
-};
+const NAVY = "#000535";
+const WHITE = "#FFFFFF";
+const BLUE = "#078BFF";
+const CYAN = "#43D9FF";
+
+// Actual SaMi letter geometry traced from the supplied GIF.
+const LOGO_S =
+  "M 143,164 138,160 129,157 113,156 112,157 106,157 102,159 99,159 89,165 86,168 82,176 82,180 81,181 82,182 83,190 85,193 90,197 108,204 112,209 111,213 107,217 98,220 88,219 82,217 76,213 74,213 70,216 62,226 65,229 74,233 83,234 84,235 98,235 99,234 105,234 106,233 109,233 115,231 125,225 131,218 134,210 134,204 131,197 128,194 121,190 113,188 104,184 100,180 100,176 104,171 113,168 122,169 125,171 127,171 131,174 133,174 139,169 Z";
+
+const LOGO_M =
+  "M 325,157 307,157 290,175 270,199 268,195 266,182 265,181 265,178 264,177 264,174 263,173 263,170 260,161 258,159 246,159 242,161 239,164 235,172 215,232 234,232 235,231 237,221 243,204 243,201 248,188 250,190 250,194 251,195 252,205 253,206 253,210 254,211 254,215 255,216 255,221 256,223 268,223 276,215 296,191 297,192 296,198 292,208 292,211 285,232 299,232 300,231 303,231 309,213 309,210 314,195 317,181 Z";
+
+const LOGO_I =
+  "M 345,179 343,178 329,178 327,182 327,185 325,189 325,192 323,196 323,199 317,217 314,232 328,232 333,230 334,224 336,220 336,217 338,213 339,206 341,202 342,195 345,187 Z";
+
+const LOGO_I_DOT =
+  "M 350,154 343,153 338,155 333,161 333,167 336,170 339,170 340,171 341,170 345,170 350,167 353,161 353,159 Z";
+
+// The SaMi navigation-arrow A.
+const LOGO_A =
+  "M 219,161 213,162 148,189 139,194 139,200 141,201 172,203 174,205 174,237 178,243 181,242 189,233 198,214 204,205 207,196 213,188 222,166 Z";
+
+// Orbital paths follow the original animation's sweeping motion.
+const UPPER_ORBIT =
+  "M 143,140 C 181,118 226,104 267,101 C 296,99 320,108 334,126";
+
+const LOWER_ORBIT =
+  "M 128,234 C 132,250 147,260 171,261 C 216,263 264,245 294,225";
 
 type SaMiLaunchAnimationProps = {
   onComplete?: () => void;
@@ -39,259 +59,388 @@ export default function SaMiLaunchAnimation({
   onComplete,
   style,
 }: SaMiLaunchAnimationProps) {
-  // The wordmark remains stable once revealed.
   const wordOpacity = useRef(new Animated.Value(0)).current;
 
-  // The A is progressively drawn, then filled.
-  const arrowStroke = useRef(new Animated.Value(300)).current;
+  const arrowDraw = useRef(new Animated.Value(250)).current;
   const arrowFill = useRef(new Animated.Value(0)).current;
+  const arrowGlow = useRef(new Animated.Value(0)).current;
 
-  // Orbital swooshes draw themselves around the A.
-  const upperOrbit = useRef(new Animated.Value(240)).current;
-  const lowerOrbit = useRef(new Animated.Value(220)).current;
+  const upperDraw = useRef(new Animated.Value(220)).current;
+  const upperGlow = useRef(new Animated.Value(0)).current;
+
+  const lowerDraw = useRef(new Animated.Value(190)).current;
+  const lowerGlow = useRef(new Animated.Value(0)).current;
+
+  const arrowTipOpacity = useRef(new Animated.Value(0)).current;
+  const upperTipOpacity = useRef(new Animated.Value(0)).current;
+  const lowerTipOpacity = useRef(new Animated.Value(0)).current;
 
   const taglineOpacity = useRef(new Animated.Value(0)).current;
+  const taglineLine = useRef(new Animated.Value(0)).current;
 
   const onCompleteRef = useRef(onComplete);
   onCompleteRef.current = onComplete;
 
   useEffect(() => {
-    const animation = Animated.sequence([
-      Animated.delay(180),
+    let active = true;
 
-      // Reveal S and Mi.
+    const animate = Animated.sequence([
+      // 1. Reveal S and Mi independently of the A.
+      Animated.delay(120),
+
       Animated.timing(wordOpacity, {
         toValue: 1,
-        duration: 420,
+        duration: 380,
         easing: Easing.out(Easing.cubic),
         useNativeDriver: false,
       }),
 
-      // Draw the navigation-arrow A.
-      Animated.timing(arrowStroke, {
-        toValue: 0,
-        duration: 850,
-        easing: Easing.out(Easing.cubic),
-        useNativeDriver: false,
-      }),
-
-      // Fill the completed A.
-      Animated.timing(arrowFill, {
-        toValue: 1,
-        duration: 300,
-        easing: Easing.out(Easing.quad),
-        useNativeDriver: false,
-      }),
-
-      // Draw the orbital identity around the A.
+      // 2. The navigation-arrow A draws into the open space.
       Animated.parallel([
-        Animated.timing(upperOrbit, {
+        Animated.timing(arrowDraw, {
           toValue: 0,
-          duration: 750,
+          duration: 620,
           easing: Easing.out(Easing.cubic),
           useNativeDriver: false,
         }),
-        Animated.timing(lowerOrbit, {
+
+        Animated.sequence([
+          Animated.timing(arrowGlow, {
+            toValue: 1,
+            duration: 360,
+            useNativeDriver: false,
+          }),
+          Animated.timing(arrowGlow, {
+            toValue: 0.55,
+            duration: 260,
+            useNativeDriver: false,
+          }),
+        ]),
+      ]),
+
+      Animated.parallel([
+        Animated.timing(arrowFill, {
+          toValue: 1,
+          duration: 260,
+          easing: Easing.out(Easing.quad),
+          useNativeDriver: false,
+        }),
+        Animated.timing(arrowTipOpacity, {
+          toValue: 1,
+          duration: 180,
+          useNativeDriver: false,
+        }),
+      ]),
+
+      // 3. Upper orbit sweeps across the logo.
+      Animated.parallel([
+        Animated.timing(upperDraw, {
           toValue: 0,
-          duration: 750,
+          duration: 630,
+          easing: Easing.out(Easing.cubic),
+          useNativeDriver: false,
+        }),
+        Animated.timing(upperGlow, {
+          toValue: 1,
+          duration: 450,
+          useNativeDriver: false,
+        }),
+        Animated.timing(upperTipOpacity, {
+          toValue: 1,
+          duration: 480,
+          useNativeDriver: false,
+        }),
+      ]),
+
+      // 4. Lower orbit follows and completes the identity.
+      Animated.parallel([
+        Animated.timing(lowerDraw, {
+          toValue: 0,
+          duration: 590,
+          easing: Easing.out(Easing.cubic),
+          useNativeDriver: false,
+        }),
+        Animated.timing(lowerGlow, {
+          toValue: 1,
+          duration: 450,
+          useNativeDriver: false,
+        }),
+        Animated.timing(lowerTipOpacity, {
+          toValue: 1,
+          duration: 480,
+          useNativeDriver: false,
+        }),
+      ]),
+
+      // 5. Reveal the tagline only after the full logo is formed.
+      Animated.parallel([
+        Animated.timing(taglineOpacity, {
+          toValue: 1,
+          duration: 420,
+          easing: Easing.out(Easing.cubic),
+          useNativeDriver: false,
+        }),
+        Animated.timing(taglineLine, {
+          toValue: 1,
+          duration: 420,
           easing: Easing.out(Easing.cubic),
           useNativeDriver: false,
         }),
       ]),
 
-      // Reveal the tagline last.
-      Animated.timing(taglineOpacity, {
-        toValue: 1,
-        duration: 420,
-        easing: Easing.out(Easing.cubic),
-        useNativeDriver: false,
-      }),
-
-      Animated.delay(200),
+      Animated.delay(350),
     ]);
 
-    animation.start(({ finished }) => {
-      if (finished) {
+    animate.start(({ finished }) => {
+      if (finished && active) {
         onCompleteRef.current?.();
       }
     });
 
     return () => {
-      animation.stop();
+      active = false;
+      animate.stop();
     };
   }, [
     wordOpacity,
-    arrowStroke,
+    arrowDraw,
     arrowFill,
-    upperOrbit,
-    lowerOrbit,
+    arrowGlow,
+    upperDraw,
+    upperGlow,
+    lowerDraw,
+    lowerGlow,
+    arrowTipOpacity,
+    upperTipOpacity,
+    lowerTipOpacity,
     taglineOpacity,
+    taglineLine,
   ]);
 
   return (
     <View
       accessible
-      accessibilityLabel="SaMi launch animation"
+      accessibilityLabel="SaMi animated brand introduction"
       style={[styles.container, style]}
     >
       <View style={styles.logoStage}>
         <Svg
           width="100%"
           height="100%"
-          viewBox="0 0 440 210"
+          viewBox="25 90 362 210"
           preserveAspectRatio="xMidYMid meet"
         >
           <Defs>
             <LinearGradient
-              id="samiArrowGradient"
+              id="samiArrowFill"
               x1="0%"
-              y1="0%"
-              x2="100%"
-              y2="100%"
-            >
-              <Stop offset="0%" stopColor={COLORS.arrowStart} />
-              <Stop offset="100%" stopColor={COLORS.arrowEnd} />
-            </LinearGradient>
-
-            <LinearGradient
-              id="samiOrbitGradient"
-              x1="0%"
-              y1="0%"
+              y1="100%"
               x2="100%"
               y2="0%"
             >
-              <Stop offset="0%" stopColor={COLORS.orbitStart} />
-              <Stop offset="100%" stopColor={COLORS.orbitEnd} />
+              <Stop offset="0%" stopColor="#0068E8" />
+              <Stop offset="48%" stopColor="#087BFF" />
+              <Stop offset="100%" stopColor="#56DBFF" />
+            </LinearGradient>
+
+            <LinearGradient
+              id="samiOrbit"
+              x1="0%"
+              y1="100%"
+              x2="100%"
+              y2="0%"
+            >
+              <Stop offset="0%" stopColor="#0476F8" />
+              <Stop offset="50%" stopColor="#0AA9FF" />
+              <Stop offset="100%" stopColor="#8CEBFF" />
             </LinearGradient>
           </Defs>
 
-          {/* S, M and i remain separate from the animated A. */}
+          {/* S and Mi: exact letter outlines from the reference. */}
           <AnimatedGroup opacity={wordOpacity}>
-            <SvgText
-              x="20"
-              y="120"
-              fill={COLORS.white}
-              fontSize="128"
-              fontFamily="Arial"
-              fontWeight="900"
-              fontStyle="italic"
+            {/* Soft white halo */}
+            <G
+              fill="none"
+              stroke={WHITE}
+              strokeWidth="5"
+              opacity={0.13}
             >
-              S
-            </SvgText>
+              <Path d={LOGO_S} />
+              <Path d={LOGO_M} />
+              <Path d={LOGO_I} />
+              <Path d={LOGO_I_DOT} />
+            </G>
 
-            <SvgText
-              x="229"
-              y="120"
-              fill={COLORS.white}
-              fontSize="126"
-              fontFamily="Arial"
-              fontWeight="900"
-              fontStyle="italic"
-            >
-              M
-            </SvgText>
+            {/* Crisp wordmark */}
+            <G fill={WHITE}>
+              <Path d={LOGO_S} />
+              <Path d={LOGO_M} />
+              <Path d={LOGO_I} />
+              <Path d={LOGO_I_DOT} />
+            </G>
+          </AnimatedGroup>
 
-            {/* Dotless i: the blue dot is drawn separately. */}
-            <SvgText
-              x="346"
-              y="120"
-              fill={COLORS.white}
-              fontSize="117"
-              fontFamily="Arial"
-              fontWeight="900"
-              fontStyle="italic"
-            >
-              ı
-            </SvgText>
+          {/* A: broad blue light underneath the arrow. */}
+          <AnimatedPath
+            d={LOGO_A}
+            fill="none"
+            stroke={BLUE}
+            strokeWidth={20}
+            strokeLinejoin="round"
+            strokeLinecap="round"
+            strokeDasharray={[250, 250]}
+            strokeDashoffset={arrowDraw}
+            opacity={arrowGlow}
+          />
 
+          {/* A: inner luminous edge. */}
+          <AnimatedPath
+            d={LOGO_A}
+            fill="none"
+            stroke={CYAN}
+            strokeWidth={8}
+            strokeLinejoin="round"
+            strokeLinecap="round"
+            strokeDasharray={[250, 250]}
+            strokeDashoffset={arrowDraw}
+            opacity={arrowGlow}
+          />
+
+          {/* A: completed navigation arrow. */}
+          <AnimatedPath
+            d={LOGO_A}
+            fill="url(#samiArrowFill)"
+            fillOpacity={arrowFill}
+            stroke={CYAN}
+            strokeWidth={1.8}
+            strokeLinejoin="round"
+            strokeLinecap="round"
+            strokeDasharray={[250, 250]}
+            strokeDashoffset={arrowDraw}
+          />
+
+          {/* Light at the navigation arrow's leading point. */}
+          <AnimatedGroup opacity={arrowTipOpacity}>
             <Circle
-              cx="375"
-              cy="28"
-              r="8.5"
-              fill={COLORS.arrowStart}
+              cx="219"
+              cy="163"
+              r="9"
+              fill={BLUE}
+              opacity={0.3}
+            />
+            <Circle
+              cx="219"
+              cy="163"
+              r="3.5"
+              fill="#FFFFFF"
             />
           </AnimatedGroup>
 
-          {/* The central SaMi navigation-arrow A. */}
+          {/* Upper orbit: expanding glow. */}
           <AnimatedPath
-            d="
-              M 130 84
-              L 212 33
-              Q 220 28 215 39
-              L 177 117
-              Q 173 126 168 117
-              L 162 96
-              L 133 93
-              Q 123 92 130 84
-              Z
-            "
-            fill="url(#samiArrowGradient)"
-            fillOpacity={arrowFill}
-            stroke={COLORS.arrowStart}
-            strokeWidth="2"
-            strokeLinejoin="round"
-            strokeLinecap="round"
-            strokeDasharray="300"
-            strokeDashoffset={arrowStroke}
-          />
-
-          {/* Upper orbital swoosh. */}
-          <AnimatedPath
-            d="
-              M 160 45
-              C 215 8 316 3 342 26
-              C 353 35 353 47 342 57
-            "
+            d={UPPER_ORBIT}
             fill="none"
-            stroke="url(#samiOrbitGradient)"
-            strokeWidth="7"
+            stroke={BLUE}
+            strokeWidth={17}
             strokeLinecap="round"
-            strokeDasharray="240"
-            strokeDashoffset={upperOrbit}
+            strokeDasharray={[220, 220]}
+            strokeDashoffset={upperDraw}
+            opacity={0.28}
           />
 
-          {/* Lower orbital swoosh. */}
           <AnimatedPath
-            d="
-              M 151 129
-              C 124 150 140 165 184 166
-              C 226 167 265 151 297 135
-            "
+            d={UPPER_ORBIT}
             fill="none"
-            stroke="url(#samiOrbitGradient)"
-            strokeWidth="8"
+            stroke="url(#samiOrbit)"
+            strokeWidth={6}
             strokeLinecap="round"
-            strokeDasharray="220"
-            strokeDashoffset={lowerOrbit}
+            strokeDasharray={[220, 220]}
+            strokeDashoffset={upperDraw}
+            opacity={upperGlow}
           />
 
-          {/* Brand tagline appears after the logo animation. */}
+          <AnimatedPath
+            d={UPPER_ORBIT}
+            fill="none"
+            stroke="#A6EDFF"
+            strokeWidth={1.5}
+            strokeLinecap="round"
+            strokeDasharray={[220, 220]}
+            strokeDashoffset={upperDraw}
+            opacity={upperGlow}
+          />
+
+          <AnimatedGroup opacity={upperTipOpacity}>
+            <Circle cx="334" cy="126" r="10" fill={BLUE} opacity={0.28} />
+            <Circle cx="334" cy="126" r="3.5" fill="#FFFFFF" />
+          </AnimatedGroup>
+
+          {/* Lower orbit: the second sweep completes the loop. */}
+          <AnimatedPath
+            d={LOWER_ORBIT}
+            fill="none"
+            stroke={BLUE}
+            strokeWidth={19}
+            strokeLinecap="round"
+            strokeDasharray={[190, 190]}
+            strokeDashoffset={lowerDraw}
+            opacity={0.3}
+          />
+
+          <AnimatedPath
+            d={LOWER_ORBIT}
+            fill="none"
+            stroke="url(#samiOrbit)"
+            strokeWidth={7}
+            strokeLinecap="round"
+            strokeDasharray={[190, 190]}
+            strokeDashoffset={lowerDraw}
+            opacity={lowerGlow}
+          />
+
+          <AnimatedPath
+            d={LOWER_ORBIT}
+            fill="none"
+            stroke="#A6EDFF"
+            strokeWidth={1.5}
+            strokeLinecap="round"
+            strokeDasharray={[190, 190]}
+            strokeDashoffset={lowerDraw}
+            opacity={lowerGlow}
+          />
+
+          <AnimatedGroup opacity={lowerTipOpacity}>
+            <Circle cx="128" cy="234" r="10" fill={BLUE} opacity={0.28} />
+            <Circle cx="128" cy="234" r="3.5" fill="#FFFFFF" />
+          </AnimatedGroup>
+
+          {/* Tagline: always part of the completed animated identity. */}
           <AnimatedGroup opacity={taglineOpacity}>
             <Path
-              d="M 25 190 L 78 190"
-              stroke={COLORS.orbitStart}
-              strokeWidth="2"
+              d="M 36 282 L 74 282"
+              stroke={CYAN}
+              strokeWidth={1.6}
               strokeLinecap="round"
             />
 
             <SvgText
-              x="220"
-              y="195"
-              fill={COLORS.white}
-              fontSize="17"
+              x="206"
+              y="288"
+              fill={WHITE}
+              fontSize={14.5}
               fontFamily="Arial"
               fontWeight="700"
               fontStyle="italic"
-              letterSpacing="4"
+              letterSpacing={3.2}
               textAnchor="middle"
             >
               CONSIDER IT DONE.
             </SvgText>
 
             <Path
-              d="M 362 190 L 415 190"
-              stroke={COLORS.orbitStart}
-              strokeWidth="2"
+              d="M 338 282 L 378 282"
+              stroke={CYAN}
+              strokeWidth={1.6}
               strokeLinecap="round"
             />
           </AnimatedGroup>
@@ -304,16 +453,16 @@ export default function SaMiLaunchAnimation({
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: COLORS.navy,
+    backgroundColor: NAVY,
     alignItems: "center",
     justifyContent: "center",
-    paddingHorizontal: 18,
+    paddingHorizontal: 22,
   },
 
   logoStage: {
     width: "100%",
     maxWidth: 440,
-    aspectRatio: 440 / 210,
+    aspectRatio: 362 / 210,
     alignSelf: "center",
   },
 });

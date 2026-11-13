@@ -15,19 +15,21 @@
     "plugins": [
       "expo-router",
       "expo-sharing",
-      [
-        "expo-splash-screen",
-        {
-          "backgroundColor": "#000535",
-          "image": "./assets/splash-logo.png",
-          "imageWidth": 280,
-          "resizeMode": "contain",
-          "dark": {
-            "backgroundColor": "#000535",
-            "image": "./assets/splash-logo.png"
-          }
-        }
-      ],
+
+[
+  "expo-splash-screen",
+  {
+    "backgroundColor": "#000535",
+    "image": "./assets/splash-logo.png",
+    "imageWidth": 320,
+    "resizeMode": "contain",
+    "dark": {
+      "backgroundColor": "#000535",
+      "image": "./assets/splash-logo.png"
+    }
+  }
+]
+,
       [
         "expo-location",
         {
