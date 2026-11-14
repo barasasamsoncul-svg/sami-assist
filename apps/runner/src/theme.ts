@@ -15,7 +15,7 @@ import {
   SaMiOverlay,
   type SaMiOverlayAction,
   type SaMiOverlayType,
-} from "../../shared/components/SaMiOverlay";
+} from "./components/SaMiOverlay";
 
 /* =========================================================
    THEME TYPES
