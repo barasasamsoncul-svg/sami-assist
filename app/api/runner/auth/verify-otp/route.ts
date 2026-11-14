@@ -1,5 +1,6 @@
 
 import { createHash, randomBytes } from "node:crypto";
+import type { PoolClient } from "pg";
 import { NextResponse } from "next/server";
 
 import {
@@ -7,8 +8,15 @@ import {
   verifyEmailOtp,
 } from "@/lib/otp";
 
-import { databasePool, query } from "@/apps/runner/server/db";
-import { errorResponse, isRecord } from "@/apps/runner/server/http";
+import {
+  databasePool,
+  query,
+} from "@/apps/runner/server/db";
+
+import {
+  errorResponse,
+  isRecord,
+} from "@/apps/runner/server/http";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -40,12 +48,18 @@ type RunnerProfile = RunnerAccount & {
 type RegistrationData = {
   fullName: string;
   phoneE164: string;
+  matchedBy: "email" | "phone" | "none";
+  matchedCustomerName: string | null;
 };
 
 const UUID_PATTERN =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
-const KENYAN_PHONE_E164_PATTERN = /^\+254[17][0-9]{8}$/;
+const KENYAN_PHONE_E164_PATTERN =
+  /^\+254[17][0-9]{8}$/;
+
+const OTP_ATTEMPT_LIMIT = 5;
+const CONFIRMATION_EXPIRY_MINUTES = 15;
 
 function hashToken(value: string): string {
   return createHash("sha256")
@@ -73,6 +87,15 @@ function sessionLifetimeDays(): number {
   );
 }
 
+/**
+ * Read registration details saved by request-otp.
+ *
+ * Customer recognition is optional. Missing or invalid recognition
+ * metadata falls back to ordinary Runner registration.
+ *
+ * The email used for authentication is always the email belonging
+ * to the verified OTP challenge, never an unverified submitted email.
+ */
 function parseRegistrationData(
   value: unknown,
 ): RegistrationData | null {
@@ -108,9 +131,35 @@ function parseRegistrationData(
     return null;
   }
 
+  const rawMatchedBy = parsed.matchedBy;
+
+  const matchedBy: RegistrationData["matchedBy"] =
+    rawMatchedBy === "email" || rawMatchedBy === "phone"
+      ? rawMatchedBy
+      : "none";
+
+  const rawCustomerName =
+    typeof parsed.matchedCustomerName === "string"
+      ? parsed.matchedCustomerName.trim()
+      : "";
+
+  // Customer recognition must never prevent normal registration.
+  // If the optional match information is incomplete, treat this
+  // as an ordinary Runner registration.
+  const hasValidCustomerMatch =
+    matchedBy !== "none" &&
+    rawCustomerName.length > 0 &&
+    rawCustomerName.length <= 160;
+
   return {
     fullName,
     phoneE164,
+    matchedBy: hasValidCustomerMatch
+      ? matchedBy
+      : "none",
+    matchedCustomerName: hasValidCustomerMatch
+      ? rawCustomerName
+      : null,
   };
 }
 
@@ -157,6 +206,198 @@ function isUniqueConstraintViolation(
   );
 }
 
+/**
+ * Creates a one-use Runner-side consent challenge.
+ *
+ * No Runner account or session is created here.
+ * Only a hash of the confirmation token is stored.
+ */
+async function createRegistrationConfirmation(input: {
+  client: PoolClient;
+  email: string;
+  phoneE164: string;
+  fullName: string;
+  customerName: string;
+  matchedBy: "email" | "phone";
+}): Promise<string> {
+  const token = randomBytes(32).toString("base64url");
+  const tokenHash = hashToken(token);
+
+  // Invalidate older outstanding confirmations for this email.
+  await input.client.query(
+    `UPDATE public.runner_registration_confirmations
+     SET cancelled_at = NOW()
+     WHERE LOWER(email) = $1
+       AND consumed_at IS NULL
+       AND cancelled_at IS NULL`,
+    [input.email],
+  );
+
+  await input.client.query(
+    `INSERT INTO public.runner_registration_confirmations (
+       token_hash,
+       email,
+       phone_e164,
+       full_name,
+       matched_customer_name,
+       matched_by,
+       expires_at
+     )
+     VALUES (
+       $1,
+       $2,
+       $3,
+       $4,
+       $5,
+       $6,
+       NOW() + ($7::text || ' minutes')::interval
+     )`,
+    [
+      tokenHash,
+      input.email,
+      input.phoneE164,
+      input.fullName,
+      input.customerName,
+      input.matchedBy,
+      String(CONFIRMATION_EXPIRY_MINUTES),
+    ],
+  );
+
+  return token;
+}
+
+/**
+ * Creates Runner profile, availability and authenticated session.
+ *
+ * All writes are made through the Runner transaction client.
+ */
+async function createRunnerSession(input: {
+  client: PoolClient;
+  account: RunnerAccount;
+  purpose: "login" | "register";
+}) {
+  const { client, account, purpose } = input;
+
+  await client.query(
+    `INSERT INTO public.runner_profiles (runner_id)
+     VALUES ($1)
+     ON CONFLICT (runner_id) DO NOTHING`,
+    [account.id],
+  );
+
+  await client.query(
+    `INSERT INTO public.runner_availability (
+       runner_id,
+       is_online,
+       updated_at
+     )
+     VALUES ($1, false, NOW())
+     ON CONFLICT (runner_id) DO NOTHING`,
+    [account.id],
+  );
+
+  const profileResult =
+    await client.query<RunnerProfile>(
+      `SELECT
+         a.id,
+         a.email,
+         a.phone_e164,
+         a.full_name,
+         a.account_status,
+         a.verification_status,
+         p.service_area,
+         p.vehicle_type
+       FROM public.runner_accounts AS a
+       LEFT JOIN public.runner_profiles AS p
+         ON p.runner_id = a.id
+       WHERE a.id = $1
+       LIMIT 1`,
+      [account.id],
+    );
+
+  const runner = profileResult.rows[0];
+
+  if (!runner) {
+    throw new Error("RUNNER_PROFILE_CREATION_FAILED");
+  }
+
+  const selectedCategoriesResult =
+    await client.query<{ category_key: string }>(
+      `SELECT category_key
+       FROM public.runner_account_service_categories
+       WHERE runner_id = $1
+       ORDER BY category_key`,
+      [runner.id],
+    );
+
+  const selectedCategories =
+    selectedCategoriesResult.rows.map(
+      (row) => row.category_key,
+    );
+
+  const sessionToken =
+    randomBytes(32).toString("base64url");
+
+  const tokenDigest = hashToken(sessionToken);
+  const sessionDays = sessionLifetimeDays();
+
+  await client.query(
+    `INSERT INTO public.runner_sessions (
+       runner_id,
+       token_hash,
+       expires_at
+     )
+     VALUES (
+       $1,
+       $2,
+       NOW() + ($3::text || ' days')::interval
+     )`,
+    [
+      runner.id,
+      tokenDigest,
+      String(sessionDays),
+    ],
+  );
+
+  const profileComplete = Boolean(
+    runner.full_name &&
+    runner.full_name.trim().length >= 2 &&
+    runner.service_area &&
+    runner.service_area.trim().length >= 2 &&
+    runner.vehicle_type,
+  );
+
+  // A new Runner must choose task categories first.
+  // Existing Runner logins continue through saved onboarding state.
+  const state =
+    purpose === "register"
+      ? {
+          onboardingStatus: "incomplete",
+          nextStep: "tasks",
+        }
+      : getOnboardingState(runner);
+
+  return {
+    ok: true as const,
+    sessionToken,
+    expiresInDays: sessionDays,
+    profileComplete,
+    onboardingStatus: state.onboardingStatus,
+    nextStep: state.nextStep,
+    runner: {
+      id: runner.id,
+      email: runner.email,
+      phone: runner.phone_e164,
+      fullName: runner.full_name,
+      accountStatus: runner.account_status,
+      verificationStatus: runner.verification_status,
+      serviceArea: runner.service_area,
+      vehicleType: runner.vehicle_type,
+      selectedCategories,
+    },
+  };
+}
+
 export async function POST(request: Request) {
   const isNative =
     request.headers.get("x-sami-client") === "runner" &&
@@ -185,12 +426,14 @@ export async function POST(request: Request) {
   if (!UUID_PATTERN.test(challengeId)) {
     return errorResponse(
       "This verification request is invalid.",
+      400,
     );
   }
 
   if (!/^[0-9]{6}$/.test(code)) {
     return errorResponse(
       "Enter the six-digit verification code.",
+      400,
     );
   }
 
@@ -204,7 +447,7 @@ export async function POST(request: Request) {
   const client = await databasePool().connect();
 
   try {
-    // Resolve the challenge owner before taking the email lock.
+    // Resolve challenge owner before acquiring the email lock.
     const ownerResult = await query<{
       email: string;
       purpose: string;
@@ -237,7 +480,7 @@ export async function POST(request: Request) {
 
     await client.query("BEGIN");
 
-    // Serialize OTP requests and verification for this email.
+    // Serialize OTP verification for this actual email.
     await client.query(
       "SELECT pg_advisory_xact_lock(hashtext($1))",
       ["sami-runner-email-otp:" + email],
@@ -295,7 +538,7 @@ export async function POST(request: Request) {
     if (isExpired(challenge.expires_at)) {
       await client.query(
         `UPDATE public.runner_email_otp_challenges
-         SET consumed_at = now()
+         SET consumed_at = NOW()
          WHERE id = $1`,
         [challengeId],
       );
@@ -308,7 +551,7 @@ export async function POST(request: Request) {
       );
     }
 
-    if (Number(challenge.attempts) >= 5) {
+    if (Number(challenge.attempts) >= OTP_ATTEMPT_LIMIT) {
       await client.query("ROLLBACK");
 
       return errorResponse(
@@ -328,14 +571,16 @@ export async function POST(request: Request) {
          SET attempts = attempts + 1
          WHERE id = $1
            AND consumed_at IS NULL
-           AND attempts < 5`,
-        [challengeId],
+           AND attempts < $2`,
+        [challengeId, OTP_ATTEMPT_LIMIT],
       );
 
       await client.query("COMMIT");
 
       const remainingAttempts =
-        5 - Number(challenge.attempts) - 1;
+        OTP_ATTEMPT_LIMIT -
+        Number(challenge.attempts) -
+        1;
 
       return errorResponse(
         remainingAttempts <= 0
@@ -345,16 +590,16 @@ export async function POST(request: Request) {
       );
     }
 
-    // A challenge can only be verified once.
+    // Consume the email challenge once the OTP is verified.
     await client.query(
       `UPDATE public.runner_email_otp_challenges
-       SET consumed_at = now()
+       SET consumed_at = NOW()
        WHERE id = $1
          AND consumed_at IS NULL`,
       [challengeId],
     );
 
-    // Serialize account creation for this email.
+    // Serialize Runner account creation for this email.
     await client.query(
       "SELECT pg_advisory_xact_lock(hashtext($1))",
       ["sami-runner-account-email:" + email],
@@ -376,22 +621,21 @@ export async function POST(request: Request) {
         );
       }
 
-      // Use the same phone lock as the registration request route.
+      // Use the same phone lock as request-otp.
       await client.query(
         "SELECT pg_advisory_xact_lock(hashtext($1))",
         ["sami-runner-phone:" + registration.phoneE164],
       );
 
-      // Check the phone again during verification. It may have been
-      // registered by another account after the OTP was requested.
-      const phoneResult = await client.query<{ id: string }>(
-        `SELECT id
-         FROM public.runner_accounts
-         WHERE phone_e164 = $1
-         LIMIT 1
-         FOR UPDATE`,
-        [registration.phoneE164],
-      );
+      const phoneResult =
+        await client.query<{ id: string }>(
+          `SELECT id
+           FROM public.runner_accounts
+           WHERE phone_e164 = $1
+           LIMIT 1
+           FOR UPDATE`,
+          [registration.phoneE164],
+        );
 
       if (phoneResult.rows.length > 0) {
         await client.query("COMMIT");
@@ -403,20 +647,21 @@ export async function POST(request: Request) {
       }
     }
 
-    const existingResult = await client.query<RunnerAccount>(
-      `SELECT
-         id,
-         email,
-         phone_e164,
-         full_name,
-         account_status,
-         verification_status
-       FROM public.runner_accounts
-       WHERE lower(email) = $1
-       LIMIT 1
-       FOR UPDATE`,
-      [email],
-    );
+    const existingResult =
+      await client.query<RunnerAccount>(
+        `SELECT
+           id,
+           email,
+           phone_e164,
+           full_name,
+           account_status,
+           verification_status
+         FROM public.runner_accounts
+         WHERE LOWER(email) = $1
+         LIMIT 1
+         FOR UPDATE`,
+        [email],
+      );
 
     let account = existingResult.rows[0];
 
@@ -424,7 +669,7 @@ export async function POST(request: Request) {
       await client.query("COMMIT");
 
       return errorResponse(
-        "An account already exists for this email address. Please sign in instead.",
+        "A Runner account already exists for this email address. Please sign in instead.",
         409,
       );
     }
@@ -450,7 +695,52 @@ export async function POST(request: Request) {
       );
     }
 
-    if (purpose === "register") {
+    // ======================================================================
+    // REGISTRATION: OPTIONAL CUSTOMER RECOGNITION
+    // ======================================================================
+
+    if (purpose === "register" && registration) {
+      const hasCustomerMatch =
+        registration.matchedBy !== "none" &&
+        Boolean(registration.matchedCustomerName);
+
+      if (hasCustomerMatch) {
+        // Do not create a Runner account until the applicant
+        // explicitly confirms the separate registration.
+        const confirmationToken =
+          await createRegistrationConfirmation({
+            client,
+            email,
+            phoneE164: registration.phoneE164,
+            fullName: registration.fullName,
+            customerName: registration.matchedCustomerName!,
+            matchedBy: registration.matchedBy as "email" | "phone",
+          });
+
+        await client.query("COMMIT");
+
+        return NextResponse.json(
+          {
+            ok: true,
+            nextAction: "confirm_registration",
+            confirmationToken,
+            customerMatch: {
+              fullName: registration.matchedCustomerName,
+              matchedBy: registration.matchedBy,
+            },
+            message:
+              "Your email is verified. We found an existing SaMi Customer account. Confirm whether you want to create a separate Runner account.",
+          },
+          {
+            headers: {
+              "Cache-Control": "no-store, private",
+            },
+          },
+        );
+      }
+
+      // No Customer match: ordinary Runner registration.
+      // Customer membership is not required.
       const createdResult =
         await client.query<RunnerAccount>(
           `INSERT INTO public.runner_accounts (
@@ -464,7 +754,7 @@ export async function POST(request: Request) {
            VALUES (
              $1,
              $2,
-             now(),
+             NOW(),
              $3,
              'pending_verification',
              'pending'
@@ -478,26 +768,26 @@ export async function POST(request: Request) {
              verification_status`,
           [
             email,
-            registration!.phoneE164,
-            registration!.fullName,
+            registration.phoneE164,
+            registration.fullName,
           ],
         );
 
       account = createdResult.rows[0];
 
       if (!account) {
-        throw new Error("RUNNER_ACCOUNT_CREATION_FAILED");
+        throw new Error(
+          "RUNNER_ACCOUNT_CREATION_FAILED",
+        );
       }
-
-      // Task categories are deliberately not assigned here.
-      // The runner must choose them on the separate task-selection page.
     } else {
+      // Existing Runner login.
       const updatedResult =
         await client.query<RunnerAccount>(
           `UPDATE public.runner_accounts
            SET
-             email_verified_at = COALESCE(email_verified_at, now()),
-             updated_at = now()
+             email_verified_at = COALESCE(email_verified_at, NOW()),
+             updated_at = NOW()
            WHERE id = $1
            RETURNING
              id,
@@ -518,122 +808,17 @@ export async function POST(request: Request) {
       );
     }
 
-    // Ensure every authenticated Runner has the required base records.
-    await client.query(
-      `INSERT INTO public.runner_profiles (runner_id)
-       VALUES ($1)
-       ON CONFLICT (runner_id) DO NOTHING`,
-      [account.id],
-    );
-
-    await client.query(
-      `INSERT INTO public.runner_availability (
-         runner_id,
-         is_online,
-         updated_at
-       )
-       VALUES ($1, false, now())
-       ON CONFLICT (runner_id) DO NOTHING`,
-      [account.id],
-    );
-
-    const profileResult =
-      await client.query<RunnerProfile>(
-        `SELECT
-           a.id,
-           a.email,
-           a.phone_e164,
-           a.full_name,
-           a.account_status,
-           a.verification_status,
-           p.service_area,
-           p.vehicle_type
-         FROM public.runner_accounts AS a
-         LEFT JOIN public.runner_profiles AS p
-           ON p.runner_id = a.id
-         WHERE a.id = $1
-         LIMIT 1`,
-        [account.id],
-      );
-
-    const runner = profileResult.rows[0];
-
-    if (!runner) {
-      throw new Error("RUNNER_PROFILE_CREATION_FAILED");
-    }
-
-    const selectedCategoriesResult =
-      await client.query<{ category_key: string }>(
-        `SELECT category_key
-         FROM public.runner_account_service_categories
-         WHERE runner_id = $1
-         ORDER BY category_key`,
-        [runner.id],
-      );
-
-    const selectedCategories =
-      selectedCategoriesResult.rows.map(
-        (row) => row.category_key,
-      );
-
-    const sessionToken = randomBytes(32).toString("base64url");
-    const tokenDigest = hashToken(sessionToken);
-    const sessionDays = sessionLifetimeDays();
-
-    await client.query(
-      `INSERT INTO public.runner_sessions (
-         runner_id,
-         token_hash,
-         expires_at
-       )
-       VALUES (
-         $1,
-         $2,
-         now() + ($3::text || ' days')::interval
-       )`,
-      [runner.id, tokenDigest, String(sessionDays)],
-    );
+    // Create the Runner session and base records.
+    const result = await createRunnerSession({
+      client,
+      account,
+      purpose: purpose as "login" | "register",
+    });
 
     await client.query("COMMIT");
 
-    const profileComplete = Boolean(
-      runner.full_name &&
-      runner.full_name.trim().length >= 2 &&
-      runner.service_area &&
-      runner.service_area.trim().length >= 2 &&
-      runner.vehicle_type,
-    );
-
-    // A newly registered account must select its task categories first.
-    // Existing logins continue through their saved onboarding state.
-    const state =
-      purpose === "register"
-        ? {
-            onboardingStatus: "incomplete",
-            nextStep: "tasks",
-          }
-        : getOnboardingState(runner);
-
     return NextResponse.json(
-      {
-        ok: true,
-        sessionToken,
-        expiresInDays: sessionDays,
-        profileComplete,
-        onboardingStatus: state.onboardingStatus,
-        nextStep: state.nextStep,
-        runner: {
-          id: runner.id,
-          email: runner.email,
-          phone: runner.phone_e164,
-          fullName: runner.full_name,
-          accountStatus: runner.account_status,
-          verificationStatus: runner.verification_status,
-          serviceArea: runner.service_area,
-          vehicleType: runner.vehicle_type,
-          selectedCategories,
-        },
-      },
+      result,
       {
         headers: {
           "Cache-Control": "no-store, private",
@@ -645,7 +830,7 @@ export async function POST(request: Request) {
 
     if (isUniqueConstraintViolation(cause)) {
       return errorResponse(
-        "These registration details are already in use. Check your email and phone number, then try again.",
+        "These Runner registration details are already in use. Check your email and phone number, then try again.",
         409,
       );
     }

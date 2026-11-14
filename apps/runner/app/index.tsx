@@ -1,10 +1,12 @@
 
-import React, { useState } from "react";
+import React, { useCallback, useState } from "react";
+
 import {
-  Alert,
   StyleSheet,
   View,
 } from "react-native";
+
+import { router } from "expo-router";
 
 import SaMiLaunchAnimation from "../src/branding/SaMiLaunchAnimation";
 import WelcomeScreen from "../src/screens/WelcomeScreen";
@@ -14,21 +16,19 @@ const BRAND_NAVY = "#000535";
 export default function LaunchScreen() {
   const [showWelcome, setShowWelcome] = useState(false);
 
+  const handleGetStarted = useCallback(() => {
+    router.push("/(auth)/register");
+  }, []);
+
+  const handleSignIn = useCallback(() => {
+    router.push("/(auth)/login");
+  }, []);
+
   if (showWelcome) {
     return (
       <WelcomeScreen
-        onGetStarted={() => {
-          Alert.alert(
-            "Registration",
-            "The new SaMi Runner registration flow will be connected here."
-          );
-        }}
-        onSignIn={() => {
-          Alert.alert(
-            "Sign in",
-            "The new SaMi Runner sign-in flow will be connected here."
-          );
-        }}
+        onGetStarted={handleGetStarted}
+        onSignIn={handleSignIn}
       />
     );
   }

@@ -21,6 +21,7 @@ type OnboardingProfile = {
   verification_status: string;
   service_area: string | null;
   vehicle_type: string | null;
+  vehicle_model: string | null;
   vehicle_registration: string | null;
 };
 
@@ -49,13 +50,6 @@ type RunnerVehicleType = "bike" | "motorbike" | "vehicle";
 
 type StoredVehicleType = "bicycle" | "motorcycle" | "car";
 
-/**
- * Public Runner transport choices are deliberately limited to three.
- *
- * The database still stores its existing values until the corresponding
- * database migration is applied. This adapter keeps existing profiles and
- * the current database CHECK constraint compatible during the transition.
- */
 function normalizeVehicleType(
   value: string | null | undefined,
 ): RunnerVehicleType | null {
@@ -125,9 +119,13 @@ function response(
 /**
  * GET /api/runner/me/onboarding
  *
- * Returns the authenticated Runner's category selections,
- * vehicle information, mandatory document requirements and
- * uploaded document review results.
+ * Returns the authenticated Runner's:
+ * - Account and verification status
+ * - Service-area information
+ * - Vehicle type, model and registration
+ * - Selected services
+ * - Mandatory document requirements
+ * - Uploaded document review results
  */
 export async function GET(request: Request) {
   try {
@@ -148,6 +146,7 @@ export async function GET(request: Request) {
          a.verification_status,
          p.service_area,
          p.vehicle_type,
+         p.vehicle_model,
          p.vehicle_registration
        FROM public.runner_accounts AS a
        LEFT JOIN public.runner_profiles AS p
@@ -160,7 +159,10 @@ export async function GET(request: Request) {
     const profile = profileResult.rows[0];
 
     if (!profile) {
-      return errorResponse("Runner account not found.", 404);
+      return errorResponse(
+        "Runner account not found.",
+        404,
+      );
     }
 
     const categoriesResult = await query<{
@@ -177,7 +179,6 @@ export async function GET(request: Request) {
       (row) => row.category_key,
     );
 
-    // Return mandatory documents only.
     const requirementsResult =
       await query<RequirementRow>(
         `SELECT
@@ -202,6 +203,7 @@ export async function GET(request: Request) {
          ORDER BY
            is_required DESC,
            category_key NULLS FIRST,
+           display_order,
            requirement_key`,
         [
           categories,
@@ -262,7 +264,10 @@ export async function GET(request: Request) {
         accountStatus: profile.account_status,
         verificationStatus: profile.verification_status,
         serviceArea: profile.service_area,
-        vehicleType: normalizeVehicleType(profile.vehicle_type),
+        vehicleType: normalizeVehicleType(
+          profile.vehicle_type,
+        ),
+        vehicleModel: profile.vehicle_model,
         vehicleRegistration: profile.vehicle_registration,
         selectedCategories: categories,
       },
@@ -287,16 +292,20 @@ export async function GET(request: Request) {
 /**
  * PUT /api/runner/me/onboarding
  *
- * Saves service-area and transport details.
+ * Saves the Runner's service area and transport details.
  *
- * Public transport values:
+ * Public vehicle values:
  * - bike
  * - motorbike
  * - vehicle
  *
+ * Motorbike and vehicle applicants must provide:
+ * - Vehicle model
+ * - Vehicle registration number
+ *
  * Changes are allowed during initial onboarding and after
  * a rejection, but not while Operations is reviewing the
- * application or after it has been approved.
+ * application or after approval.
  */
 export async function PUT(request: Request) {
   const auth = await authenticateRunner(request);
@@ -328,7 +337,9 @@ export async function PUT(request: Request) {
     .trim()
     .toLowerCase();
 
-  const vehicleType = normalizeVehicleType(requestedVehicleType);
+  const vehicleType = normalizeVehicleType(
+    requestedVehicleType,
+  );
 
   if (!vehicleType) {
     return errorResponse(
@@ -336,7 +347,16 @@ export async function PUT(request: Request) {
     );
   }
 
-  const storedVehicleType = toStoredVehicleType(vehicleType);
+  const storedVehicleType =
+    toStoredVehicleType(vehicleType);
+
+  const vehicleModel =
+    typeof body.vehicleModel === "string"
+      ? body.vehicleModel
+          .trim()
+          .replace(/\s+/g, " ")
+          .slice(0, 120)
+      : "";
 
   const vehicleRegistration =
     typeof body.vehicleRegistration === "string"
@@ -354,13 +374,32 @@ export async function PUT(request: Request) {
   }
 
   if (
-    (vehicleType === "motorbike" || vehicleType === "vehicle") &&
-    vehicleRegistration.length < 3
+    vehicleType === "motorbike" ||
+    vehicleType === "vehicle"
   ) {
-    return errorResponse(
-      "Enter the registration number of your vehicle.",
-    );
+    if (vehicleModel.length < 2) {
+      return errorResponse(
+        "Enter your vehicle make and model.",
+      );
+    }
+
+    if (vehicleRegistration.length < 3) {
+      return errorResponse(
+        "Enter the registration number of your vehicle.",
+      );
+    }
   }
+
+  // Bicycle applicants do not need motor-vehicle information.
+  const savedVehicleModel =
+    vehicleType === "bike"
+      ? null
+      : vehicleModel;
+
+  const savedVehicleRegistration =
+    vehicleType === "bike"
+      ? null
+      : vehicleRegistration;
 
   const client = await databasePool().connect();
   let transactionStarted = false;
@@ -427,31 +466,45 @@ export async function PUT(request: Request) {
 
     const result = await client.query<{
       runner_id: string;
+      service_area: string;
+      vehicle_type: string;
+      vehicle_model: string | null;
+      vehicle_registration: string | null;
     }>(
       `INSERT INTO public.runner_profiles (
          runner_id,
          service_area,
          vehicle_type,
+         vehicle_model,
          vehicle_registration,
          updated_at
        )
-       VALUES ($1, $2, $3, $4, now())
+       VALUES ($1, $2, $3, $4, $5, now())
        ON CONFLICT (runner_id)
        DO UPDATE SET
          service_area = EXCLUDED.service_area,
          vehicle_type = EXCLUDED.vehicle_type,
+         vehicle_model = EXCLUDED.vehicle_model,
          vehicle_registration = EXCLUDED.vehicle_registration,
          updated_at = now()
-       RETURNING runner_id`,
+       RETURNING
+         runner_id,
+         service_area,
+         vehicle_type,
+         vehicle_model,
+         vehicle_registration`,
       [
         auth.runner.id,
         serviceArea,
         storedVehicleType,
-        vehicleRegistration || null,
+        savedVehicleModel,
+        savedVehicleRegistration,
       ],
     );
 
-    if (!result.rows[0]) {
+    const savedProfile = result.rows[0];
+
+    if (!savedProfile) {
       await client.query("ROLLBACK");
       transactionStarted = false;
 
@@ -466,7 +519,8 @@ export async function PUT(request: Request) {
     }>(
       `SELECT category_key
        FROM public.runner_account_service_categories
-       WHERE runner_id = $1`,
+       WHERE runner_id = $1
+       ORDER BY category_key`,
       [auth.runner.id],
     );
 
@@ -474,7 +528,6 @@ export async function PUT(request: Request) {
       (row) => row.category_key,
     );
 
-    // Return mandatory requirements only.
     const requirementsResult =
       await client.query<RequirementRow>(
         `SELECT
@@ -499,6 +552,7 @@ export async function PUT(request: Request) {
          ORDER BY
            is_required DESC,
            category_key NULLS FIRST,
+           display_order,
            requirement_key`,
         [
           categories,
@@ -512,6 +566,16 @@ export async function PUT(request: Request) {
     return response({
       ok: true,
       message: "Your transport details have been saved.",
+      runner: {
+        serviceArea: savedProfile.service_area,
+        vehicleType: normalizeVehicleType(
+          savedProfile.vehicle_type,
+        ),
+        vehicleModel: savedProfile.vehicle_model,
+        vehicleRegistration:
+          savedProfile.vehicle_registration,
+        selectedCategories: categories,
+      },
       requirements: requirementsResult.rows.map(
         (item) => ({
           key: item.requirement_key,
@@ -552,8 +616,15 @@ export async function PUT(request: Request) {
  *
  * Submits a completed application for Operations review.
  *
- * Every active required document must have a latest
- * pending or approved document record.
+ * The server independently verifies:
+ * - Service-area details
+ * - Vehicle details
+ * - Selected services
+ * - All mandatory documents
+ *
+ * The latest document for each requirement must be pending
+ * or approved. A rejected document does not satisfy a
+ * mandatory requirement.
  */
 export async function POST(request: Request) {
   const auth = await authenticateRunner(request);
@@ -616,15 +687,26 @@ export async function POST(request: Request) {
       );
     }
 
+    if (account.verification_status === "submitted") {
+      await client.query("ROLLBACK");
+
+      return errorResponse(
+        "Your application is already under Operations review.",
+        409,
+      );
+    }
+
     const profileResult =
       await client.query<{
         service_area: string | null;
         vehicle_type: string | null;
+        vehicle_model: string | null;
         vehicle_registration: string | null;
       }>(
         `SELECT
            service_area,
            vehicle_type,
+           vehicle_model,
            vehicle_registration
          FROM public.runner_profiles
          WHERE runner_id = $1
@@ -651,15 +733,25 @@ export async function POST(request: Request) {
     if (
       ["motorcycle", "car", "van", "other"].includes(
         profile.vehicle_type,
-      ) &&
-      !profile.vehicle_registration
+      )
     ) {
-      await client.query("ROLLBACK");
+      if (!profile.vehicle_model?.trim()) {
+        await client.query("ROLLBACK");
 
-      return errorResponse(
-        "Add your vehicle registration number before submitting.",
-        409,
-      );
+        return errorResponse(
+          "Add your vehicle make and model before submitting.",
+          409,
+        );
+      }
+
+      if (!profile.vehicle_registration?.trim()) {
+        await client.query("ROLLBACK");
+
+        return errorResponse(
+          "Add your vehicle registration number before submitting.",
+          409,
+        );
+      }
     }
 
     const categoriesResult =
@@ -683,8 +775,6 @@ export async function POST(request: Request) {
       );
     }
 
-    // Prevent submission when no mandatory requirements exist
-    // for the selected services and transport.
     const requiredCountResult = await client.query<{
       total: number;
     }>(
@@ -700,10 +790,15 @@ export async function POST(request: Request) {
            r.vehicle_type = 'any'
            OR r.vehicle_type = $2
          )`,
-      [categories, profile.vehicle_type],
+      [
+        categories,
+        profile.vehicle_type,
+      ],
     );
 
-    if ((requiredCountResult.rows[0]?.total ?? 0) === 0) {
+    if (
+      (requiredCountResult.rows[0]?.total ?? 0) === 0
+    ) {
       await client.query("ROLLBACK");
 
       return errorResponse(
@@ -742,7 +837,9 @@ export async function POST(request: Request) {
              ),
              false
            )
-         ORDER BY r.requirement_key`,
+         ORDER BY
+           r.display_order,
+           r.requirement_key`,
         [
           categories,
           profile.vehicle_type,
@@ -779,6 +876,7 @@ export async function POST(request: Request) {
          updated_at = now()
        WHERE id = $1
          AND verification_status <> 'approved'
+         AND verification_status <> 'submitted'
          AND account_status NOT IN ('suspended', 'closed')
        RETURNING
          verification_status,
@@ -803,8 +901,10 @@ export async function POST(request: Request) {
         "Your Runner application has been submitted for Operations review.",
       onboardingStatus: "pending_review",
       runner: {
-        accountStatus: submitted.rows[0].account_status,
-        verificationStatus: submitted.rows[0].verification_status,
+        accountStatus:
+          submitted.rows[0].account_status,
+        verificationStatus:
+          submitted.rows[0].verification_status,
       },
     });
   } catch (cause) {

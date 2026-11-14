@@ -1,7 +1,9 @@
+
 import { useEffect, useRef, useState } from "react";
 
 import {
   ActivityIndicator,
+  Image,
   KeyboardAvoidingView,
   Platform,
   Pressable,
@@ -14,7 +16,6 @@ import {
 } from "react-native";
 
 import { router, useLocalSearchParams } from "expo-router";
-
 import { SafeAreaView } from "react-native-safe-area-context";
 import { Ionicons } from "@expo/vector-icons";
 
@@ -22,29 +23,48 @@ import {
   requestRunnerOtp,
   requestRunnerRegistrationOtp,
   saveRunnerSession,
-  verifyRunnerOtp,
 } from "@/api";
 
+import {
+  cancelRunnerRegistration,
+  confirmRunnerRegistration,
+  verifyRunnerEmailOtp,
+  type RunnerCustomerConfirmationRequired,
+  type RunnerOtpFlowResult,
+} from "@/registration-api";
+
 import { useRunnerTheme } from "@/theme";
+
+const WORDMARK = require("../../assets/sami-wordmark.png");
 
 const OTP_RESEND_COOLDOWN_SECONDS = 60;
 const CODE_LENGTH = 6;
 const CODE_AUTOSUBMIT_DELAY_MS = 180;
 const SUCCESS_FLASH_MS = 280;
-const BACK_SIZE = 44;
+
+type VerificationStep = "email" | "confirm";
 
 function formatCountdown(seconds: number): string {
-  const m = Math.floor(seconds / 60);
-  const s = seconds % 60;
-  return `${String(m).padStart(2, "0")}:${String(s).padStart(2, "0")}`;
+  const minutes = Math.floor(seconds / 60);
+  const remainingSeconds = seconds % 60;
+
+  return `${String(minutes).padStart(2, "0")}:${String(
+    remainingSeconds,
+  ).padStart(2, "0")}`;
+}
+
+function firstParam(value?: string | string[]): string {
+  return Array.isArray(value) ? value[0] ?? "" : value ?? "";
 }
 
 export default function VerifyRunnerScreen() {
-  const { colors, mode } = useRunnerTheme();
+  const {
+    colors,
+    mode,
+    showOverlay,
+  } = useRunnerTheme();
+
   const isDark = mode === "dark";
-  const supportingText = isDark ? "#C1CCDA" : "#526176";
-  const actionBlue = isDark ? "#8AB8F8" : "#1F5EAB";
-  const buttonBlue = isDark ? "#1D5DAD" : "#174F9F";
 
   const params = useLocalSearchParams<{
     challengeId?: string | string[];
@@ -55,12 +75,12 @@ export default function VerifyRunnerScreen() {
     phone?: string | string[];
   }>();
 
-  const firstParam = (value?: string | string[]) =>
-    Array.isArray(value) ? value[0] ?? "" : value ?? "";
+  const initialChallengeId =
+    firstParam(params.challengeId).trim();
 
-  const initialChallengeId = firstParam(params.challengeId).trim();
   const initialDestination =
     firstParam(params.destination) || "your email address";
+
   const purpose = firstParam(params.purpose);
   const isRegistration = purpose === "register";
 
@@ -68,16 +88,31 @@ export default function VerifyRunnerScreen() {
   const email = firstParam(params.email).trim().toLowerCase();
   const phone = firstParam(params.phone).trim();
 
-  const [challengeId, setChallengeId] = useState(initialChallengeId);
-  const [destination, setDestination] = useState(initialDestination);
+  const [step, setStep] = useState<VerificationStep>("email");
+
+  const [challengeId, setChallengeId] = useState(
+    initialChallengeId,
+  );
+
+  const [destination, setDestination] = useState(
+    initialDestination,
+  );
+
+  const [confirmationToken, setConfirmationToken] = useState("");
+
+  const [customerMatch, setCustomerMatch] =
+    useState<RunnerCustomerConfirmationRequired["customerMatch"] | null>(
+      null,
+    );
 
   const [code, setCode] = useState("");
   const [busy, setBusy] = useState(false);
   const [resending, setResending] = useState(false);
   const [verified, setVerified] = useState(false);
-  const [error, setError] = useState("");
-  const [notice, setNotice] = useState("");
 
+  // This boolean only controls the input border appearance.
+  // All actual error messages use the global overlay.
+  const [inputHasError, setInputHasError] = useState(false);
   const [inputFocused, setInputFocused] = useState(false);
 
   const [resendAvailableAt, setResendAvailableAt] = useState(
@@ -86,29 +121,27 @@ export default function VerifyRunnerScreen() {
         ? Date.now() + OTP_RESEND_COOLDOWN_SECONDS * 1000
         : Date.now(),
   );
+
   const [resendCountdown, setResendCountdown] = useState(
-    initialChallengeId ? OTP_RESEND_COOLDOWN_SECONDS : 0,
+    initialChallengeId
+      ? OTP_RESEND_COOLDOWN_SECONDS
+      : 0,
   );
 
   const codeInputRef = useRef<TextInput>(null);
   const mountedRef = useRef(true);
+
   const verificationInFlightRef = useRef(false);
+  const confirmationInFlightRef = useRef(false);
   const resendInFlightRef = useRef(false);
-  // Tracks automatic submissions only. Manual retries remain available after
-  // transient network/server errors without creating an auto-submit loop.
+
   const autoSubmittedCodeRef = useRef<string | null>(null);
 
-  // Autofocus so the OS one-time-code autofill prompt can fire immediately.
-  useEffect(() => {
-    const t = setTimeout(() => {
-      codeInputRef.current?.focus();
-    }, 380);
-    return () => clearTimeout(t);
-  }, []);
+  /* =========================================================
+     LIFECYCLE
+  ========================================================= */
 
   useEffect(() => {
-    // React Strict Mode runs an effect setup/cleanup cycle in development.
-    // Re-arm the mounted flag on every setup so async results are not ignored.
     mountedRef.current = true;
 
     return () => {
@@ -116,115 +149,288 @@ export default function VerifyRunnerScreen() {
     };
   }, []);
 
-  // Background-safe countdown: recomputed from a target timestamp every 500ms.
+  useEffect(() => {
+    if (step !== "email") return;
+
+    const timeout = setTimeout(() => {
+      codeInputRef.current?.focus();
+    }, 380);
+
+    return () => clearTimeout(timeout);
+  }, [step]);
+
+  /* =========================================================
+     RESEND COUNTDOWN
+  ========================================================= */
+
   useEffect(() => {
     function tick() {
       const remaining = Math.max(
         0,
         Math.ceil((resendAvailableAt - Date.now()) / 1000),
       );
+
       setResendCountdown(remaining);
     }
 
     tick();
+
     const interval = setInterval(tick, 500);
+
     return () => clearInterval(interval);
   }, [resendAvailableAt]);
 
-  async function verify() {
+  /* =========================================================
+     MISSING INITIAL CHALLENGE
+     Feedback is displayed through the global overlay.
+  ========================================================= */
+
+  useEffect(() => {
+    if (initialChallengeId) return;
+
+    showOverlay({
+      type: "warning",
+      title: "Verification session unavailable",
+      message:
+        "This screen has no active verification challenge. Request a new code to continue.",
+      primaryAction: {
+        label: "Understood",
+      },
+    });
+  }, [initialChallengeId, showOverlay]);
+
+  /* =========================================================
+     GLOBAL HELP
+  ========================================================= */
+
+  function showHelp() {
+    showOverlay({
+      type: "info",
+      title: "SaMi Runner Help",
+      message:
+        "Enter the six-digit code sent to your email address. If your verified contact matches an existing SaMi Customer account, we will show the account name and ask for your permission before creating a separate Runner account.",
+      primaryAction: {
+        label: "Got it",
+      },
+    });
+  }
+
+  /* =========================================================
+     CUSTOMER CONFIRMATION
+  ========================================================= */
+
+  function applyCustomerConfirmation(
+    result: RunnerCustomerConfirmationRequired,
+  ) {
+    setConfirmationToken(result.confirmationToken);
+    setCustomerMatch(result.customerMatch);
+
+    setCode("");
+    setInputHasError(false);
+
+    autoSubmittedCodeRef.current = null;
+    setStep("confirm");
+
+    showOverlay({
+      type: "info",
+      title: "Customer account found",
+      message:
+        result.message ||
+        "We found an existing SaMi Customer account. Review the account details and choose whether to create a separate Runner account.",
+      primaryAction: {
+        label: "Review account",
+      },
+    });
+  }
+
+  /* =========================================================
+     SESSION COMPLETION
+
+     The existing root session gate determines the next screen.
+     We are not deciding or changing the post-registration
+     destination here.
+  ========================================================= */
+
+  async function completeSession(result: {
+    sessionToken: string;
+  }) {
+    if (
+      typeof result.sessionToken !== "string" ||
+      result.sessionToken.length < 40
+    ) {
+      throw new Error(
+        "The server did not return a valid Runner session.",
+      );
+    }
+
+    await saveRunnerSession(result.sessionToken);
+
+    if (!mountedRef.current) return;
+
+    setVerified(true);
+
+    await new Promise<void>((resolve) => {
+      setTimeout(resolve, SUCCESS_FLASH_MS);
+    });
+
+    if (!mountedRef.current) return;
+
+    // The existing root session gate decides the next screen.
+    router.replace("/");
+  }
+
+  /* =========================================================
+     OTP FLOW RESULT
+  ========================================================= */
+
+  async function handleFlowResult(
+    result: RunnerOtpFlowResult,
+  ): Promise<void> {
+    if (result.flow === "authenticated") {
+      // Ordinary registration without a Customer match,
+      // or the existing Runner login flow.
+      await completeSession(result);
+      return;
+    }
+
+    if (!isRegistration) {
+      throw new Error(
+        "This confirmation response is not valid for Runner sign in.",
+      );
+    }
+
+    // An optional Customer match requires explicit consent.
+    applyCustomerConfirmation(result);
+  }
+
+  /* =========================================================
+     VERIFY EMAIL CODE
+  ========================================================= */
+
+  async function verifyCode() {
     if (
       verificationInFlightRef.current ||
       busy ||
       resending ||
-      verified
+      verified ||
+      step !== "email"
     ) {
       return;
     }
 
     if (!challengeId) {
-      setError("Your verification session is missing. Request a new code.");
+      showOverlay({
+        type: "warning",
+        title: "Verification session unavailable",
+        message:
+          "Your verification session is missing. Request a new code before continuing.",
+        primaryAction: {
+          label: "Understood",
+        },
+      });
+
       return;
     }
 
     if (!/^[0-9]{6}$/.test(code)) {
-      setError("Enter the complete six-digit verification code.");
+      setInputHasError(true);
+
+      showOverlay({
+        type: "warning",
+        title: "Verification code required",
+        message: "Enter the complete six-digit verification code.",
+        primaryAction: {
+          label: "Try again",
+        },
+      });
+
       return;
     }
 
-    // The in-flight ref prevents duplicate requests. A completed failed
-    // request can be retried manually because network failures do not prove
-    // that the OTP itself was invalid.
     verificationInFlightRef.current = true;
+
     setBusy(true);
-    setError("");
-    setNotice("");
+    setInputHasError(false);
 
     try {
-      // POST /api/runner/auth/verify-otp validates the challenge and six-digit
-      // code, consumes the challenge once, and creates a Runner session.
-      const result = await verifyRunnerOtp(challengeId, code);
-
-      if (
-        !result?.ok ||
-        typeof result.sessionToken !== "string" ||
-        result.sessionToken.length < 40 ||
-        !result.runner?.id
-      ) {
-        throw new Error(
-          "The verification server did not return a complete Runner session. Request a new code and try again.",
-        );
-      }
-
-      // The backend issues a 32-byte base64url token (43 characters).
-      // saveRunnerSession validates and stores it in Expo SecureStore.
-      await saveRunnerSession(result.sessionToken);
-
-      if (!mountedRef.current) return;
-
-      setVerified(true);
-      await new Promise((resolve) =>
-        setTimeout(resolve, SUCCESS_FLASH_MS),
+      const result = await verifyRunnerEmailOtp(
+        challengeId,
+        code,
       );
 
       if (!mountedRef.current) return;
 
-      // Replace the OTP route. The root session gate reads the newly saved
-      // token and resolves the user's actual onboarding/account state.
-      router.replace("/");
+      await handleFlowResult(result);
     } catch (cause) {
       if (!mountedRef.current) return;
 
-      setError(
-        cause instanceof Error
-          ? cause.message
-          : "The verification code could not be verified.",
-      );
+      setInputHasError(true);
+
+      showOverlay({
+        type: "error",
+        title: "Verification failed",
+        message:
+          cause instanceof Error
+            ? cause.message
+            : "The verification code could not be verified. Please try again.",
+        primaryAction: {
+          label: "Close",
+        },
+      });
     } finally {
       verificationInFlightRef.current = false;
+
       if (mountedRef.current) {
         setBusy(false);
       }
     }
   }
 
-  // Auto-submit each completed six-digit code once. Manual submission is
-  // still allowed after a failed request, including a temporary network error.
+  /* =========================================================
+     OTP AUTO-SUBMIT
+  ========================================================= */
+
   useEffect(() => {
+    if (step !== "email") return;
     if (code.length !== CODE_LENGTH) return;
-    if (busy || resending || verified || !challengeId) return;
+
+    if (
+      busy ||
+      resending ||
+      verified ||
+      !challengeId
+    ) {
+      return;
+    }
 
     const submissionKey = `${challengeId}:${code}`;
-    if (autoSubmittedCodeRef.current === submissionKey) return;
+
+    if (autoSubmittedCodeRef.current === submissionKey) {
+      return;
+    }
 
     const timeout = setTimeout(() => {
       autoSubmittedCodeRef.current = submissionKey;
-      void verify();
+      void verifyCode();
     }, CODE_AUTOSUBMIT_DELAY_MS);
 
     return () => clearTimeout(timeout);
-    // verify intentionally uses the challenge/code from this render.
+
+    // verifyCode intentionally uses the challenge and code
+    // from the current render.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [code, busy, resending, verified, challengeId]);
+  }, [
+    code,
+    busy,
+    resending,
+    verified,
+    challengeId,
+    step,
+  ]);
+
+  /* =========================================================
+     RESEND EMAIL CODE
+  ========================================================= */
 
   async function resendCode() {
     if (
@@ -233,29 +439,44 @@ export default function VerifyRunnerScreen() {
       busy ||
       resending ||
       resendCountdown > 0 ||
-      verified
+      verified ||
+      step !== "email"
     ) {
       return;
     }
 
     if (!email) {
-      setError(
-        "Your email address is missing. Go back and start again.",
-      );
+      showOverlay({
+        type: "warning",
+        title: "Email address unavailable",
+        message:
+          "Your email address is missing. Go back and start again.",
+        primaryAction: {
+          label: "Understood",
+        },
+      });
+
       return;
     }
 
     if (isRegistration && (!fullName || !phone)) {
-      setError(
-        "Your registration details are missing. Go back and complete registration again.",
-      );
+      showOverlay({
+        type: "warning",
+        title: "Registration details unavailable",
+        message:
+          "Your registration details are missing. Go back and complete registration again.",
+        primaryAction: {
+          label: "Understood",
+        },
+      });
+
       return;
     }
 
     resendInFlightRef.current = true;
+
     setResending(true);
-    setError("");
-    setNotice("");
+    setInputHasError(false);
 
     try {
       const result = isRegistration
@@ -281,18 +502,26 @@ export default function VerifyRunnerScreen() {
 
       setChallengeId(result.challengeId);
       setDestination(result.destination);
-      autoSubmittedCodeRef.current = null;
+
       setCode("");
+      setInputHasError(false);
+
+      autoSubmittedCodeRef.current = null;
+
       setResendAvailableAt(
         Date.now() + OTP_RESEND_COOLDOWN_SECONDS * 1000,
       );
 
-      setNotice(
-        result.message || "A new verification code has been sent.",
-      );
-
-      // Refocus the input so the user can retype immediately.
-      setTimeout(() => codeInputRef.current?.focus(), 200);
+      showOverlay({
+        type: "success",
+        title: "Verification code sent",
+        message:
+          result.message ||
+          `A new verification code has been sent to ${result.destination}.`,
+        primaryAction: {
+          label: "Got it",
+        },
+      });
     } catch (cause) {
       if (!mountedRef.current) return;
 
@@ -301,39 +530,190 @@ export default function VerifyRunnerScreen() {
           ? cause.message
           : "A new verification code could not be sent.";
 
-      // Mirror the server's resend throttles locally after a 429 so a tap
-      // cannot immediately repeat a request the server has already refused.
       if (/maximum of five codes|hour/i.test(message)) {
-        setResendAvailableAt(Date.now() + 60 * 60 * 1000);
-      } else if (/please wait|too many verification requests|429/i.test(message)) {
+        setResendAvailableAt(
+          Date.now() + 60 * 60 * 1000,
+        );
+      } else if (
+        /please wait|too many verification requests|429/i.test(message)
+      ) {
         setResendAvailableAt(
           Date.now() + OTP_RESEND_COOLDOWN_SECONDS * 1000,
         );
       }
 
-      setError(message);
+      const rateLimited =
+        /maximum of five codes|hour|please wait|too many verification requests|429/i.test(
+          message,
+        );
+
+      showOverlay({
+        type: rateLimited ? "warning" : "error",
+        title: rateLimited
+          ? "Please wait before trying again"
+          : "Could not send a new code",
+        message,
+        primaryAction: {
+          label: "Close",
+        },
+      });
     } finally {
+      resendInFlightRef.current = false;
+
       if (mountedRef.current) {
         setResending(false);
       }
-      resendInFlightRef.current = false;
     }
   }
+
+  /* =========================================================
+     CREATE SEPARATE RUNNER ACCOUNT
+     Only called after explicit Customer-match consent.
+  ========================================================= */
+
+  async function continueWithRunner() {
+    if (
+      confirmationInFlightRef.current ||
+      busy ||
+      !confirmationToken ||
+      !customerMatch
+    ) {
+      return;
+    }
+
+    confirmationInFlightRef.current = true;
+
+    setBusy(true);
+    setInputHasError(false);
+
+    try {
+      const result = await confirmRunnerRegistration(
+        confirmationToken,
+      );
+
+      if (!mountedRef.current) return;
+
+      await completeSession(result);
+    } catch (cause) {
+      if (!mountedRef.current) return;
+
+      showOverlay({
+        type: "error",
+        title: "Runner account could not be created",
+        message:
+          cause instanceof Error
+            ? cause.message
+            : "Your Runner account could not be created. Please try again.",
+        primaryAction: {
+          label: "Close",
+        },
+      });
+    } finally {
+      confirmationInFlightRef.current = false;
+
+      if (mountedRef.current) {
+        setBusy(false);
+      }
+    }
+  }
+
+  /* =========================================================
+     DECLINE CUSTOMER-MATCH REGISTRATION
+  ========================================================= */
+
+  async function declineRegistration() {
+    if (busy || !isRegistration) return;
+
+    setBusy(true);
+
+    try {
+      if (confirmationToken) {
+        await cancelRunnerRegistration(confirmationToken);
+      }
+    } catch {
+      if (mountedRef.current) {
+        showOverlay({
+          type: "warning",
+          title: "Registration not completed",
+          message:
+            "Your Runner account has not been created. The pending confirmation could not be cancelled immediately and will expire automatically.",
+          primaryAction: {
+            label: "Understood",
+          },
+        });
+      }
+    } finally {
+      if (mountedRef.current) {
+        setBusy(false);
+        router.replace("/(auth)/register");
+      }
+    }
+  }
+
+  /* =========================================================
+     NAVIGATION
+  ========================================================= */
+
+  function goBack() {
+    if (busy || resending) return;
+
+    if (step === "confirm") {
+      void declineRegistration();
+      return;
+    }
+
+    if (router.canGoBack()) {
+      router.back();
+    } else {
+      router.replace(
+        isRegistration
+          ? "/(auth)/register"
+          : "/(auth)/login",
+      );
+    }
+  }
+
+  /* =========================================================
+     DISPLAY STATE
+  ========================================================= */
 
   const resendLabel =
     resendCountdown > 0
       ? `Resend code in ${formatCountdown(resendCountdown)}`
-      : challengeId
-        ? "Resend code"
-        : "Request a verification code";
+      : "Resend code";
 
   const disabled = busy || resending || verified;
-  const verifyDisabled = disabled || !challengeId || code.length !== CODE_LENGTH;
+
+  const verifyDisabled =
+    disabled ||
+    !challengeId ||
+    code.length !== CODE_LENGTH;
+
+  const isConfirmation = step === "confirm";
+
+  const eyebrow = isConfirmation
+    ? "CUSTOMER ACCOUNT FOUND"
+    : isRegistration
+      ? "REGISTRATION VERIFICATION"
+      : "RUNNER SIGN IN";
+
+  const title = isConfirmation
+    ? "Is this your account?"
+    : isRegistration
+      ? "Verify your email"
+      : "Welcome back";
+
+  /* =========================================================
+     RENDER
+  ========================================================= */
 
   return (
     <SafeAreaView
       edges={["top", "bottom"]}
-      style={[styles.safeArea, { backgroundColor: colors.paper }]}
+      style={[
+        styles.safeArea,
+        { backgroundColor: colors.paper },
+      ]}
     >
       <StatusBar
         barStyle={isDark ? "light-content" : "dark-content"}
@@ -350,348 +730,578 @@ export default function VerifyRunnerScreen() {
           keyboardShouldPersistTaps="handled"
           showsVerticalScrollIndicator={false}
         >
-          <Pressable
-            accessibilityRole="button"
-            accessibilityLabel="Go back"
-            disabled={disabled}
-            onPress={() => {
-              if (router.canGoBack()) {
-                router.back();
-              } else {
-                router.replace(
-                  isRegistration ? "/(auth)/register" : "/(auth)/login",
-                );
-              }
-            }}
-            hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}
-            style={({ pressed }) => [
-              styles.backButton,
-              {
-                backgroundColor: colors.surface,
-                borderColor: colors.border,
-                opacity: pressed ? 0.6 : disabled ? 0.5 : 1,
-              },
-            ]}
-          >
-            <Ionicons
-              name="chevron-back"
-              size={22}
-              color={colors.text}
+          {/* HEADER */}
+
+          <View style={styles.header}>
+            <Pressable
+              accessibilityRole="button"
+              accessibilityLabel="Go back"
+              disabled={disabled}
+              onPress={goBack}
+              hitSlop={8}
+              style={({ pressed }) => [
+                styles.backButton,
+                {
+                  backgroundColor: colors.surface,
+                  borderColor: colors.border,
+                  opacity: pressed ? 0.6 : disabled ? 0.5 : 1,
+                },
+              ]}
+            >
+              <Ionicons
+                name="chevron-back"
+                size={21}
+                color={colors.text}
+              />
+            </Pressable>
+
+            <Image
+              source={WORDMARK}
+              resizeMode="contain"
+              style={styles.wordmark}
+              accessibilityLabel="SaMi"
             />
-          </Pressable>
+
+            <Pressable
+              accessibilityRole="button"
+              accessibilityLabel="SaMi Runner Help"
+              onPress={showHelp}
+              style={({ pressed }) => [
+                styles.helpButton,
+                {
+                  borderColor: colors.border,
+                  backgroundColor: colors.surface,
+                  opacity: pressed ? 0.65 : 1,
+                },
+              ]}
+            >
+              <Ionicons
+                name="help-circle-outline"
+                size={17}
+                color={colors.blueAction}
+              />
+
+              <Text
+                style={[
+                  styles.helpText,
+                  { color: colors.text },
+                ]}
+              >
+                Help
+              </Text>
+            </Pressable>
+          </View>
+
+          {/* MAIN CONTENT */}
 
           <View style={styles.content}>
             <View
               style={[
                 styles.iconWrap,
-                { backgroundColor: colors.blueSoft },
+                {
+                  backgroundColor: isConfirmation
+                    ? colors.successSoft
+                    : colors.blueSoft,
+                },
               ]}
             >
               <Ionicons
                 name={
-                  isRegistration
-                    ? "person-add-outline"
-                    : "mail-open-outline"
+                  isConfirmation
+                    ? "person-circle-outline"
+                    : isRegistration
+                      ? "person-add-outline"
+                      : "mail-open-outline"
                 }
-                size={29}
-                color={actionBlue}
+                size={30}
+                color={
+                  isConfirmation
+                    ? colors.success
+                    : colors.blueAction
+                }
               />
             </View>
 
-            <Text style={[styles.eyebrow, { color: actionBlue }]}>
-              {isRegistration
-                ? "REGISTRATION VERIFICATION"
-                : "RUNNER SIGN IN"}
-            </Text>
-
-            <Text style={[styles.title, { color: colors.text }]}>
-              {isRegistration ? "Verify your email" : "Welcome back"}
+            <Text
+              style={[
+                styles.eyebrow,
+                { color: colors.blueAction },
+              ]}
+            >
+              {eyebrow}
             </Text>
 
             <Text
-              style={[styles.subtitle, { color: supportingText }]}
-            >
-              {isRegistration
-                ? "Enter the six-digit code we sent to "
-                : "Enter the six-digit sign-in code sent to "}
-
-              <Text style={[styles.destination, { color: colors.text }]}>
-                {destination}
-              </Text>
-              .
-            </Text>
-
-            {isRegistration ? (
-              <View
-                style={[
-                  styles.infoBox,
-                  { backgroundColor: colors.blueSoft },
-                ]}
-              >
-                <Ionicons
-                  name="information-circle-outline"
-                  size={18}
-                  color={actionBlue}
-                />
-
-                <Text
-                  style={[styles.infoText, { color: colors.text }]}
-                >
-                  Verifying your email creates your Runner account.
-                  Next, choose one service: Pick Up & Deliver or Shop & Deliver.
-                  Then complete your transport details and required documents.
-                </Text>
-              </View>
-            ) : null}
-
-            {!challengeId ? (
-              <View
-                accessibilityRole="alert"
-                style={[
-                  styles.noticeContainer,
-                  { backgroundColor: colors.warningSoft },
-                ]}
-              >
-                <Ionicons
-                  name="information-circle-outline"
-                  size={18}
-                  color={colors.warning}
-                />
-                <Text style={[styles.notice, { color: colors.text }]}>
-                  This screen has no active verification challenge. Request a new code below.
-                </Text>
-              </View>
-            ) : null}
-
-            <Text style={[styles.label, { color: colors.text }]}>
-              Verification code
-            </Text>
-
-            <TextInput
-              ref={codeInputRef}
-              value={code}
-              onChangeText={(value) => {
-                setCode(
-                  value.replace(/[^0-9]/g, "").slice(0, CODE_LENGTH),
-                );
-                setError("");
-                setNotice("");
-              }}
-              onFocus={() => setInputFocused(true)}
-              onBlur={() => setInputFocused(false)}
-              keyboardType="number-pad"
-              textContentType="oneTimeCode"
-              autoComplete="one-time-code"
-              maxLength={CODE_LENGTH}
-              placeholder="000000"
-              placeholderTextColor={colors.textMuted}
-              returnKeyType="done"
-              editable={!disabled}
-              selectionColor={colors.blue}
-              cursorColor={colors.blue}
-              onSubmitEditing={() => {
-                if (
-                  code.length === CODE_LENGTH &&
-                  !busy &&
-                  !resending &&
-                  !verified
-                ) {
-                  void verify();
-                }
-              }}
               style={[
-                styles.codeInput,
-                {
-                  backgroundColor: colors.surface,
-                  borderColor: verified
-                    ? actionBlue
-                    : inputFocused
-                      ? actionBlue
-                      : error
-                        ? colors.red
-                        : colors.border,
-                  color: colors.text,
-                },
-                (inputFocused || verified) &&
-                  Platform.select({
-                    ios: {
-                      shadowColor: actionBlue,
-                      shadowOpacity: 0.2,
-                      shadowRadius: 8,
-                      shadowOffset: { width: 0, height: 2 },
-                    },
-                    android: { elevation: 2 },
-                    default: {},
-                  }),
-                disabled && !verified && styles.disabled,
-              ]}
-              accessibilityLabel="Six-digit verification code"
-            />
-
-            {error ? (
-              <View
-                accessibilityRole="alert"
-                accessibilityLiveRegion="polite"
-                style={[
-                  styles.errorContainer,
-                  { backgroundColor: colors.dangerSoft },
-                ]}
-              >
-                <Ionicons
-                  name="alert-circle-outline"
-                  size={18}
-                  color={colors.red}
-                />
-
-                <Text style={[styles.error, { color: colors.red }]}>
-                  {error}
-                </Text>
-              </View>
-            ) : null}
-
-            {notice ? (
-              <View
-                accessibilityRole="alert"
-                accessibilityLiveRegion="polite"
-                style={[
-                  styles.noticeContainer,
-                  { backgroundColor: colors.blueSoft },
-                ]}
-              >
-                <Ionicons
-                  name="checkmark-circle-outline"
-                  size={18}
-                  color={actionBlue}
-                />
-
-                <Text style={[styles.notice, { color: colors.text }]}>
-                  {notice}
-                </Text>
-              </View>
-            ) : null}
-
-            <Pressable
-              accessibilityRole="button"
-              accessibilityLabel={
-                verified
-                  ? "Verified"
-                  : isRegistration
-                    ? "Verify and create account"
-                    : "Verify and continue"
-              }
-              accessibilityHint="Submits your six-digit code"
-              accessibilityState={{ busy, disabled: verifyDisabled }}
-              disabled={verifyDisabled}
-              onPress={() => void verify()}
-              style={({ pressed }) => [
-                styles.primaryButton,
-                {
-                  backgroundColor: buttonBlue,
-                },
-                verifyDisabled && !verified && styles.disabled,
-                pressed && !verifyDisabled && styles.pressed,
+                styles.title,
+                { color: colors.text },
               ]}
             >
-              {busy ? (
-                <ActivityIndicator color="#FFFFFF" />
-              ) : verified ? (
-                <>
+              {title}
+            </Text>
+
+            {/* CUSTOMER ACCOUNT CONFIRMATION */}
+
+            {isConfirmation && customerMatch ? (
+              <>
+                <Text
+                  style={[
+                    styles.subtitle,
+                    { color: colors.textMuted },
+                  ]}
+                >
+                  We found an existing SaMi Customer account
+                  associated with your verified{" "}
+                  {customerMatch.matchedBy}.
+                </Text>
+
+                <View
+                  style={[
+                    styles.customerCard,
+                    {
+                      backgroundColor: colors.surface,
+                      borderColor: colors.border,
+                    },
+                  ]}
+                >
+                  <View
+                    style={[
+                      styles.customerAvatar,
+                      { backgroundColor: colors.blueSoft },
+                    ]}
+                  >
+                    <Ionicons
+                      name="person-outline"
+                      size={24}
+                      color={colors.blueAction}
+                    />
+                  </View>
+
+                  <View style={styles.customerDetails}>
+                    <Text
+                      style={[
+                        styles.customerLabel,
+                        { color: colors.textMuted },
+                      ]}
+                    >
+                      CUSTOMER ACCOUNT NAME
+                    </Text>
+
+                    <Text
+                      style={[
+                        styles.customerName,
+                        { color: colors.text },
+                      ]}
+                    >
+                      {customerMatch.fullName}
+                    </Text>
+                  </View>
+
                   <Ionicons
                     name="checkmark-circle"
-                    size={20}
-                    color="#FFFFFF"
+                    size={22}
+                    color={colors.success}
                   />
-                  <Text style={styles.primaryButtonText}>Verified</Text>
-                </>
-              ) : (
-                <>
-                  <Text style={styles.primaryButtonText}>
-                    {isRegistration
-                      ? "Verify and create account"
-                      : "Verify and continue"}
-                  </Text>
+                </View>
 
-                  <Ionicons
-                    name="arrow-forward"
-                    size={18}
-                    color="#FFFFFF"
-                  />
-                </>
-              )}
-            </Pressable>
-
-            <Pressable
-              accessibilityRole="button"
-              accessibilityLabel={resendLabel}
-              disabled={
-                busy || resending || verified || resendCountdown > 0
-              }
-              hitSlop={8}
-              onPress={() => void resendCode()}
-              style={({ pressed }) => [
-                styles.resendButton,
-                (busy ||
-                  resending ||
-                  verified ||
-                  resendCountdown > 0) &&
-                  styles.disabled,
-                pressed &&
-                  !busy &&
-                  !resending &&
-                  !verified &&
-                  resendCountdown === 0 &&
-                  styles.pressed,
-              ]}
-            >
-              {resending ? (
-                <ActivityIndicator size="small" color={actionBlue} />
-              ) : (
-                <Text
-                  style={[styles.resendText, { color: actionBlue }]}
+                <View
+                  style={[
+                    styles.infoBox,
+                    { backgroundColor: colors.blueSoft },
+                  ]}
                 >
-                  {resendLabel}
+                  <Ionicons
+                    name="shield-checkmark-outline"
+                    size={19}
+                    color={colors.blueAction}
+                  />
+
+                  <Text
+                    style={[
+                      styles.infoText,
+                      { color: colors.text },
+                    ]}
+                  >
+                    Your existing Customer account will remain
+                    unchanged. Continuing creates a separate
+                    Runner account with its own login and profile.
+                  </Text>
+                </View>
+
+                <Text
+                  style={[
+                    styles.confirmQuestion,
+                    { color: colors.text },
+                  ]}
+                >
+                  Would you like to continue with Runner registration?
                 </Text>
-              )}
-            </Pressable>
+              </>
+            ) : (
+              <>
+                {/* EMAIL VERIFICATION */}
 
-            <Text
-              style={[
-                styles.resendHint,
-                { color: supportingText },
-              ]}
-            >
-              The server allows one request every 60 seconds and up to five codes per email per hour.
-            </Text>
+                <Text
+                  style={[
+                    styles.subtitle,
+                    { color: colors.textMuted },
+                  ]}
+                >
+                  Enter the six-digit code we sent to{" "}
+                  <Text
+                    style={[
+                      styles.destination,
+                      { color: colors.text },
+                    ]}
+                  >
+                    {destination}
+                  </Text>
+                  .
+                </Text>
 
-            <Pressable
-              accessibilityRole="button"
-              accessibilityLabel={
-                isRegistration
-                  ? "Change registration details"
-                  : "Use a different email address"
-              }
-              disabled={disabled}
-              hitSlop={6}
-              onPress={() =>
-                router.replace(
+                {isRegistration ? (
+                  <View
+                    style={[
+                      styles.infoBox,
+                      { backgroundColor: colors.blueSoft },
+                    ]}
+                  >
+                    <Ionicons
+                      name="information-circle-outline"
+                      size={18}
+                      color={colors.blueAction}
+                    />
+
+                    <Text
+                      style={[
+                        styles.infoText,
+                        { color: colors.text },
+                      ]}
+                    >
+                      Verifying your email does not automatically
+                      connect or change a Customer account. If we
+                      find an existing Customer account, we will
+                      ask your permission before creating a separate
+                      Runner account.
+                    </Text>
+                  </View>
+                ) : null}
+
+                <Text
+                  style={[
+                    styles.label,
+                    { color: colors.text },
+                  ]}
+                >
+                  Verification code
+                </Text>
+
+                <TextInput
+                  ref={codeInputRef}
+                  value={code}
+                  onChangeText={(value) => {
+                    setCode(
+                      value.replace(/[^0-9]/g, "").slice(0, CODE_LENGTH),
+                    );
+
+                    setInputHasError(false);
+                  }}
+                  onFocus={() => setInputFocused(true)}
+                  onBlur={() => setInputFocused(false)}
+                  keyboardType="number-pad"
+                  textContentType="oneTimeCode"
+                  autoComplete="one-time-code"
+                  maxLength={CODE_LENGTH}
+                  placeholder="000000"
+                  placeholderTextColor={colors.textMuted}
+                  returnKeyType="done"
+                  editable={!disabled}
+                  selectionColor={colors.blue}
+                  cursorColor={colors.blue}
+                  onSubmitEditing={() => {
+                    if (
+                      code.length === CODE_LENGTH &&
+                      !busy &&
+                      !resending &&
+                      !verified
+                    ) {
+                      void verifyCode();
+                    }
+                  }}
+                  style={[
+                    styles.codeInput,
+                    {
+                      backgroundColor: colors.surface,
+                      borderColor: verified
+                        ? colors.success
+                        : inputFocused
+                          ? colors.blueAction
+                          : inputHasError
+                            ? colors.red
+                            : colors.border,
+                      color: colors.text,
+                    },
+                    (inputFocused || verified) &&
+                      Platform.select({
+                        ios: {
+                          shadowColor: colors.blueAction,
+                          shadowOpacity: 0.16,
+                          shadowRadius: 8,
+                          shadowOffset: {
+                            width: 0,
+                            height: 2,
+                          },
+                        },
+                        android: { elevation: 2 },
+                        default: {},
+                      }),
+                    disabled && styles.disabled,
+                  ]}
+                  accessibilityLabel="Six-digit verification code"
+                />
+              </>
+            )}
+
+            {/* CUSTOMER CONFIRMATION ACTIONS */}
+
+            {isConfirmation ? (
+              <>
+                <Pressable
+                  accessibilityRole="button"
+                  accessibilityState={{ busy, disabled }}
+                  disabled={disabled || !confirmationToken}
+                  onPress={() => void continueWithRunner()}
+                  style={({ pressed }) => [
+                    styles.primaryButton,
+                    { backgroundColor: colors.blueAction },
+                    disabled && styles.disabled,
+                    pressed && !disabled && styles.pressed,
+                  ]}
+                >
+                  {busy ? (
+                    <ActivityIndicator color={colors.onBlue} />
+                  ) : (
+                    <>
+                      <Text
+                        style={[
+                          styles.primaryButtonText,
+                          { color: colors.onBlue },
+                        ]}
+                      >
+                        Yes, continue with Runner
+                      </Text>
+
+                      <Ionicons
+                        name="arrow-forward"
+                        size={19}
+                        color={colors.onBlue}
+                      />
+                    </>
+                  )}
+                </Pressable>
+
+                <Pressable
+                  accessibilityRole="button"
+                  disabled={disabled}
+                  onPress={() => void declineRegistration()}
+                  style={({ pressed }) => [
+                    styles.secondaryButton,
+                    {
+                      borderColor: colors.border,
+                      backgroundColor: colors.surface,
+                    },
+                    disabled && styles.disabled,
+                    pressed && !disabled && styles.pressed,
+                  ]}
+                >
+                  <Text
+                    style={[
+                      styles.secondaryButtonText,
+                      { color: colors.text },
+                    ]}
+                  >
+                    No, go back
+                  </Text>
+                </Pressable>
+
+                <Text
+                  style={[
+                    styles.resendHint,
+                    { color: colors.textMuted },
+                  ]}
+                >
+                  Nothing will be changed in your Customer account.
+                  You can decline without affecting it.
+                </Text>
+              </>
+            ) : (
+              <>
+                {/* VERIFY ACTION */}
+
+                <Pressable
+                  accessibilityRole="button"
+                  accessibilityLabel={
+                    verified
+                      ? "Verified"
+                      : isRegistration
+                        ? "Verify email and continue"
+                        : "Verify and sign in"
+                  }
+                  accessibilityHint="Submits your six-digit verification code"
+                  accessibilityState={{
+                    busy,
+                    disabled: verifyDisabled,
+                  }}
+                  disabled={verifyDisabled}
+                  onPress={() => void verifyCode()}
+                  style={({ pressed }) => [
+                    styles.primaryButton,
+                    { backgroundColor: colors.blueAction },
+                    verifyDisabled && !verified && styles.disabled,
+                    pressed && !verifyDisabled && styles.pressed,
+                  ]}
+                >
+                  {busy ? (
+                    <ActivityIndicator color={colors.onBlue} />
+                  ) : verified ? (
+                    <>
+                      <Ionicons
+                        name="checkmark-circle"
+                        size={20}
+                        color={colors.onBlue}
+                      />
+
+                      <Text
+                        style={[
+                          styles.primaryButtonText,
+                          { color: colors.onBlue },
+                        ]}
+                      >
+                        Verified
+                      </Text>
+                    </>
+                  ) : (
+                    <>
+                      <Text
+                        style={[
+                          styles.primaryButtonText,
+                          { color: colors.onBlue },
+                        ]}
+                      >
+                        {isRegistration
+                          ? "Verify email and continue"
+                          : "Verify and continue"}
+                      </Text>
+
+                      <Ionicons
+                        name="arrow-forward"
+                        size={18}
+                        color={colors.onBlue}
+                      />
+                    </>
+                  )}
+                </Pressable>
+
+                {/* RESEND CODE */}
+
+                <Pressable
+                  accessibilityRole="button"
+                  accessibilityLabel={resendLabel}
+                  disabled={
+                    busy ||
+                    resending ||
+                    verified ||
+                    resendCountdown > 0
+                  }
+                  hitSlop={8}
+                  onPress={() => void resendCode()}
+                  style={({ pressed }) => [
+                    styles.resendButton,
+                    (
+                      busy ||
+                      resending ||
+                      verified ||
+                      resendCountdown > 0
+                    ) && styles.disabled,
+                    pressed &&
+                      !busy &&
+                      !resending &&
+                      !verified &&
+                      resendCountdown === 0 &&
+                      styles.pressed,
+                  ]}
+                >
+                  {resending ? (
+                    <ActivityIndicator
+                      size="small"
+                      color={colors.blueAction}
+                    />
+                  ) : (
+                    <Text
+                      style={[
+                        styles.resendText,
+                        { color: colors.blueAction },
+                      ]}
+                    >
+                      {resendLabel}
+                    </Text>
+                  )}
+                </Pressable>
+
+                <Text
+                  style={[
+                    styles.resendHint,
+                    { color: colors.textMuted },
+                  ]}
+                >
+                  The server allows one request every 60 seconds
+                  and up to five codes per email per hour.
+                </Text>
+              </>
+            )}
+
+            {/* CHANGE DETAILS */}
+
+            {!isConfirmation ? (
+              <Pressable
+                accessibilityRole="button"
+                accessibilityLabel={
                   isRegistration
-                    ? "/(auth)/register"
-                    : "/(auth)/login",
-                )
-              }
-              style={({ pressed }) => [
-                styles.changeEmailButton,
-                { opacity: pressed ? 0.6 : disabled ? 0.5 : 1 },
-              ]}
-            >
-              <Text
-                style={[styles.changeEmailText, { color: actionBlue }]}
+                    ? "Change registration details"
+                    : "Use a different email address"
+                }
+                disabled={disabled}
+                hitSlop={6}
+                onPress={() =>
+                  router.replace(
+                    isRegistration
+                      ? "/(auth)/register"
+                      : "/(auth)/login",
+                  )
+                }
+                style={({ pressed }) => [
+                  styles.changeDetailsButton,
+                  {
+                    opacity: pressed
+                      ? 0.6
+                      : disabled
+                        ? 0.5
+                        : 1,
+                  },
+                ]}
               >
-                {isRegistration
-                  ? "Change registration details"
-                  : "Use a different email address"}
-              </Text>
-            </Pressable>
+                <Text
+                  style={[
+                    styles.changeDetailsText,
+                    { color: colors.blueAction },
+                  ]}
+                >
+                  {isRegistration
+                    ? "Change registration details"
+                    : "Use a different email address"}
+                </Text>
+              </Pressable>
+            ) : null}
           </View>
         </ScrollView>
       </KeyboardAvoidingView>
@@ -699,55 +1309,93 @@ export default function VerifyRunnerScreen() {
   );
 }
 
+/* =========================================================
+   STYLES
+========================================================= */
+
 const styles = StyleSheet.create({
-  safeArea: { flex: 1 },
-  keyboardContainer: { flex: 1 },
+  safeArea: {
+    flex: 1,
+  },
+
+  keyboardContainer: {
+    flex: 1,
+  },
 
   scrollContent: {
     flexGrow: 1,
-    paddingHorizontal: 24,
-    paddingTop: 12,
-    paddingBottom: 36,
+    paddingHorizontal: 22,
+    paddingTop: 8,
+    paddingBottom: 32,
+  },
+
+  header: {
+    minHeight: 48,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: 12,
   },
 
   backButton: {
-    height: BACK_SIZE,
-    width: BACK_SIZE,
+    width: 42,
+    height: 42,
     borderRadius: 14,
     borderWidth: 1,
     alignItems: "center",
     justifyContent: "center",
-    alignSelf: "flex-start",
+  },
+
+  wordmark: {
+    width: 105,
+    height: 39,
+    flex: 1,
+  },
+
+  helpButton: {
+    minHeight: 38,
+    paddingHorizontal: 11,
+    borderRadius: 12,
+    borderWidth: 1,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 5,
+  },
+
+  helpText: {
+    fontSize: 12,
+    fontWeight: "800",
   },
 
   content: {
     flexGrow: 1,
     justifyContent: "center",
     gap: 16,
-    paddingTop: 24,
+    paddingTop: 30,
     paddingBottom: 28,
   },
 
   iconWrap: {
-    width: 58,
-    height: 58,
-    borderRadius: 18,
+    width: 60,
+    height: 60,
+    borderRadius: 19,
     alignItems: "center",
     justifyContent: "center",
-    marginBottom: 4,
+    marginBottom: 3,
   },
 
   eyebrow: {
-    fontSize: 11,
+    fontSize: 10.5,
     fontWeight: "900",
-    letterSpacing: 1.3,
+    letterSpacing: 1.25,
   },
 
   title: {
     fontSize: 28,
     fontWeight: "900",
-    letterSpacing: -0.5,
-    lineHeight: 34,
+    letterSpacing: -0.7,
+    lineHeight: 35,
   },
 
   subtitle: {
@@ -792,32 +1440,44 @@ const styles = StyleSheet.create({
     marginTop: 2,
   },
 
-  errorContainer: {
+  customerCard: {
     flexDirection: "row",
-    alignItems: "flex-start",
-    borderRadius: 12,
-    padding: 12,
-    gap: 10,
+    alignItems: "center",
+    borderWidth: 1,
+    borderRadius: 15,
+    padding: 15,
+    gap: 12,
   },
 
-  error: {
+  customerAvatar: {
+    width: 46,
+    height: 46,
+    borderRadius: 15,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+
+  customerDetails: {
     flex: 1,
-    fontSize: 12.5,
-    lineHeight: 18,
+    gap: 4,
   },
 
-  noticeContainer: {
-    flexDirection: "row",
-    alignItems: "flex-start",
-    borderRadius: 12,
-    padding: 12,
-    gap: 10,
+  customerLabel: {
+    fontSize: 9,
+    fontWeight: "900",
+    letterSpacing: 0.8,
   },
 
-  notice: {
-    flex: 1,
-    fontSize: 12.5,
-    lineHeight: 18,
+  customerName: {
+    fontSize: 16,
+    fontWeight: "900",
+  },
+
+  confirmQuestion: {
+    fontSize: 14,
+    lineHeight: 21,
+    fontWeight: "800",
+    marginTop: 2,
   },
 
   primaryButton: {
@@ -827,18 +1487,32 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     flexDirection: "row",
     gap: 9,
+    paddingHorizontal: 16,
     marginTop: 6,
   },
 
   primaryButtonText: {
-    color: "#FFFFFF",
-    fontSize: 15,
+    fontSize: 14,
     fontWeight: "900",
-    letterSpacing: -0.2,
+    letterSpacing: -0.15,
+  },
+
+  secondaryButton: {
+    minHeight: 52,
+    borderRadius: 15,
+    borderWidth: 1,
+    alignItems: "center",
+    justifyContent: "center",
+    paddingHorizontal: 16,
+  },
+
+  secondaryButtonText: {
+    fontSize: 14,
+    fontWeight: "800",
   },
 
   resendButton: {
-    minHeight: 44,
+    minHeight: 42,
     alignItems: "center",
     justifyContent: "center",
     paddingHorizontal: 14,
@@ -851,19 +1525,19 @@ const styles = StyleSheet.create({
 
   resendHint: {
     fontSize: 11,
-    lineHeight: 16,
+    lineHeight: 17,
     textAlign: "center",
-    marginTop: -8,
+    marginTop: -7,
   },
 
-  changeEmailButton: {
+  changeDetailsButton: {
     alignItems: "center",
     paddingVertical: 12,
     paddingHorizontal: 12,
     marginTop: 2,
   },
 
-  changeEmailText: {
+  changeDetailsText: {
     fontSize: 13,
     fontWeight: "800",
   },

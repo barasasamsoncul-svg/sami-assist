@@ -2,12 +2,15 @@ import { useCallback, useEffect, useRef, useState } from "react";
 
 import {
   ActivityIndicator,
+  Image,
+  KeyboardAvoidingView,
   Platform,
   Pressable,
   ScrollView,
   StatusBar,
   StyleSheet,
   Text,
+  TextInput,
   View,
 } from "react-native";
 
@@ -19,75 +22,164 @@ import {
   apiRequest,
   getRunnerCategories,
   getRunnerOnboarding,
+  updateRunnerOnboarding,
 } from "@/api";
 
 import { useRunnerTheme } from "@/theme";
 
-type RunnerService = {
-  key: string;
+const WORDMARK = require("../../assets/sami-wordmark.png");
+
+type ServiceKey = "pickup_deliver" | "shop_deliver";
+type VehicleType = "bike" | "motorbike" | "vehicle";
+
+type EarningChoice = {
+  id: string;
+  serviceKey: ServiceKey;
+  vehicleType: VehicleType;
+  categoryLabel: string;
   title: string;
-  description: string;
+  vehicleLabel: string;
+  licenceLabel: string;
   icon: keyof typeof Ionicons.glyphMap;
 };
 
-// SaMi Runner supports exactly these two service types.
-// These keys must match the Runner database catalogue and API validation.
-const RUNNER_SERVICES: RunnerService[] = [
+const SERVICES: {
+  key: ServiceKey;
+  label: string;
+}[] = [
   {
     key: "pickup_deliver",
-    title: "Pick Up & Deliver",
-    description:
-      "Collect an item from the sender and deliver it to the customer's chosen destination.",
-    icon: "cube-outline",
+    label: "Pick Up & Deliver",
   },
   {
     key: "shop_deliver",
-    title: "Shop & Deliver",
-    description:
-      "Shop for the customer's requested items and deliver the order to them.",
-    icon: "cart-outline",
+    label: "Shop & Deliver",
   },
 ];
 
-const BACK_SIZE = 44;
+const VEHICLES: {
+  key: VehicleType;
+  label: string;
+  licence: string;
+  icon: keyof typeof Ionicons.glyphMap;
+}[] = [
+  {
+    key: "bike",
+    label: "Bicycle",
+    licence: "No motor-vehicle licence",
+    icon: "bicycle-outline",
+  },
+  {
+    key: "motorbike",
+    label: "Motorbike",
+    licence: "Valid motorcycle licence",
+    icon: "bicycle-outline",
+  },
+  {
+    key: "vehicle",
+    label: "Vehicle",
+    licence: "Valid driving licence",
+    icon: "car-outline",
+  },
+];
+
+const EARNING_CHOICES: EarningChoice[] = SERVICES.flatMap((service) =>
+  VEHICLES.map((vehicle) => ({
+    id: `${service.key}:${vehicle.key}`,
+    serviceKey: service.key,
+    vehicleType: vehicle.key,
+    categoryLabel: service.label,
+    title: `${service.label} by ${vehicle.label}`,
+    vehicleLabel: vehicle.label,
+    licenceLabel: vehicle.licence,
+    icon: vehicle.icon,
+  })),
+);
+
+function normalizeSavedVehicle(value: unknown): VehicleType | "" {
+  switch (value) {
+    case "bike":
+    case "bicycle":
+      return "bike";
+
+    case "motorbike":
+    case "motorcycle":
+      return "motorbike";
+
+    case "vehicle":
+    case "car":
+    case "van":
+    case "other":
+      return "vehicle";
+
+    default:
+      return "";
+  }
+}
+
+function requiresVehicleRegistration(value: VehicleType): boolean {
+  return value === "motorbike" || value === "vehicle";
+}
+
+function normalizeServiceArea(value: string): string {
+  return value.trim().replace(/\s+/g, " ");
+}
+
+function normalizeRegistration(value: string): string {
+  return value.trim().toUpperCase().replace(/\s+/g, " ");
+}
+
+function normalizeVehicleModel(value: string): string {
+  return value.trim().replace(/\s+/g, " ");
+}
 
 export default function RunnerTaskSelectionScreen() {
-  const { colors, mode } = useRunnerTheme();
+  const {
+    colors,
+    mode,
+    showOverlay,
+  } = useRunnerTheme();
 
   const isDark = mode === "dark";
+
+  const palette = colors as typeof colors & {
+    brandNavy?: string;
+    blueAction?: string;
+  };
+
   const supportingText = isDark ? "#C1CCDA" : "#526176";
-  const brandColor = isDark ? "#F5F7FB" : "#000535";
-  const actionBlue = isDark ? "#8AB8F8" : "#1F5EAB";
+
+  const brandColor =
+    palette.brandNavy ?? (isDark ? "#F5F7FB" : "#000535");
+
   const buttonBlue = isDark ? "#1D5DAD" : "#174F9F";
 
-  const [availableServices, setAvailableServices] = useState<
-    RunnerService[]
-  >([]);
-
-  const [selectedCategories, setSelectedCategories] = useState<string[]>(
-    [],
-  );
-
-  const [loading, setLoading] = useState(true);
-  const [refreshing, setRefreshing] = useState(false);
-  const [saving, setSaving] = useState(false);
-
-  const [error, setError] = useState("");
-  const [loadError, setLoadError] = useState("");
-
-  const scrollRef = useRef<ScrollView>(null);
-  const mountedRef = useRef(true);
-  const loadInFlightRef = useRef(false);
-  const hasLoadedOnceRef = useRef(false);
+  const [selectedChoiceId, setSelectedChoiceId] = useState("");
+  const [serviceArea, setServiceArea] = useState("");
+  const [vehicleModel, setVehicleModel] = useState("");
+  const [vehicleRegistration, setVehicleRegistration] = useState("");
 
   const [accountState, setAccountState] = useState<{
     onboardingStatus: string;
     accountStatus: string;
   } | null>(null);
 
+  const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [loadError, setLoadError] = useState("");
+
+  const [serviceAreaFocused, setServiceAreaFocused] = useState(false);
+  const [vehicleModelFocused, setVehicleModelFocused] = useState(false);
+  const [registrationFocused, setRegistrationFocused] = useState(false);
+
+  const scrollRef = useRef<ScrollView>(null);
+  const mountedRef = useRef(true);
+  const loadInFlightRef = useRef(false);
+  const saveInFlightRef = useRef(false);
+  const hasLoadedOnceRef = useRef(false);
+
   useEffect(() => {
-    // Re-arm during setup so Strict Mode's effect cycle cannot leave
-    // asynchronous requests believing the screen is permanently unmounted.
     mountedRef.current = true;
 
     return () => {
@@ -95,7 +187,7 @@ export default function RunnerTaskSelectionScreen() {
     };
   }, []);
 
-  const loadTaskCategories = useCallback(async () => {
+  const loadSetup = useCallback(async () => {
     if (loadInFlightRef.current) return;
 
     loadInFlightRef.current = true;
@@ -107,20 +199,16 @@ export default function RunnerTaskSelectionScreen() {
     }
 
     setLoadError("");
-    setError("");
 
     try {
-      // GET /api/runner/categories returns the active two-service catalogue.
-      // GET /api/runner/me/onboarding returns the authenticated Runner's
-      // saved selections and account state.
       const [catalogue, onboarding] = await Promise.all([
         getRunnerCategories(),
         getRunnerOnboarding(),
       ]);
 
-      if (!catalogue.ok || !Array.isArray(catalogue.categories)) {
+      if (!catalogue?.ok || !Array.isArray(catalogue.categories)) {
         throw new Error(
-          "The Runner service catalogue returned an invalid response. Please retry.",
+          "The Runner service catalogue could not be loaded.",
         );
       }
 
@@ -130,66 +218,70 @@ export default function RunnerTaskSelectionScreen() {
         !Array.isArray(onboarding.runner.selectedCategories)
       ) {
         throw new Error(
-          "Your saved Runner service selection could not be verified. Please retry.",
+          "Your saved Runner setup could not be verified.",
         );
       }
 
       const activeKeys = new Set(
-        catalogue.categories
-          .map((category) => category.key)
-          .filter(
-            (key): key is string =>
-              typeof key === "string" &&
-              /^[a-z0-9_]{2,60}$/.test(key),
-          ),
+        catalogue.categories.map((item) => item.key),
       );
 
-      // The API remains authoritative for active service keys.
-      // The interface exposes only the two agreed Runner services.
-      const missingServices = RUNNER_SERVICES.filter(
+      const missingServices = SERVICES.filter(
         (service) => !activeKeys.has(service.key),
       );
 
       if (missingServices.length > 0) {
         throw new Error(
-          "The Runner service catalogue is not configured for both Pick Up & Deliver and Shop & Deliver. Please contact SaMi Operations.",
+          "The SaMi Runner service catalogue is incomplete. Please contact SaMi Operations.",
         );
       }
 
-      const activeOptions = RUNNER_SERVICES.filter((service) =>
-        activeKeys.has(service.key),
-      );
-
       if (!mountedRef.current) return;
 
-      setAvailableServices(activeOptions);
+      const runner = onboarding.runner;
 
-      const savedSelection = onboarding.runner.selectedCategories;
-
-      setSelectedCategories(
-        RUNNER_SERVICES
-          .filter(
-            (service) =>
-              activeKeys.has(service.key) &&
-              savedSelection.includes(service.key),
-          )
-          .map((service) => service.key),
+      const savedServices = runner.selectedCategories.filter(
+        (key: string) =>
+          key === "pickup_deliver" || key === "shop_deliver",
       );
+
+      const savedVehicle = normalizeSavedVehicle(runner.vehicleType);
+
+      // Restore the previous service-and-vehicle combination.
+      if (savedServices.length === 1 && savedVehicle) {
+        setSelectedChoiceId(`${savedServices[0]}:${savedVehicle}`);
+      } else {
+        setSelectedChoiceId("");
+      }
+
+      setServiceArea(runner.serviceArea ?? "");
+      setVehicleModel(runner.vehicleModel ?? "");
+      setVehicleRegistration(runner.vehicleRegistration ?? "");
 
       setAccountState({
         onboardingStatus: onboarding.onboardingStatus,
-        accountStatus: onboarding.runner.accountStatus,
+        accountStatus: runner.accountStatus,
       });
 
       hasLoadedOnceRef.current = true;
     } catch (cause) {
       if (!mountedRef.current) return;
 
-      setLoadError(
+      const message =
         cause instanceof Error
           ? cause.message
-          : "Runner services could not be loaded.",
-      );
+          : "Your Runner setup could not be loaded. Please try again.";
+
+      setLoadError(message);
+
+      showOverlay({
+        type: "error",
+        title: "Setup could not be loaded",
+        message,
+        primaryAction: {
+          label: "Close",
+        },
+      });
     } finally {
       loadInFlightRef.current = false;
 
@@ -198,26 +290,14 @@ export default function RunnerTaskSelectionScreen() {
         setRefreshing(false);
       }
     }
-  }, []);
+  }, [showOverlay]);
 
-  // Refresh from the server whenever the Runner returns to this screen.
   useFocusEffect(
     useCallback(() => {
       mountedRef.current = true;
-      void loadTaskCategories();
-    }, [loadTaskCategories]),
+      void loadSetup();
+    }, [loadSetup]),
   );
-
-  // Scroll validation and save errors into view.
-  useEffect(() => {
-    if (!error) return;
-
-    const frame = requestAnimationFrame(() => {
-      scrollRef.current?.scrollToEnd({ animated: true });
-    });
-
-    return () => cancelAnimationFrame(frame);
-  }, [error]);
 
   const onboardingStatus = accountState?.onboardingStatus ?? "";
   const accountStatus = accountState?.accountStatus ?? "";
@@ -231,786 +311,620 @@ export default function RunnerTaskSelectionScreen() {
       loadError,
     );
 
-  const canEditCategories =
-    hasLoadedOnceRef.current &&
+  const selectedChoice = EARNING_CHOICES.find(
+    (choice) => choice.id === selectedChoiceId,
+  );
+
+  const registrationRequired = Boolean(
+    selectedChoice &&
+      requiresVehicleRegistration(selectedChoice.vehicleType),
+  );
+
+  const canEdit =
     Boolean(accountState) &&
     !loading &&
     !refreshing &&
     !loadError &&
-    !sessionExpired &&
+    !saving &&
     !isApproved &&
     !isPendingReview &&
-    !isRestricted;
+    !isRestricted &&
+    !sessionExpired;
 
-  function toggleCategory(key: string) {
-    if (!canEditCategories || saving) return;
+  function chooseEarningOption(choice: EarningChoice) {
+    if (!canEdit || saving) return;
 
-    setSelectedCategories((current) => {
-      if (current.includes(key)) {
-        return current.filter((item) => item !== key);
-      }
+    setSelectedChoiceId(choice.id);
 
-      return [...current, key];
-    });
-
-    setError("");
+    if (!requiresVehicleRegistration(choice.vehicleType)) {
+      setVehicleModel("");
+      setVehicleRegistration("");
+    }
   }
 
-  async function saveTaskSelection() {
-    if (saving || loading || loadError || !canEditCategories) return;
+  function openHelp() {
+    showOverlay({
+      type: "info",
+      title: "SaMi Runner help",
+      message:
+        "Choose one earning option. Each option combines the service you will provide with the vehicle you will use. All options require you to be at least 18 years old. Enter your main service area. Motorbike and Vehicle applicants must also enter the vehicle make, model and registration number. Your document checklist comes next.",
+      primaryAction: {
+        label: "Got it",
+      },
+    });
+  }
 
-    if (selectedCategories.length === 0) {
-      setError(
-        "Select Pick Up & Deliver, Shop & Deliver, or both.",
-      );
+  async function continueToDocuments() {
+    if (saveInFlightRef.current || !canEdit) return;
+
+    if (!selectedChoice) {
+      showOverlay({
+        type: "warning",
+        title: "Choose an earning option",
+        message: "Select one of the six options before continuing.",
+        primaryAction: {
+          label: "Choose option",
+        },
+      });
+
       return;
     }
 
-    if (selectedCategories.length > RUNNER_SERVICES.length) {
-      setError(
-        "You can select only the two available Runner services.",
-      );
+    const normalizedArea = normalizeServiceArea(serviceArea);
+
+    const normalizedVehicleModel =
+      normalizeVehicleModel(vehicleModel);
+
+    const normalizedRegistration =
+      normalizeRegistration(vehicleRegistration);
+
+    if (normalizedArea.length < 2 || normalizedArea.length > 120) {
+      showOverlay({
+        type: "warning",
+        title: "Service area required",
+        message:
+          "Enter your main operating area using between 2 and 120 characters.",
+        primaryAction: {
+          label: "Understood",
+        },
+      });
+
       return;
     }
 
+    if (
+      registrationRequired &&
+      normalizedVehicleModel.length < 2
+    ) {
+      showOverlay({
+        type: "warning",
+        title: "Vehicle model required",
+        message:
+          "Enter the make and model of the motorbike or vehicle you selected.",
+        primaryAction: {
+          label: "Understood",
+        },
+      });
+
+      return;
+    }
+
+    if (
+      registrationRequired &&
+      normalizedRegistration.length < 3
+    ) {
+      showOverlay({
+        type: "warning",
+        title: "Vehicle registration required",
+        message:
+          "Enter the registration number of the motorbike or vehicle you selected.",
+        primaryAction: {
+          label: "Understood",
+        },
+      });
+
+      return;
+    }
+
+    saveInFlightRef.current = true;
     setSaving(true);
-    setError("");
 
     try {
-      // PUT /api/runner/me/categories accepts { categoryKeys: string[] }.
-      // The server validates active keys and application status, then
-      // replaces the saved selection transactionally.
-      const response = await apiRequest<{
+      // Save exactly one service category for the chosen combination.
+      const categoryResult = await apiRequest<{
         ok: boolean;
-        message: string;
+        message?: string;
         selectedCategories: string[];
-        nextStep: string;
       }>("/api/runner/me/categories", {
         method: "PUT",
         body: {
-          categoryKeys: [...selectedCategories],
+          categoryKeys: [selectedChoice.serviceKey],
         },
       });
 
       if (
-        !response?.ok ||
-        !Array.isArray(response.selectedCategories)
+        !categoryResult?.ok ||
+        !Array.isArray(categoryResult.selectedCategories) ||
+        categoryResult.selectedCategories.length !== 1 ||
+        categoryResult.selectedCategories[0] !==
+          selectedChoice.serviceKey
       ) {
         throw new Error(
-          "The server did not confirm that your Runner services were saved. Refresh your selection before continuing.",
+          categoryResult?.message ||
+            "SaMi could not confirm your selected service. Please try again.",
         );
       }
 
-      const requested = [...selectedCategories].sort();
-      const confirmed = [...response.selectedCategories].sort();
+      // Save service area, vehicle model and registration.
+      // The server returns the mandatory documents for this setup.
+      const onboardingResult = await updateRunnerOnboarding({
+        serviceArea: normalizedArea,
+        vehicleType: selectedChoice.vehicleType,
+        vehicleModel: registrationRequired
+          ? normalizedVehicleModel
+          : undefined,
+        vehicleRegistration: registrationRequired
+          ? normalizedRegistration
+          : "",
+      });
 
       if (
-        requested.length !== confirmed.length ||
-        requested.some((key, index) => key !== confirmed[index])
+        !onboardingResult?.ok ||
+        !Array.isArray(onboardingResult.requirements)
       ) {
         throw new Error(
-          "The server saved a different service selection. Refresh your selection before continuing.",
+          onboardingResult?.message ||
+            "Your service and vehicle details were not confirmed. Please try again.",
         );
       }
 
       if (!mountedRef.current) return;
 
-      // Continue only after the server confirms the exact selection.
-      router.push("/(auth)/transport");
+      router.push("/(auth)/documents");
     } catch (cause) {
       if (!mountedRef.current) return;
 
-      setError(
-        cause instanceof Error
-          ? cause.message
-          : "Your Runner services could not be saved. Please try again.",
-      );
+      showOverlay({
+        type: "error",
+        title: "Could not save your setup",
+        message:
+          cause instanceof Error
+            ? cause.message
+            : "Your Runner setup could not be saved. Please try again.",
+        primaryAction: {
+          label: "Close",
+        },
+      });
     } finally {
+      saveInFlightRef.current = false;
+
       if (mountedRef.current) {
         setSaving(false);
       }
     }
   }
 
-  const selectedCount = selectedCategories.length;
+  function handleBottomAction() {
+    if (sessionExpired) {
+      router.replace("/(auth)/login");
+      return;
+    }
 
-  const saveDisabled =
+    if (isApproved) {
+      router.replace("/(app)");
+      return;
+    }
+
+    if (isPendingReview) {
+      router.replace("/(auth)/documents");
+      return;
+    }
+
+    if (isRestricted) {
+      showOverlay({
+        type: "warning",
+        title: "Account access restricted",
+        message:
+          "Your Runner setup cannot be changed. Please contact SaMi Operations for assistance.",
+        primaryAction: {
+          label: "Close",
+        },
+      });
+
+      return;
+    }
+
+    void continueToDocuments();
+  }
+
+  const bottomButtonLabel = sessionExpired
+    ? "Sign in again"
+    : isApproved
+      ? "Open Runner dashboard"
+      : isPendingReview
+        ? "Back to document checklist"
+        : "Continue";
+
+  const bottomButtonDisabled =
+    saving ||
     loading ||
     refreshing ||
-    Boolean(loadError) ||
-    selectedCount === 0 ||
-    saving ||
-    !canEditCategories;
+    (!sessionExpired &&
+      !isApproved &&
+      !isPendingReview &&
+      !isRestricted &&
+      !selectedChoice);
 
   return (
     <SafeAreaView
       edges={["top", "bottom"]}
-      style={[styles.safeArea, { backgroundColor: colors.paper }]}
+      style={[
+        styles.safeArea,
+        { backgroundColor: colors.paper },
+      ]}
     >
       <StatusBar
         barStyle={isDark ? "light-content" : "dark-content"}
         backgroundColor={colors.paper}
       />
 
-      <View style={styles.container}>
-        <ScrollView
-          ref={scrollRef}
-          contentContainerStyle={styles.scrollContent}
-          showsVerticalScrollIndicator={false}
-          keyboardShouldPersistTaps="handled"
-        >
-          {/* Header */}
-          <View style={styles.header}>
-            <Pressable
-              accessibilityRole="button"
-              accessibilityLabel="Go back"
-              disabled={saving}
-              onPress={() => {
-                if (router.canGoBack()) {
-                  router.back();
-                } else if (sessionExpired) {
-                  router.replace("/(auth)/login");
-                } else if (isApproved) {
-                  router.replace("/(app)");
-                } else if (isPendingReview) {
-                  router.replace("/(app)/profile-setup?mode=status");
-                }
-              }}
-              hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}
-              style={({ pressed }) => [
-                styles.backButton,
-                {
-                  backgroundColor: colors.surface,
-                  borderColor: colors.border,
-                  opacity: pressed ? 0.6 : saving ? 0.5 : 1,
-                },
-              ]}
-            >
-              <Ionicons
-                name="chevron-back"
-                size={22}
-                color={colors.text}
-              />
-            </Pressable>
-
-            <View style={styles.brand}>
-              <Text style={[styles.brandName, { color: brandColor }]}>
-                SaMi <Text style={{ color: actionBlue }}>Runner</Text>
-              </Text>
-
-              <Text
-                style={[
-                  styles.brandTagline,
-                  { color: supportingText },
-                ]}
-              >
-                CONSIDER IT DONE
-              </Text>
-            </View>
-
-            <View style={styles.headerSpacer} />
-          </View>
-
-          {/* Progress */}
-          <View style={styles.progressSection}>
-            <View
-              style={[
-                styles.progressTrack,
-                { backgroundColor: colors.border },
-              ]}
-            >
-              <View
-                style={[
-                  styles.progressFill,
-                  { backgroundColor: buttonBlue },
-                ]}
-              />
-            </View>
-
-            <View style={styles.progressMeta}>
-              <Text
-                style={[
-                  styles.progressText,
-                  { color: supportingText },
-                ]}
-              >
-                {isApproved
-                  ? "APPROVED · RUNNER SERVICES"
-                  : isPendingReview
-                    ? "UNDER REVIEW · RUNNER SERVICES"
-                    : isRestricted
-                      ? "RESTRICTED · RUNNER SERVICES"
-                      : "RUNNER SERVICES · STEP 1 OF 3"}
-              </Text>
-
-              <View style={styles.progressDots}>
-                <View
-                  style={[
-                    styles.stepDotCurrent,
-                    { backgroundColor: buttonBlue },
-                  ]}
-                />
-                <View
-                  style={[
-                    styles.stepDot,
-                    { backgroundColor: colors.border },
-                  ]}
-                />
-                <View
-                  style={[
-                    styles.stepDot,
-                    { backgroundColor: colors.border },
-                  ]}
-                />
-              </View>
-            </View>
-          </View>
-
-          {/* Intro */}
-          <View style={styles.intro}>
-            <View
-              style={[
-                styles.iconWrap,
-                { backgroundColor: colors.blueSoft },
-              ]}
-            >
-              <Ionicons
-                name="checkbox-outline"
-                size={27}
-                color={actionBlue}
-              />
-            </View>
-
-            <Text style={[styles.eyebrow, { color: actionBlue }]}>
-              YOUR RUNNER SERVICES
-            </Text>
-
-            <Text style={[styles.title, { color: colors.text }]}>
-              Which services can you provide?
-            </Text>
-
-            <Text
-              style={[styles.subtitle, { color: supportingText }]}
-            >
-              Choose one or both of the two services SaMi offers. Customers can
-              request these services from you based on your selection.
-            </Text>
-          </View>
-
-          {sessionExpired ? (
-            <View
-              style={[
-                styles.accountNotice,
-                { backgroundColor: colors.dangerSoft },
-              ]}
-            >
-              <Ionicons
-                name="lock-closed-outline"
-                size={20}
-                color={colors.red}
-              />
-
-              <View style={styles.accountNoticeCopy}>
-                <Text
-                  style={[
-                    styles.accountNoticeTitle,
-                    { color: colors.text },
-                  ]}
-                >
-                  Runner session expired
-                </Text>
-
-                <Text
-                  style={[
-                    styles.accountNoticeText,
-                    { color: supportingText },
-                  ]}
-                >
-                  Your saved task selection is still on your account.
-                  Sign in again to make changes.
-                </Text>
-
-                <Pressable
-                  onPress={() => router.replace("/(auth)/login")}
-                  hitSlop={8}
-                >
-                  <Text
-                    style={[
-                      styles.accountNoticeAction,
-                      { color: actionBlue },
-                    ]}
-                  >
-                    Sign in again
-                  </Text>
-                </Pressable>
-              </View>
-            </View>
-          ) : isApproved ? (
-            <View
-              style={[
-                styles.accountNotice,
-                { backgroundColor: colors.successSoft },
-              ]}
-            >
-              <Ionicons
-                name="checkmark-circle-outline"
-                size={20}
-                color={colors.success}
-              />
-
-              <View style={styles.accountNoticeCopy}>
-                <Text
-                  style={[
-                    styles.accountNoticeTitle,
-                    { color: colors.text },
-                  ]}
-                >
-                  Runner account approved
-                </Text>
-
-                <Text
-                  style={[
-                    styles.accountNoticeText,
-                    { color: supportingText },
-                  ]}
-                >
-                  Your selected Runner services are read-only after approval.
-                </Text>
-
-                <Pressable
-                  onPress={() => router.replace("/(app)")}
-                  hitSlop={8}
-                >
-                  <Text
-                    style={[
-                      styles.accountNoticeAction,
-                      { color: actionBlue },
-                    ]}
-                  >
-                    Open Runner dashboard
-                  </Text>
-                </Pressable>
-              </View>
-            </View>
-          ) : isPendingReview ? (
-            <View
-              style={[
-                styles.accountNotice,
-                { backgroundColor: colors.warningSoft },
-              ]}
-            >
-              <Ionicons
-                name="time-outline"
-                size={20}
-                color={colors.warning}
-              />
-
-              <View style={styles.accountNoticeCopy}>
-                <Text
-                  style={[
-                    styles.accountNoticeTitle,
-                    { color: colors.text },
-                  ]}
-                >
-                  Application under review
-                </Text>
-
-                <Text
-                  style={[
-                    styles.accountNoticeText,
-                    { color: supportingText },
-                  ]}
-                >
-                  Your submitted Runner services cannot be changed while
-                  SaMi Operations reviews your application.
-                </Text>
-
-                <Pressable
-                  onPress={() =>
-                    router.push("/(app)/profile-setup?mode=status")
-                  }
-                  hitSlop={8}
-                >
-                  <Text
-                    style={[
-                      styles.accountNoticeAction,
-                      { color: actionBlue },
-                    ]}
-                  >
-                    View application status
-                  </Text>
-                </Pressable>
-              </View>
-            </View>
-          ) : isRestricted ? (
-            <View
-              style={[
-                styles.accountNotice,
-                { backgroundColor: colors.dangerSoft },
-              ]}
-            >
-              <Ionicons
-                name="lock-closed-outline"
-                size={20}
-                color={colors.red}
-              />
-
-              <View style={styles.accountNoticeCopy}>
-                <Text
-                  style={[
-                    styles.accountNoticeTitle,
-                    { color: colors.text },
-                  ]}
-                >
-                  Account access restricted
-                </Text>
-
-                <Text
-                  style={[
-                    styles.accountNoticeText,
-                    { color: supportingText },
-                  ]}
-                >
-                  Runner services cannot be changed for this account.
-                  Contact SaMi Operations for assistance.
-                </Text>
-              </View>
-            </View>
-          ) : null}
-
-          {/* Selection summary */}
-          <View
-            style={[
-              styles.selectionSummary,
-              {
-                backgroundColor: colors.blueSoft,
-                borderColor: colors.border,
-              },
-            ]}
+      <KeyboardAvoidingView
+        style={styles.keyboard}
+        behavior={Platform.OS === "ios" ? "padding" : undefined}
+      >
+        <View style={styles.container}>
+          <ScrollView
+            ref={scrollRef}
+            contentContainerStyle={styles.scrollContent}
+            keyboardShouldPersistTaps="handled"
+            showsVerticalScrollIndicator={false}
           >
-            <View style={styles.summaryIcon}>
-              <Ionicons
-                name="layers-outline"
-                size={21}
-                color={actionBlue}
+            {/* Header */}
+            <View style={styles.header}>
+              <Image
+                source={WORDMARK}
+                resizeMode="contain"
+                style={styles.wordmark}
+                accessibilityLabel="SaMi"
               />
-            </View>
-
-            <View style={styles.summaryCopy}>
-              <Text
-                style={[styles.summaryTitle, { color: colors.text }]}
-              >
-                {selectedCount === 0
-                  ? "No Runner services selected"
-                  : `${selectedCount} Runner service${
-                      selectedCount === 1 ? "" : "s"
-                    } selected`}
-              </Text>
-
-              <Text
-                style={[
-                  styles.summarySubtitle,
-                  { color: supportingText },
-                ]}
-              >
-                {!canEditCategories
-                  ? "Your saved task selection is read-only."
-                  : selectedCount === 0
-                    ? "Select at least one service to continue."
-                    : "Tap a selected card to remove it."}
-              </Text>
-            </View>
-          </View>
-
-          {/* Body */}
-          {loading ? (
-            <View
-              style={styles.loadingState}
-              accessibilityRole="progressbar"
-              accessibilityLabel="Loading Runner services"
-            >
-              <ActivityIndicator size="large" color={actionBlue} />
-
-              <Text
-                style={[
-                  styles.loadingText,
-                  { color: supportingText },
-                ]}
-              >
-                Loading Runner services...
-              </Text>
-            </View>
-          ) : loadError ? (
-            <View
-              style={[
-                styles.loadError,
-                { backgroundColor: colors.dangerSoft },
-              ]}
-            >
-              <Ionicons
-                name="alert-circle-outline"
-                size={21}
-                color={colors.red}
-              />
-
-              <Text
-                style={[
-                  styles.loadErrorText,
-                  { color: colors.red },
-                ]}
-              >
-                {loadError}
-              </Text>
 
               <Pressable
                 accessibilityRole="button"
-                accessibilityLabel={
-                  sessionExpired
-                    ? "Sign in again"
-                    : "Retry loading Runner services"
-                }
-                hitSlop={10}
-                onPress={() =>
-                  sessionExpired
-                    ? router.replace("/(auth)/login")
-                    : void loadTaskCategories()
-                }
+                accessibilityLabel="Help with Runner setup"
+                onPress={openHelp}
                 style={({ pressed }) => [
-                  styles.retryButton,
-                  { opacity: pressed ? 0.55 : 1 },
+                  styles.helpButton,
+                  {
+                    backgroundColor: colors.surface,
+                    borderColor: colors.border,
+                    opacity: pressed ? 0.7 : 1,
+                  },
                 ]}
               >
+                <Ionicons
+                  name="help-circle-outline"
+                  size={18}
+                  color={colors.blueAction}
+                />
+
                 <Text
-                  style={[styles.retryText, { color: actionBlue }]}
+                  style={[
+                    styles.helpText,
+                    { color: colors.text },
+                  ]}
                 >
-                  {sessionExpired ? "Sign in" : "Retry"}
+                  Help
                 </Text>
               </Pressable>
             </View>
-          ) : (
-            <View style={styles.serviceGrid}>
-              {availableServices.map((service) => {
-                const selected = selectedCategories.includes(
-                  service.key,
-                );
 
-                return (
-                  <Pressable
-                    key={service.key}
-                    accessibilityRole="checkbox"
-                    accessibilityState={{
-                      checked: selected,
-                      disabled: !canEditCategories || saving || refreshing,
-                    }}
-                    accessibilityLabel={`${service.title}. ${service.description}`}
-                    disabled={
-                      !canEditCategories || saving || refreshing
-                    }
-                    onPress={() => toggleCategory(service.key)}
-                    style={({ pressed }) => [
-                      styles.serviceCard,
-                      {
-                        backgroundColor: selected
-                          ? colors.blueSoft
-                          : colors.surface,
-                        borderColor: selected
-                          ? actionBlue
-                          : colors.border,
-                        opacity: pressed ? 0.88 : 1,
-                        transform: [{ scale: pressed ? 0.985 : 1 }],
-                      },
-                      selected &&
-                        Platform.select({
-                          ios: {
-                            shadowColor: colors.blue,
-                            shadowOpacity: 0.12,
-                            shadowRadius: 6,
-                            shadowOffset: { width: 0, height: 3 },
-                          },
-                          android: { elevation: 2 },
-                          default: {},
-                        }),
+            {/* Heading */}
+            <View style={styles.intro}>
+              <Text
+                style={[
+                  styles.title,
+                  { color: colors.text },
+                ]}
+              >
+                Choose how you want to earn
+              </Text>
+            </View>
+
+            {/* Loading */}
+            {loading && !hasLoadedOnceRef.current ? (
+              <View
+                style={styles.loadingState}
+                accessibilityRole="progressbar"
+                accessibilityLabel="Loading your Runner setup"
+              >
+                <ActivityIndicator
+                  size="large"
+                  color={colors.blueAction}
+                />
+
+                <Text
+                  style={[
+                    styles.loadingText,
+                    { color: supportingText },
+                  ]}
+                >
+                  Loading options…
+                </Text>
+              </View>
+            ) : loadError ? (
+              <View style={styles.loadError}>
+                <Text
+                  style={[
+                    styles.loadErrorText,
+                    { color: supportingText },
+                  ]}
+                >
+                  We could not load your Runner setup.
+                </Text>
+
+                <Pressable
+                  accessibilityRole="button"
+                  onPress={() => void loadSetup()}
+                  style={({ pressed }) => [
+                    styles.retryButton,
+                    { opacity: pressed ? 0.65 : 1 },
+                  ]}
+                >
+                  <Text
+                    style={[
+                      styles.retryText,
+                      { color: colors.blueAction },
                     ]}
                   >
-                    <View
-                      style={[
-                        styles.serviceIcon,
-                        {
-                          backgroundColor: selected
-                            ? buttonBlue
-                            : colors.paper,
-                        },
-                      ]}
-                    >
-                      <Ionicons
-                        name={service.icon}
-                        size={23}
-                        color={selected ? "#FFFFFF" : actionBlue}
-                      />
-                    </View>
+                    Try again
+                  </Text>
+                </Pressable>
+              </View>
+            ) : (
+              <>
+                {/* Combined service and vehicle options */}
+                <View style={styles.choiceList}>
+                  {EARNING_CHOICES.map((choice) => {
+                    const selected = selectedChoiceId === choice.id;
 
+                    return (
+                      <Pressable
+                        key={choice.id}
+                        accessibilityRole="radio"
+                        accessibilityState={{
+                          checked: selected,
+                          disabled: !canEdit,
+                        }}
+                        accessibilityLabel={[
+                          choice.title,
+                          "Age 18 and above",
+                          `Vehicle: ${choice.vehicleLabel}`,
+                          `Licence: ${choice.licenceLabel}`,
+                        ].join(". ")}
+                        disabled={!canEdit}
+                        onPress={() => chooseEarningOption(choice)}
+                        style={({ pressed }) => [
+                          styles.choiceCard,
+                          {
+                            backgroundColor: colors.surface,
+                            borderColor: selected
+                              ? brandColor
+                              : colors.border,
+                            borderWidth: selected ? 2.5 : 1,
+                            opacity: pressed ? 0.88 : 1,
+                          },
+                        ]}
+                      >
+                        <View style={styles.choiceCopy}>
+                          <Text
+                            style={[
+                              styles.categoryBadge,
+                              { color: colors.blueAction },
+                            ]}
+                          >
+                            {choice.categoryLabel.toUpperCase()}
+                          </Text>
+
+                          <Text
+                            style={[
+                              styles.choiceTitle,
+                              { color: colors.text },
+                            ]}
+                          >
+                            {choice.title}
+                          </Text>
+
+                          <Text
+                            style={[
+                              styles.choiceMetadata,
+                              { color: supportingText },
+                            ]}
+                          >
+                            Age: 18+  ·  Vehicle: {choice.vehicleLabel}
+                          </Text>
+
+                          <Text
+                            style={[
+                              styles.choiceMetadata,
+                              { color: supportingText },
+                            ]}
+                          >
+                            Licence: {choice.licenceLabel}
+                          </Text>
+                        </View>
+
+                        <View
+                          style={[
+                            styles.vehicleIconWrap,
+                            {
+                              backgroundColor: colors.blueSoft,
+                            },
+                          ]}
+                        >
+                          <Ionicons
+                            name={choice.icon}
+                            size={34}
+                            color={colors.blueAction}
+                          />
+                        </View>
+                      </Pressable>
+                    );
+                  })}
+                </View>
+
+                {/* Service area */}
+                <View style={styles.fieldGroup}>
+                  <Text
+                    style={[
+                      styles.fieldLabel,
+                      { color: colors.text },
+                    ]}
+                  >
+                    Service area
+                  </Text>
+
+                  <TextInput
+                    value={serviceArea}
+                    onChangeText={setServiceArea}
+                    onFocus={() => setServiceAreaFocused(true)}
+                    onBlur={() => setServiceAreaFocused(false)}
+                    placeholder="e.g. Westlands, Nairobi"
+                    placeholderTextColor={colors.textMuted}
+                    editable={canEdit}
+                    maxLength={120}
+                    autoCapitalize="words"
+                    returnKeyType={
+                      registrationRequired ? "next" : "done"
+                    }
+                    selectionColor={colors.blueAction}
+                    style={[
+                      styles.textInput,
+                      {
+                        color: colors.text,
+                        backgroundColor: colors.surface,
+                        borderColor: serviceAreaFocused
+                          ? colors.blueAction
+                          : colors.border,
+                      },
+                    ]}
+                  />
+                </View>
+
+                {/* Vehicle model: motorbike and vehicle only */}
+                {registrationRequired ? (
+                  <View style={styles.fieldGroup}>
                     <Text
-                      numberOfLines={2}
                       style={[
-                        styles.serviceTitle,
+                        styles.fieldLabel,
                         { color: colors.text },
                       ]}
                     >
-                      {service.title}
+                      Vehicle make and model
                     </Text>
 
-                    <Text
-                      numberOfLines={3}
+                    <TextInput
+                      value={vehicleModel}
+                      onChangeText={setVehicleModel}
+                      onFocus={() => setVehicleModelFocused(true)}
+                      onBlur={() => setVehicleModelFocused(false)}
+                      placeholder="e.g. Honda CG 125 or Toyota Vitz"
+                      placeholderTextColor={colors.textMuted}
+                      editable={canEdit}
+                      maxLength={120}
+                      autoCapitalize="words"
+                      autoCorrect={false}
+                      returnKeyType="next"
+                      selectionColor={colors.blueAction}
                       style={[
-                        styles.serviceDescription,
-                        { color: supportingText },
-                      ]}
-                    >
-                      {service.description}
-                    </Text>
-
-                    <View
-                      style={[
-                        styles.checkbox,
+                        styles.textInput,
                         {
-                          backgroundColor: selected
-                            ? buttonBlue
-                            : "transparent",
-                          borderColor: selected
-                            ? actionBlue
+                          color: colors.text,
+                          backgroundColor: colors.surface,
+                          borderColor: vehicleModelFocused
+                            ? colors.blueAction
                             : colors.border,
                         },
                       ]}
+                    />
+                  </View>
+                ) : null}
+
+                {/* Registration number: motorbike and vehicle only */}
+                {registrationRequired ? (
+                  <View style={styles.fieldGroup}>
+                    <Text
+                      style={[
+                        styles.fieldLabel,
+                        { color: colors.text },
+                      ]}
                     >
-                      {selected ? (
-                        <Ionicons
-                          name="checkmark"
-                          size={14}
-                          color="#FFFFFF"
-                        />
-                      ) : null}
-                    </View>
-                  </Pressable>
-                );
-              })}
-            </View>
-          )}
+                      Vehicle registration number
+                    </Text>
 
-          {/* Validation error */}
-          {error ? (
-            <View
-              accessibilityRole="alert"
-              accessibilityLiveRegion="polite"
-              style={[
-                styles.errorContainer,
-                { backgroundColor: colors.dangerSoft },
-              ]}
-            >
-              <Ionicons
-                name="alert-circle-outline"
-                size={18}
-                color={colors.red}
-              />
+                    <TextInput
+                      value={vehicleRegistration}
+                      onChangeText={setVehicleRegistration}
+                      onFocus={() => setRegistrationFocused(true)}
+                      onBlur={() => setRegistrationFocused(false)}
+                      placeholder="Enter registration number"
+                      placeholderTextColor={colors.textMuted}
+                      editable={canEdit}
+                      maxLength={20}
+                      autoCapitalize="characters"
+                      autoCorrect={false}
+                      returnKeyType="done"
+                      selectionColor={colors.blueAction}
+                      style={[
+                        styles.textInput,
+                        {
+                          color: colors.text,
+                          backgroundColor: colors.surface,
+                          borderColor: registrationFocused
+                            ? colors.blueAction
+                            : colors.border,
+                        },
+                      ]}
+                    />
+                  </View>
+                ) : null}
+              </>
+            )}
+          </ScrollView>
 
-              <Text style={[styles.errorText, { color: colors.red }]}>
-                {error}
-              </Text>
-            </View>
-          ) : null}
-
-          {/* Note */}
-          <View style={styles.note}>
-            <Ionicons
-              name="information-circle-outline"
-              size={17}
-              color={supportingText}
-            />
-
-            <Text
-              style={[styles.noteText, { color: supportingText }]}
-            >
-              Your selected services help SaMi determine the relevant setup
-              requirements. Shared identity documents are requested only once.
-            </Text>
-          </View>
-        </ScrollView>
-
-        {/* Bottom bar */}
-        <View
-          style={[
-            styles.bottomBar,
-            {
-              backgroundColor: colors.paper,
-              borderTopColor: colors.border,
-            },
-          ]}
-        >
-          {sessionExpired ? (
+          {/* Fixed bottom action */}
+          <View
+            style={[
+              styles.bottomBar,
+              {
+                backgroundColor: colors.paper,
+                borderTopColor: colors.border,
+              },
+            ]}
+          >
             <Pressable
               accessibilityRole="button"
-              onPress={() => router.replace("/(auth)/login")}
+              accessibilityLabel={bottomButtonLabel}
+              accessibilityState={{
+                disabled: bottomButtonDisabled,
+                busy: saving,
+              }}
+              disabled={bottomButtonDisabled}
+              onPress={handleBottomAction}
               style={({ pressed }) => [
-                styles.primaryButton,
+                styles.continueButton,
                 { backgroundColor: buttonBlue },
-                pressed && styles.pressed,
-              ]}
-            >
-              <Text style={styles.primaryButtonText}>Sign in again</Text>
-              <Ionicons name="arrow-forward" size={19} color="#FFFFFF" />
-            </Pressable>
-          ) : isApproved ? (
-            <Pressable
-              accessibilityRole="button"
-              onPress={() => router.replace("/(app)")}
-              style={({ pressed }) => [
-                styles.primaryButton,
-                { backgroundColor: buttonBlue },
-                pressed && styles.pressed,
-              ]}
-            >
-              <Text style={styles.primaryButtonText}>
-                Open Runner dashboard
-              </Text>
-              <Ionicons name="arrow-forward" size={19} color="#FFFFFF" />
-            </Pressable>
-          ) : isPendingReview ? (
-            <Pressable
-              accessibilityRole="button"
-              onPress={() =>
-                router.push("/(app)/profile-setup?mode=status")
-              }
-              style={({ pressed }) => [
-                styles.primaryButton,
-                { backgroundColor: buttonBlue },
-                pressed && styles.pressed,
-              ]}
-            >
-              <Text style={styles.primaryButtonText}>
-                View application status
-              </Text>
-              <Ionicons name="arrow-forward" size={19} color="#FFFFFF" />
-            </Pressable>
-          ) : isRestricted ? null : (
-            <Pressable
-              accessibilityRole="button"
-              accessibilityLabel="Save and continue"
-              accessibilityHint="Saves your task selection and opens the transport step"
-              disabled={saveDisabled}
-              onPress={() => void saveTaskSelection()}
-              style={({ pressed }) => [
-                styles.primaryButton,
-                { backgroundColor: buttonBlue },
-                saveDisabled && styles.disabled,
-                pressed && !saveDisabled && styles.pressed,
+                bottomButtonDisabled && styles.disabled,
+                pressed && !bottomButtonDisabled && styles.pressed,
               ]}
             >
               {saving ? (
                 <ActivityIndicator color="#FFFFFF" />
               ) : (
                 <>
-                  <Text style={styles.primaryButtonText}>
-                    Save and continue
+                  <Text style={styles.continueButtonText}>
+                    {bottomButtonLabel}
                   </Text>
+
                   <Ionicons
                     name="arrow-forward"
                     size={19}
@@ -1019,211 +933,138 @@ export default function RunnerTaskSelectionScreen() {
                 </>
               )}
             </Pressable>
-          )}
-
-          {!isRestricted ? (
-            <Text style={[styles.bottomHint, { color: supportingText }]}>
-              {sessionExpired
-                ? "Your saved application data remains on your account."
-                : isApproved
-                  ? "Your selected Runner services remain available for reference."
-                  : isPendingReview
-                    ? "Your application is being reviewed. You can leave this screen and return later."
-                    : "Select at least one Runner service to continue."}
-            </Text>
-          ) : null}
+          </View>
         </View>
-      </View>
+      </KeyboardAvoidingView>
     </SafeAreaView>
   );
 }
 
 const styles = StyleSheet.create({
-  safeArea: { flex: 1 },
-  container: { flex: 1 },
+  safeArea: {
+    flex: 1,
+  },
+
+  keyboard: {
+    flex: 1,
+  },
+
+  container: {
+    flex: 1,
+  },
 
   scrollContent: {
     paddingHorizontal: 20,
     paddingTop: 12,
-    paddingBottom: 32,
-    gap: 22,
+    paddingBottom: 24,
   },
 
-  // Header
   header: {
-    minHeight: BACK_SIZE,
+    minHeight: 44,
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
+    marginBottom: 25,
   },
 
-  backButton: {
-    width: BACK_SIZE,
-    height: BACK_SIZE,
-    borderRadius: 14,
+  wordmark: {
+    width: 112,
+    height: 36,
+  },
+
+  helpButton: {
+    minHeight: 38,
+    paddingHorizontal: 13,
     borderWidth: 1,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-
-  brand: {
-    alignItems: "center",
-    gap: 3,
-  },
-
-  brandName: {
-    fontSize: 19,
-    fontWeight: "900",
-    fontStyle: "italic",
-    letterSpacing: -0.5,
-  },
-
-  brandTagline: {
-    fontSize: 8,
-    fontWeight: "900",
-    letterSpacing: 2,
-  },
-
-  headerSpacer: { width: BACK_SIZE },
-
-  // Progress
-  progressSection: { gap: 10 },
-
-  progressTrack: {
-    height: 6,
-    borderRadius: 6,
-    overflow: "hidden",
-  },
-
-  progressFill: {
-    width: "33.33%",
-    height: "100%",
-    borderRadius: 6,
-  },
-
-  progressMeta: {
+    borderRadius: 22,
     flexDirection: "row",
     alignItems: "center",
-    justifyContent: "space-between",
-  },
-
-  progressText: {
-    fontSize: 10.5,
-    fontWeight: "900",
-    letterSpacing: 1.2,
-  },
-
-  progressDots: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 5,
-  },
-
-  stepDot: {
-    width: 6,
-    height: 6,
-    borderRadius: 3,
-  },
-
-  stepDotCurrent: {
-    width: 16,
-    height: 6,
-    borderRadius: 3,
-  },
-
-  // Intro
-  intro: { gap: 10 },
-
-  iconWrap: {
-    width: 54,
-    height: 54,
-    borderRadius: 17,
-    alignItems: "center",
     justifyContent: "center",
-    marginBottom: 2,
+    gap: 6,
   },
 
-  eyebrow: {
-    fontSize: 11,
-    fontWeight: "900",
-    letterSpacing: 1.4,
+  helpText: {
+    fontSize: 13,
+    fontWeight: "700",
+  },
+
+  intro: {
+    marginBottom: 19,
   },
 
   title: {
-    fontSize: 28,
-    lineHeight: 36,
-    fontWeight: "900",
+    fontSize: 25,
+    lineHeight: 32,
     letterSpacing: -0.7,
+    fontWeight: "800",
   },
 
-  subtitle: {
-    fontSize: 13.5,
-    lineHeight: 21,
+  choiceList: {
+    gap: 12,
   },
 
-  accountNotice: {
-    borderRadius: 14,
-    padding: 14,
+  choiceCard: {
+    minHeight: 132,
+    borderRadius: 16,
+    paddingVertical: 14,
+    paddingHorizontal: 14,
     flexDirection: "row",
-    alignItems: "flex-start",
+    alignItems: "center",
+    justifyContent: "space-between",
     gap: 10,
   },
 
-  accountNoticeCopy: {
+  choiceCopy: {
     flex: 1,
     gap: 5,
   },
 
-  accountNoticeTitle: {
-    fontSize: 13,
+  categoryBadge: {
+    fontSize: 10,
     fontWeight: "900",
-    lineHeight: 18,
+    letterSpacing: 0.7,
   },
 
-  accountNoticeText: {
-    fontSize: 12,
-    lineHeight: 18,
+  choiceTitle: {
+    fontSize: 16,
+    lineHeight: 21,
+    fontWeight: "800",
+    letterSpacing: -0.25,
   },
 
-  accountNoticeAction: {
-    fontSize: 12,
-    fontWeight: "900",
-    paddingTop: 2,
+  choiceMetadata: {
+    fontSize: 11,
+    lineHeight: 16,
+    fontWeight: "500",
   },
 
-  // Selection summary
-  selectionSummary: {
-    minHeight: 76,
-    borderWidth: 1,
-    borderRadius: 16,
-    paddingHorizontal: 14,
-    paddingVertical: 12,
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 12,
-  },
-
-  summaryIcon: {
-    width: 40,
-    height: 40,
-    borderRadius: 12,
+  vehicleIconWrap: {
+    width: 64,
+    height: 64,
+    borderRadius: 32,
     alignItems: "center",
     justifyContent: "center",
+    flexShrink: 0,
   },
 
-  summaryCopy: { flex: 1, gap: 4 },
+  fieldGroup: {
+    marginTop: 20,
+    gap: 8,
+  },
 
-  summaryTitle: {
+  fieldLabel: {
     fontSize: 13,
-    fontWeight: "900",
+    fontWeight: "800",
   },
 
-  summarySubtitle: {
-    fontSize: 11.5,
-    lineHeight: 16,
+  textInput: {
+    minHeight: 50,
+    borderWidth: 1,
+    borderRadius: 12,
+    paddingHorizontal: 14,
+    fontSize: 14,
   },
 
-  // Loading + load error
   loadingState: {
     minHeight: 180,
     alignItems: "center",
@@ -1231,146 +1072,64 @@ const styles = StyleSheet.create({
     gap: 12,
   },
 
-  loadingText: { fontSize: 12.5 },
+  loadingText: {
+    fontSize: 13,
+    fontWeight: "600",
+  },
 
   loadError: {
-    borderRadius: 14,
-    padding: 14,
-    flexDirection: "row",
+    minHeight: 180,
     alignItems: "center",
-    gap: 10,
+    justifyContent: "center",
+    gap: 12,
+    paddingHorizontal: 20,
   },
 
   loadErrorText: {
-    flex: 1,
-    fontSize: 12,
-    lineHeight: 18,
+    textAlign: "center",
+    fontSize: 14,
+    lineHeight: 21,
   },
 
-  retryButton: { padding: 6 },
+  retryButton: {
+    paddingHorizontal: 16,
+    paddingVertical: 10,
+  },
 
   retryText: {
-    fontSize: 12,
-    fontWeight: "900",
+    fontSize: 14,
+    fontWeight: "800",
   },
 
-  // Runner service cards
-  serviceGrid: {
-    flexDirection: "row",
-    flexWrap: "wrap",
-    justifyContent: "space-between",
-    rowGap: 12,
-  },
-
-  serviceCard: {
-    width: "48%",
-    minHeight: 164,
-    borderWidth: 1,
-    borderRadius: 16,
-    padding: 14,
-    gap: 6,
-    position: "relative",
-  },
-
-  serviceIcon: {
-    width: 44,
-    height: 44,
-    borderRadius: 13,
-    alignItems: "center",
-    justifyContent: "center",
-    marginBottom: 4,
-  },
-
-  serviceTitle: {
-    fontSize: 13.5,
-    lineHeight: 18,
-    fontWeight: "900",
-    paddingRight: 24,
-  },
-
-  serviceDescription: {
-    fontSize: 11.5,
-    lineHeight: 16,
-    paddingRight: 2,
-  },
-
-  checkbox: {
-    width: 22,
-    height: 22,
-    borderWidth: 1.5,
-    borderRadius: 7,
-    alignItems: "center",
-    justifyContent: "center",
-    position: "absolute",
-    top: 12,
-    right: 12,
-  },
-
-  // Error + note
-  errorContainer: {
-    borderRadius: 12,
-    padding: 12,
-    flexDirection: "row",
-    alignItems: "flex-start",
-    gap: 9,
-  },
-
-  errorText: {
-    flex: 1,
-    fontSize: 12.5,
-    lineHeight: 18,
-  },
-
-  note: {
-    flexDirection: "row",
-    alignItems: "flex-start",
-    gap: 9,
-    paddingHorizontal: 3,
-  },
-
-  noteText: {
-    flex: 1,
-    fontSize: 11.5,
-    lineHeight: 17,
-  },
-
-  // Bottom bar
   bottomBar: {
     paddingHorizontal: 20,
-    paddingTop: 13,
+    paddingTop: 12,
     paddingBottom: 10,
-    borderTopWidth: 1,
-    gap: 9,
+    borderTopWidth: StyleSheet.hairlineWidth,
   },
 
-  primaryButton: {
-    minHeight: 58,
-    borderRadius: 15,
+  continueButton: {
+    minHeight: 54,
+    borderRadius: 13,
+    paddingHorizontal: 18,
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "center",
     gap: 10,
   },
 
-  primaryButtonText: {
+  continueButtonText: {
     color: "#FFFFFF",
     fontSize: 15,
-    fontWeight: "900",
-    letterSpacing: -0.2,
+    fontWeight: "800",
   },
 
-  bottomHint: {
-    fontSize: 11.5,
-    lineHeight: 16,
-    textAlign: "center",
-    maxWidth: 340,
-    alignSelf: "center",
+  disabled: {
+    opacity: 0.5,
   },
-
-  disabled: { opacity: 0.45 },
 
   pressed: {
     opacity: 0.85,
-    transform: [{ scale: 0.985 }],
+    transform: [{ scale: 0.99 }],
   },
 });

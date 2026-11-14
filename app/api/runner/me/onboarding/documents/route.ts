@@ -49,6 +49,8 @@ type UploadedDocument = {
 
 type RunnerProfile = {
   vehicle_type: string | null;
+  vehicle_model: string | null;
+  vehicle_registration: string | null;
 };
 
 function response(
@@ -447,10 +449,14 @@ export async function POST(request: Request) {
 
     const profileResult =
       await client.query<RunnerProfile>(
-        `SELECT vehicle_type
+        `SELECT
+           vehicle_type,
+           vehicle_model,
+           vehicle_registration
          FROM public.runner_profiles
          WHERE runner_id = $1
-         LIMIT 1`,
+         LIMIT 1
+         FOR UPDATE`,
         [auth.runner.id],
       );
 
@@ -459,6 +465,33 @@ export async function POST(request: Request) {
     if (!profile?.vehicle_type) {
       return await rejectTransaction(
         "Complete your transport details before uploading verification documents.",
+        409,
+      );
+    }
+
+    const isMotorisedVehicle = [
+      "motorcycle",
+      "car",
+      "van",
+      "other",
+    ].includes(profile.vehicle_type);
+
+    if (
+      isMotorisedVehicle &&
+      !profile.vehicle_model?.trim()
+    ) {
+      return await rejectTransaction(
+        "Save your vehicle make and model before uploading verification documents.",
+        409,
+      );
+    }
+
+    if (
+      isMotorisedVehicle &&
+      !profile.vehicle_registration?.trim()
+    ) {
+      return await rejectTransaction(
+        "Save your vehicle registration number before uploading verification documents.",
         409,
       );
     }
@@ -535,9 +568,8 @@ export async function POST(request: Request) {
         ]),
     );
 
-    // Enforce the mandatory-document rule again in application code.
-    // This prevents an optional requirement from being uploaded even if
-    // the query is changed incorrectly in a future edit.
+    // Prevent optional or unknown requirements from being
+    // uploaded through the mandatory onboarding flow.
     if (requirementMap.size !== preparedUploads.length) {
       return await rejectTransaction(
         "Optional documents cannot be submitted during Runner onboarding. Upload only the mandatory documents shown in your checklist.",

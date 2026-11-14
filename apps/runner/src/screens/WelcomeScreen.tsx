@@ -1,16 +1,18 @@
 
-import React, { useState } from "react";
+import React from "react";
 import {
   Image,
   ImageBackground,
-  Modal,
   Pressable,
   StyleSheet,
   Text,
   View,
   useWindowDimensions,
 } from "react-native";
+
 import { SafeAreaView } from "react-native-safe-area-context";
+
+import { useRunnerTheme } from "@/theme";
 
 const NAVY = "#000535";
 const WHITE = "#FFFFFF";
@@ -28,11 +30,21 @@ export default function WelcomeScreen({
   onGetStarted,
   onSignIn,
 }: WelcomeScreenProps) {
-  const [helpVisible, setHelpVisible] = useState(false);
+  const { showOverlay } = useRunnerTheme();
+
   const { width, height } = useWindowDimensions();
 
   const compact = height < 780;
   const narrow = width < 360;
+
+  function openHelp(): void {
+    showOverlay({
+      type: "info",
+      title: "SaMi Runner Help",
+      message:
+        "New to SaMi Runner? Select Get started to begin registration. Already registered? Select Sign in to access your account. You will need access to the email address registered to your Runner account to receive your secure verification code.",
+    });
+  }
 
   return (
     <ImageBackground
@@ -50,11 +62,14 @@ export default function WelcomeScreen({
         style={styles.safeArea}
         edges={["top", "bottom"]}
       >
-        <View style={[
-          styles.content,
-          narrow && styles.contentNarrow,
-        ]}>
+        <View
+          style={[
+            styles.content,
+            narrow && styles.contentNarrow,
+          ]}
+        >
           {/* BRAND HEADER */}
+
           <View style={styles.header}>
             <Image
               source={WORDMARK}
@@ -71,7 +86,7 @@ export default function WelcomeScreen({
               accessibilityRole="button"
               accessibilityLabel="Help"
               accessibilityHint="Opens SaMi Runner help information"
-              onPress={() => setHelpVisible(true)}
+              onPress={openHelp}
               hitSlop={8}
               style={({ pressed }) => [
                 styles.helpButton,
@@ -87,10 +102,13 @@ export default function WelcomeScreen({
           </View>
 
           {/* MAIN MESSAGE — KEPT IN THE DARK SKY */}
-          <View style={[
-            styles.hero,
-            compact && styles.heroCompact,
-          ]}>
+
+          <View
+            style={[
+              styles.hero,
+              compact && styles.heroCompact,
+            ]}
+          >
             <View style={styles.appLabel}>
               <Text style={styles.appLabelText}>
                 SaMi Runner
@@ -109,11 +127,13 @@ export default function WelcomeScreen({
               <Text style={styles.headingAccent}>.</Text>
             </Text>
 
-            <Text style={[
-              styles.description,
-              compact && styles.descriptionCompact,
-              narrow && styles.descriptionNarrow,
-            ]}>
+            <Text
+              style={[
+                styles.description,
+                compact && styles.descriptionCompact,
+                narrow && styles.descriptionNarrow,
+              ]}
+            >
               Shop, pick up, assist and complete
               everyday tasks for your community
               with SaMi.
@@ -121,9 +141,11 @@ export default function WelcomeScreen({
           </View>
 
           {/* FLEXIBLE SPACE KEEPS ACTIONS AT THE BOTTOM */}
+
           <View style={styles.spacer} />
 
           {/* PRIMARY ACTIONS */}
+
           <View style={styles.actions}>
             <Pressable
               accessibilityRole="button"
@@ -157,50 +179,13 @@ export default function WelcomeScreen({
           </View>
         </View>
       </SafeAreaView>
-
-      {/* HELP DIALOG */}
-      <Modal
-        visible={helpVisible}
-        transparent
-        animationType="fade"
-        statusBarTranslucent
-        onRequestClose={() => setHelpVisible(false)}
-      >
-        <View style={styles.modalOverlay}>
-          <View
-            style={styles.modalCard}
-            accessibilityRole="summary"
-          >
-            <Text style={styles.modalTitle}>
-              SaMi Runner Help
-            </Text>
-
-            <Text style={styles.modalDescription}>
-              New to SaMi Runner? Select Get started
-              to begin registration.
-              {"\n\n"}
-              Already registered? Select Sign in
-              to access your account.
-            </Text>
-
-            <Pressable
-              accessibilityRole="button"
-              onPress={() => setHelpVisible(false)}
-              style={({ pressed }) => [
-                styles.modalButton,
-                pressed && styles.pressed,
-              ]}
-            >
-              <Text style={styles.modalButtonText}>
-                Got it
-              </Text>
-            </Pressable>
-          </View>
-        </View>
-      </Modal>
     </ImageBackground>
   );
 }
+
+/* =========================================================
+   STYLES
+========================================================= */
 
 const styles = StyleSheet.create({
   background: {
@@ -417,51 +402,5 @@ const styles = StyleSheet.create({
   pressed: {
     opacity: 0.78,
     transform: [{ scale: 0.985 }],
-  },
-
-  modalOverlay: {
-    flex: 1,
-    backgroundColor: "rgba(0, 0, 0, 0.72)",
-    justifyContent: "center",
-    alignItems: "center",
-    paddingHorizontal: 24,
-  },
-
-  modalCard: {
-    width: "100%",
-    maxWidth: 390,
-    backgroundColor: NAVY,
-    borderWidth: 1,
-    borderColor: "rgba(255,255,255,0.25)",
-    borderRadius: 22,
-    padding: 25,
-  },
-
-  modalTitle: {
-    color: WHITE,
-    fontSize: 21,
-    fontWeight: "800",
-    marginBottom: 14,
-  },
-
-  modalDescription: {
-    color: "#E3E9FA",
-    fontSize: 15,
-    lineHeight: 24,
-  },
-
-  modalButton: {
-    minHeight: 48,
-    backgroundColor: WHITE,
-    borderRadius: 13,
-    justifyContent: "center",
-    alignItems: "center",
-    marginTop: 23,
-  },
-
-  modalButtonText: {
-    color: NAVY,
-    fontWeight: "800",
-    fontSize: 15,
   },
 });

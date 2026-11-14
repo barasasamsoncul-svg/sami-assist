@@ -11,6 +11,12 @@ import {
 
 import * as SecureStore from "expo-secure-store";
 
+import {
+  SaMiOverlay,
+  type SaMiOverlayAction,
+  type SaMiOverlayType,
+} from "../../shared/components/SaMiOverlay";
+
 /* =========================================================
    THEME TYPES
 ========================================================= */
@@ -122,6 +128,23 @@ export type RunnerThemeColors = {
 };
 
 /* =========================================================
+   OVERLAY TYPES
+   Shared SaMiOverlay is controlled through the Runner theme.
+========================================================= */
+
+export type RunnerOverlayOptions = {
+  type: SaMiOverlayType;
+  title: string;
+  message: string;
+  children?: ReactNode;
+  primaryAction?: SaMiOverlayAction;
+  secondaryAction?: SaMiOverlayAction;
+  onClose?: () => void;
+  onDismiss?: () => void;
+  dismissOnBackdrop?: boolean;
+};
+
+/* =========================================================
    SHARED LAYOUT TOKENS
 ========================================================= */
 
@@ -201,6 +224,9 @@ type RunnerThemeContextValue = {
 
   setMode: (mode: RunnerThemeMode) => Promise<void>;
   toggleMode: () => Promise<void>;
+
+  showOverlay: (options: RunnerOverlayOptions) => void;
+  hideOverlay: () => void;
 };
 
 const RunnerThemeContext =
@@ -237,6 +263,8 @@ function readInitialThemeMode(): RunnerThemeMode {
 
 /* =========================================================
    GLOBAL THEME PROVIDER
+   Owns the Runner appearance preference and the shared
+   SaMiOverlay instance.
 ========================================================= */
 
 type RunnerThemeProviderProps = {
@@ -249,6 +277,13 @@ export function RunnerThemeProvider({
   const [mode, setModeState] = useState<RunnerThemeMode>(
     readInitialThemeMode,
   );
+
+  const [overlay, setOverlay] =
+    useState<RunnerOverlayOptions | null>(null);
+
+  /* =======================================================
+     APPEARANCE CONTROLS
+  ======================================================= */
 
   const setMode = useCallback(
     async (nextMode: RunnerThemeMode): Promise<void> => {
@@ -274,8 +309,43 @@ export function RunnerThemeProvider({
     await setMode(nextMode);
   }, [mode, setMode]);
 
+  /* =======================================================
+     OVERLAY CONTROLS
+  ======================================================= */
+
+  const showOverlay = useCallback(
+    (options: RunnerOverlayOptions) => {
+      setOverlay(options);
+    },
+    [],
+  );
+
+  const hideOverlay = useCallback(() => {
+    setOverlay(null);
+  }, []);
+
+  const handleOverlayDismiss = useCallback(() => {
+    const activeOverlay = overlay;
+
+    setOverlay(null);
+
+    if (activeOverlay?.onDismiss) {
+      activeOverlay.onDismiss();
+    } else {
+      activeOverlay?.onClose?.();
+    }
+  }, [overlay]);
+
+  /* =======================================================
+     ACTIVE THEME PALETTE
+  ======================================================= */
+
   const colors: RunnerThemeColors =
     mode === "dark" ? dark : light;
+
+  /* =======================================================
+     CONTEXT VALUE
+  ======================================================= */
 
   const value = useMemo<RunnerThemeContextValue>(
     () => ({
@@ -284,14 +354,41 @@ export function RunnerThemeProvider({
       isDark: mode === "dark",
       setMode,
       toggleMode,
+      showOverlay,
+      hideOverlay,
     }),
-    [mode, colors, setMode, toggleMode],
+    [
+      mode,
+      colors,
+      setMode,
+      toggleMode,
+      showOverlay,
+      hideOverlay,
+    ],
   );
+
+  /* =======================================================
+     APPLICATION THEME TREE
+     One shared overlay instance for the entire Runner app.
+  ======================================================= */
 
   return createElement(
     RunnerThemeContext.Provider,
     { value },
     children,
+    createElement(SaMiOverlay, {
+      open: overlay !== null,
+      type: overlay?.type ?? "info",
+      title: overlay?.title ?? "",
+      message: overlay?.message ?? "",
+      theme: colors,
+      children: overlay?.children,
+      primaryAction: overlay?.primaryAction,
+      secondaryAction: overlay?.secondaryAction,
+      onClose: handleOverlayDismiss,
+      onDismiss: handleOverlayDismiss,
+      dismissOnBackdrop: overlay?.dismissOnBackdrop,
+    }),
   );
 }
 

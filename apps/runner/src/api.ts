@@ -7,6 +7,8 @@ const SESSION_KEY = "sami_runner_access_token";
 const PUBLIC_AUTH_PATHS = [
   "/api/runner/auth/request-otp",
   "/api/runner/auth/verify-otp",
+  "/api/runner/auth/confirm-registration",
+  "/api/runner/auth/cancel-registration",
 ];
 
 const ONBOARDING_DOCUMENTS_PATH =
@@ -181,6 +183,7 @@ export type RunnerOnboardingData = {
     verificationStatus: string;
     serviceArea: string | null;
     vehicleType: string | null;
+    vehicleModel: string | null;
     vehicleRegistration: string | null;
     selectedCategories: string[];
   };
@@ -221,6 +224,13 @@ export type RunnerOnboardingSubmissionResult = {
 export type RunnerOnboardingUpdateResult = {
   ok: boolean;
   message: string;
+  runner: {
+    serviceArea: string;
+    vehicleType: RunnerVehicleType | null;
+    vehicleModel: string | null;
+    vehicleRegistration: string | null;
+    selectedCategories: string[];
+  };
   requirements: RunnerDocumentRequirement[];
 };
 
@@ -354,6 +364,25 @@ function assertRunnerTransportInput(input: {
   ) {
     throw new Error(
       "Vehicle registration is required for Motorbike and Vehicle.",
+    );
+  }
+}
+
+function assertRunnerOnboardingTransportInput(input: {
+  serviceArea: string;
+  vehicleType: string;
+  vehicleModel?: string;
+  vehicleRegistration?: string;
+}) {
+  assertRunnerTransportInput(input);
+
+  if (
+    (input.vehicleType === "motorbike" ||
+      input.vehicleType === "vehicle") &&
+    (input.vehicleModel?.trim().length ?? 0) < 2
+  ) {
+    throw new Error(
+      "Vehicle make and model are required for Motorbike and Vehicle.",
     );
   }
 }
@@ -883,9 +912,10 @@ export async function getRunnerOnboarding(): Promise<RunnerOnboardingData> {
 export async function updateRunnerOnboarding(input: {
   serviceArea: string;
   vehicleType: RunnerVehicleType;
+  vehicleModel?: string;
   vehicleRegistration?: string;
 }): Promise<RunnerOnboardingUpdateResult> {
-  assertRunnerTransportInput(input);
+  assertRunnerOnboardingTransportInput(input);
 
   const result = await apiRequest<RunnerOnboardingUpdateResult>(
     "/api/runner/me/onboarding",
@@ -894,6 +924,7 @@ export async function updateRunnerOnboarding(input: {
       body: {
         serviceArea: input.serviceArea.trim(),
         vehicleType: input.vehicleType,
+        vehicleModel: input.vehicleModel?.trim() || undefined,
         vehicleRegistration: input.vehicleRegistration?.trim() || undefined,
       },
     },

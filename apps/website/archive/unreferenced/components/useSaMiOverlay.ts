@@ -2,7 +2,7 @@
 
 import { useCallback, useState } from "react";
 import type { ReactNode } from "react";
-import type { SaMiOverlayAction, SaMiOverlayType } from "./SaMiOverlay";
+import type { SaMiOverlayAction, SaMiOverlayType } from "../../../../shared/components/SaMiOverlay";
 
 export type SaMiOverlayState = {
   open: boolean;
