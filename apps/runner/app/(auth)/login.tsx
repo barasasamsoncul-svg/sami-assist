@@ -1,3 +1,4 @@
+
 import { useEffect, useRef, useState } from "react";
 
 import {
@@ -34,7 +35,6 @@ import { useRunnerTheme } from "@/theme";
    CONSTANTS AND VALIDATION
 ========================================================= */
 
-const BACK_SIZE = 46;
 const WORDMARK = require("../../assets/sami-wordmark.png");
 
 function normalizeEmail(value: string): string {
@@ -376,15 +376,6 @@ export default function RunnerLoginScreen() {
     router.push("/(auth)/register");
   }
 
-  function goToWelcome(): void {
-    if (busy || submitLockRef.current) {
-      return;
-    }
-
-    Keyboard.dismiss();
-    router.replace("/");
-  }
-
   function clearEmail(): void {
     if (busy) {
       return;
@@ -458,39 +449,13 @@ export default function RunnerLoginScreen() {
             ]}
           >
             <View style={styles.topBar}>
-              <Pressable
-                accessibilityRole="button"
-                accessibilityLabel="Back to welcome"
-                accessibilityHint="Returns to the SaMi Runner welcome screen"
-                accessibilityState={{ disabled: busy }}
-                disabled={busy}
-                onPress={goToWelcome}
-                hitSlop={8}
-                style={({ pressed }) => [
-                  styles.backButton,
-                  {
-                    backgroundColor: colors.surface,
-                    borderColor: colors.border,
-                    opacity: pressed ? 0.7 : 1,
-                  },
-                ]}
-              >
-                <Ionicons
-                  name="chevron-back"
-                  size={22}
-                  color={colors.text}
-                />
-              </Pressable>
-
-              <View style={styles.topBarBrand}>
-                <Image
-                  source={WORDMARK}
-                  style={styles.wordmark}
-                  resizeMode="contain"
-                  accessible
-                  accessibilityLabel="SaMi"
-                />
-              </View>
+              <Image
+                source={WORDMARK}
+                style={styles.wordmark}
+                resizeMode="contain"
+                accessible
+                accessibilityLabel="SaMi"
+              />
 
               <Pressable
                 accessibilityRole="button"
@@ -884,31 +849,16 @@ const styles = StyleSheet.create({
   },
 
   topBar: {
-    minHeight: BACK_SIZE,
+    minHeight: 48,
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
     gap: 10,
   },
 
-  backButton: {
-    width: BACK_SIZE,
-    height: BACK_SIZE,
-    borderRadius: 15,
-    borderWidth: 1,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-
-  topBarBrand: {
-    flex: 1,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-
   wordmark: {
-    width: 106,
-    height: 38,
+    width: 112,
+    height: 43,
   },
 
   helpButton: {

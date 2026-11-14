@@ -29,6 +29,7 @@ import {
   cancelRunnerRegistration,
   confirmRunnerRegistration,
   verifyRunnerEmailOtp,
+  type RunnerAuthenticatedSession,
   type RunnerCustomerConfirmationRequired,
   type RunnerOtpFlowResult,
 } from "@/registration-api";
@@ -246,14 +247,17 @@ export default function VerifyRunnerScreen() {
   /* =========================================================
      SESSION COMPLETION
 
-     The existing root session gate determines the next screen.
-     We are not deciding or changing the post-registration
-     destination here.
+     Save the authenticated Runner session.
+
+     Do not return to the launch screen.
+
+     Use the backend nextStep response to decide where
+     the authenticated Runner should continue.
   ========================================================= */
 
-  async function completeSession(result: {
-    sessionToken: string;
-  }) {
+  async function completeSession(
+    result: RunnerAuthenticatedSession,
+  ) {
     if (
       typeof result.sessionToken !== "string" ||
       result.sessionToken.length < 40
@@ -275,8 +279,32 @@ export default function VerifyRunnerScreen() {
 
     if (!mountedRef.current) return;
 
-    // The existing root session gate decides the next screen.
-    router.replace("/");
+    // Navigate directly to the correct Runner destination.
+    // Never return to "/" after successful authentication.
+    switch (result.nextStep) {
+      case "app": {
+        router.replace("/(app)");
+        return;
+      }
+
+      case "tasks": {
+        router.replace("/(auth)/tasks");
+        return;
+      }
+
+      case "status": {
+        router.replace("/(app)/profile-setup?mode=status");
+        return;
+      }
+
+      case "onboarding":
+      default: {
+        // The profile-setup screen resolves the exact saved
+        // onboarding stage: tasks, transport, documents or review.
+        router.replace("/(app)/profile-setup");
+        return;
+      }
+    }
   }
 
   /* =========================================================
@@ -651,29 +679,6 @@ export default function VerifyRunnerScreen() {
   }
 
   /* =========================================================
-     NAVIGATION
-  ========================================================= */
-
-  function goBack() {
-    if (busy || resending) return;
-
-    if (step === "confirm") {
-      void declineRegistration();
-      return;
-    }
-
-    if (router.canGoBack()) {
-      router.back();
-    } else {
-      router.replace(
-        isRegistration
-          ? "/(auth)/register"
-          : "/(auth)/login",
-      );
-    }
-  }
-
-  /* =========================================================
      DISPLAY STATE
   ========================================================= */
 
@@ -730,42 +735,28 @@ export default function VerifyRunnerScreen() {
           keyboardShouldPersistTaps="handled"
           showsVerticalScrollIndicator={false}
         >
-          {/* HEADER */}
+          {/* =================================================
+              HEADER
+              Logo left.
+              Help right.
+              No back arrow.
+          ================================================= */}
 
           <View style={styles.header}>
-            <Pressable
-              accessibilityRole="button"
-              accessibilityLabel="Go back"
-              disabled={disabled}
-              onPress={goBack}
-              hitSlop={8}
-              style={({ pressed }) => [
-                styles.backButton,
-                {
-                  backgroundColor: colors.surface,
-                  borderColor: colors.border,
-                  opacity: pressed ? 0.6 : disabled ? 0.5 : 1,
-                },
-              ]}
-            >
-              <Ionicons
-                name="chevron-back"
-                size={21}
-                color={colors.text}
-              />
-            </Pressable>
-
             <Image
               source={WORDMARK}
               resizeMode="contain"
               style={styles.wordmark}
+              accessibilityRole="image"
               accessibilityLabel="SaMi"
             />
 
             <Pressable
               accessibilityRole="button"
               accessibilityLabel="SaMi Runner Help"
+              accessibilityHint="Opens SaMi Runner verification assistance"
               onPress={showHelp}
+              hitSlop={8}
               style={({ pressed }) => [
                 styles.helpButton,
                 {
@@ -1337,19 +1328,9 @@ const styles = StyleSheet.create({
     gap: 12,
   },
 
-  backButton: {
-    width: 42,
-    height: 42,
-    borderRadius: 14,
-    borderWidth: 1,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-
   wordmark: {
-    width: 105,
-    height: 39,
-    flex: 1,
+    width: 112,
+    height: 42,
   },
 
   helpButton: {
