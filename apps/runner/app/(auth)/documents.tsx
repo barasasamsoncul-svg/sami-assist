@@ -1,3 +1,4 @@
+
 import {
   useCallback,
   useEffect,
@@ -9,6 +10,7 @@ import {
 import {
   ActivityIndicator,
   AppState,
+  BackHandler,
   Image,
   Pressable,
   ScrollView,
@@ -18,7 +20,7 @@ import {
   View,
 } from "react-native";
 
-import { router, useFocusEffect } from "expo-router";
+import { router, Stack, useFocusEffect } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import { SafeAreaView } from "react-native-safe-area-context";
 
@@ -537,6 +539,32 @@ export default function RunnerDocumentsScreen() {
     }, [loadDocuments]),
   );
 
+  /* =========================================================
+     DOCUMENTS SCREEN BACK BEHAVIOUR
+
+     Android: the checklist is the end of the editable setup
+     journey. Hardware Back exits the app rather than reopening
+     the previous onboarding screens.
+
+     This listener is registered only while the checklist is
+     focused. When an individual document screen is opened,
+     this listener is removed so Back returns to the checklist.
+  ========================================================= */
+
+  useFocusEffect(
+    useCallback(() => {
+      const subscription = BackHandler.addEventListener(
+        "hardwareBackPress",
+        () => {
+          BackHandler.exitApp();
+          return true;
+        },
+      );
+
+      return () => subscription.remove();
+    }, []),
+  );
+
   const runner = data?.runner as RunnerSummary | undefined;
   const categories = runner?.selectedCategories ?? [];
   const serviceArea = runner?.serviceArea?.trim() || "Not provided";
@@ -663,6 +691,8 @@ export default function RunnerDocumentsScreen() {
       edges={["top", "bottom"]}
       style={[styles.safeArea, { backgroundColor: colors.paper }]}
     >
+      <Stack.Screen options={{ gestureEnabled: false }} />
+
       <StatusBar
         barStyle={isDark ? "light-content" : "dark-content"}
         backgroundColor={colors.paper}

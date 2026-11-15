@@ -3,6 +3,7 @@ import { useEffect, useRef, useState } from "react";
 
 import {
   ActivityIndicator,
+  BackHandler,
   Image,
   KeyboardAvoidingView,
   Platform,
@@ -161,6 +162,41 @@ export default function VerifyRunnerScreen() {
   }, [step]);
 
   /* =========================================================
+     ANDROID HARDWARE BACK
+
+     Before successful verification:
+     - Registration OTP returns to Register.
+     - Login OTP returns to Login.
+
+     The user can still use the existing Change Details
+     action on the screen.
+
+     During verification or account creation, Back is blocked
+     to avoid interrupting an in-flight authentication request.
+  ========================================================= */
+
+  useEffect(() => {
+    const subscription = BackHandler.addEventListener(
+      "hardwareBackPress",
+      () => {
+        if (busy || verified) {
+          return true;
+        }
+
+        router.replace(
+          isRegistration
+            ? "/(auth)/register"
+            : "/(auth)/login",
+        );
+
+        return true;
+      },
+    );
+
+    return () => subscription.remove();
+  }, [busy, verified, isRegistration]);
+
+  /* =========================================================
      RESEND COUNTDOWN
   ========================================================= */
 
@@ -249,7 +285,9 @@ export default function VerifyRunnerScreen() {
 
      Save the authenticated Runner session.
 
-     Do not return to the launch screen.
+     Keep Login/Register in history until verification succeeds.
+     After success, clear the authentication history so Back
+     cannot return to Login or Register.
 
      Use the backend nextStep response to decide where
      the authenticated Runner should continue.
@@ -278,6 +316,11 @@ export default function VerifyRunnerScreen() {
     });
 
     if (!mountedRef.current) return;
+
+    // Successful authentication is the boundary.
+    // Remove previous Login, Register and OTP screens now,
+    // not before verification has completed.
+    router.dismissAll();
 
     // Navigate directly to the correct Runner destination.
     // Never return to "/" after successful authentication.
@@ -328,6 +371,7 @@ export default function VerifyRunnerScreen() {
     }
 
     // An optional Customer match requires explicit consent.
+    // The user may still go back to Register before confirming.
     applyCustomerConfirmation(result);
   }
 
