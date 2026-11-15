@@ -1,4 +1,3 @@
-
 import { useCallback, useEffect, useRef, useState } from "react";
 
 import {
@@ -30,6 +29,29 @@ import {
 import { useRunnerTheme } from "@/theme";
 
 const WORDMARK = require("../../assets/sami-wordmark.png");
+
+/**
+ * Protected Runner API requests can fail because the saved session is
+ * missing, expired or revoked. Return through the root launch route so
+ * the launch animation plays before the user sees Login.
+ */
+function isRunnerSessionExpired(cause: unknown): boolean {
+  const message = cause instanceof Error
+    ? cause.message
+    : String(cause ?? "");
+
+  return /HTTP 401|session has expired|sign in again|sign in to continue|no valid runner session|unauthorized/i.test(
+    message,
+  );
+}
+
+function returnToLaunchForLogin(): void {
+  router.dismissAll();
+  router.replace({
+    pathname: "/",
+    params: { signedOut: "1" },
+  });
+}
 
 type ServiceKey = "pickup_deliver" | "shop_deliver";
 type VehicleType = "bike" | "motorbike" | "vehicle";
@@ -492,6 +514,11 @@ export default function RunnerTaskSelectionScreen() {
     } catch (cause) {
       if (!mountedRef.current) return;
 
+      if (isRunnerSessionExpired(cause)) {
+        returnToLaunchForLogin();
+        return;
+      }
+
       const message =
         cause instanceof Error
           ? cause.message
@@ -542,7 +569,7 @@ export default function RunnerTaskSelectionScreen() {
     ["suspended", "closed"].includes(accountStatus);
 
   const sessionExpired =
-    /session has expired|sign in again|no valid runner session/i.test(
+    /HTTP 401|session has expired|sign in again|sign in to continue|no valid runner session|unauthorized/i.test(
       loadError,
     );
 
@@ -756,6 +783,11 @@ export default function RunnerTaskSelectionScreen() {
     } catch (cause) {
       if (!mountedRef.current) return;
 
+      if (isRunnerSessionExpired(cause)) {
+        returnToLaunchForLogin();
+        return;
+      }
+
       showOverlay({
         type: "error",
         title: isEditMode
@@ -780,7 +812,7 @@ export default function RunnerTaskSelectionScreen() {
 
   function handleBottomAction() {
     if (sessionExpired) {
-      router.replace("/(auth)/login");
+      returnToLaunchForLogin();
       return;
     }
 

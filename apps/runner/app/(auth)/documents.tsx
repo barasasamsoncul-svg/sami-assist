@@ -1,4 +1,3 @@
-
 import {
   useCallback,
   useEffect,
@@ -41,6 +40,33 @@ import type {
 import { useRunnerTheme } from "@/theme";
 
 const WORDMARK = require("../../assets/sami-wordmark.png");
+
+/**
+ * Detect an expired, revoked or invalid Runner session.
+ */
+function isRunnerSessionExpired(cause: unknown): boolean {
+  const message =
+    cause instanceof Error
+      ? cause.message
+      : String(cause ?? "");
+
+  return /HTTP 401|session has expired|sign in again|sign in to continue|no valid runner session|unauthorized/i.test(
+    message,
+  );
+}
+
+/**
+ * Session expiry and explicit logout use the same navigation path.
+ * The root launch route plays the launch animation before opening Login.
+ */
+function returnToLaunchForLogin(): void {
+  router.dismissAll();
+
+  router.replace({
+    pathname: "/",
+    params: { signedOut: "1" },
+  });
+}
 
 type DocumentCard = {
   key: string;
@@ -544,6 +570,13 @@ export default function RunnerDocumentsScreen() {
       } catch (cause) {
         if (!mountedRef.current) return;
 
+        // A review-feedback 401 is a session failure too.
+        // Throw it into the outer catch so it uses the same
+        // launch-animation-to-login path.
+        if (isRunnerSessionExpired(cause)) {
+          throw cause;
+        }
+
         setFeedbackError(
           cause instanceof Error
             ? cause.message
@@ -607,6 +640,13 @@ export default function RunnerDocumentsScreen() {
           } catch (cause) {
             attemptedSubmissionRef.current = "";
 
+            // Automatic submission and the follow-up onboarding
+            // refresh are protected requests. A 401 must use the
+            // central session-expiry navigation, not an error overlay.
+            if (isRunnerSessionExpired(cause)) {
+              throw cause;
+            }
+
             if (mountedRef.current) {
               const message =
                 cause instanceof Error
@@ -634,6 +674,13 @@ export default function RunnerDocumentsScreen() {
       }
     } catch (cause) {
       if (!mountedRef.current) return;
+
+      // Do not show the generic Documents error for an expired session.
+      // Return through the root launch screen and open Login afterwards.
+      if (isRunnerSessionExpired(cause)) {
+        returnToLaunchForLogin();
+        return;
+      }
 
       const message =
         cause instanceof Error
@@ -717,7 +764,7 @@ export default function RunnerDocumentsScreen() {
   const isRestricted = data?.nextStep === "restricted";
 
   const isSessionExpired =
-    /session has expired|sign in to continue|no valid runner session/i.test(
+    /HTTP 401|session has expired|sign in to continue|sign in again|no valid runner session|unauthorized/i.test(
       loadError,
     );
 

@@ -1,4 +1,3 @@
-
 import {
   useCallback,
   useEffect,
@@ -73,7 +72,6 @@ const NATIONAL_ID_FRONT_KEY = "identity_national_id_front";
 const NATIONAL_ID_BACK_KEY = "identity_national_id_back";
 
 const MAX_FILE_SIZE = 10 * 1024 * 1024;
-const BACK_SIZE = 44;
 
 const DOCUMENT_TITLES: Record<string, string> = {
   identity_profile_photo: "Profile photo",
@@ -99,6 +97,20 @@ const GUIDANCE_ITEMS = [
   "Avoid glare, shadows and cropped edges.",
   "Use a clear JPEG, PNG or WEBP image, or a PDF file, up to 10 MB.",
 ];
+
+/**
+ * Detect an expired, revoked or invalid Runner session.
+ */
+function isRunnerSessionExpired(cause: unknown): boolean {
+  const message =
+    cause instanceof Error
+      ? cause.message
+      : String(cause ?? "");
+
+  return /HTTP 401|session has expired|sign in again|sign in to continue|no valid runner session|unauthorized/i.test(
+    message,
+  );
+}
 
 function formatFileSize(bytes: number): string {
   if (bytes < 1024) return `${bytes} B`;
@@ -539,6 +551,19 @@ export default function RunnerDocumentDetailScreen() {
   const pickerInFlightRef = useRef(false);
   const hasLoadedOnceRef = useRef(false);
 
+  /**
+   * Return through the root launch route. The launch animation
+   * completes before the signed-out destination opens Login.
+   */
+  const returnToLaunchForLogin = useCallback(() => {
+    router.dismissAll();
+
+    router.replace({
+      pathname: "/",
+      params: { signedOut: "1" },
+    });
+  }, [router]);
+
   function showError(
     message: string,
     title = "Something went wrong",
@@ -636,6 +661,11 @@ export default function RunnerDocumentDetailScreen() {
     } catch (cause) {
       if (!mountedRef.current) return;
 
+      if (isRunnerSessionExpired(cause)) {
+        returnToLaunchForLogin();
+        return;
+      }
+
       const message =
         cause instanceof Error
           ? cause.message
@@ -654,7 +684,7 @@ export default function RunnerDocumentDetailScreen() {
         setLoading(false);
       }
     }
-  }, [showOverlay]);
+  }, [returnToLaunchForLogin, showOverlay]);
 
   useFocusEffect(
     useCallback(() => {
@@ -802,7 +832,7 @@ export default function RunnerDocumentDetailScreen() {
     );
 
   const sessionExpired =
-    /session has expired|sign in again|no valid runner session/i.test(
+    /HTTP 401|session has expired|sign in again|sign in to continue|no valid runner session|unauthorized/i.test(
       pageError ?? "",
     );
 
@@ -1222,6 +1252,11 @@ export default function RunnerDocumentDetailScreen() {
     } catch (cause) {
       if (!mountedRef.current) return;
 
+      if (isRunnerSessionExpired(cause)) {
+        returnToLaunchForLogin();
+        return;
+      }
+
       const message =
         cause instanceof Error
           ? cause.message
@@ -1230,7 +1265,7 @@ export default function RunnerDocumentDetailScreen() {
       showError(message, "Document upload failed");
 
       if (
-        /session has expired|sign in again|no valid runner session|already approved|operations review|cannot upload|account cannot upload/i.test(
+        /already approved|operations review|cannot upload|account cannot upload/i.test(
           message,
         )
       ) {
@@ -1275,39 +1310,8 @@ export default function RunnerDocumentDetailScreen() {
         backgroundColor={colors.paper}
       />
 
-      {/* HEADER */}
+      {/* HEADER — LOGO LEFT, HELP RIGHT */}
       <View style={styles.header}>
-        <Pressable
-          accessibilityRole="button"
-          accessibilityLabel="Go back to documents"
-          disabled={uploading}
-          onPress={goBack}
-          hitSlop={{
-            top: 6,
-            bottom: 6,
-            left: 6,
-            right: 6,
-          }}
-          style={({ pressed }) => [
-            styles.backButton,
-            {
-              backgroundColor: colors.surface,
-              borderColor: colors.border,
-              opacity: pressed
-                ? 0.6
-                : uploading
-                  ? 0.5
-                  : 1,
-            },
-          ]}
-        >
-          <Ionicons
-            name="chevron-back"
-            size={22}
-            color={colors.text}
-          />
-        </Pressable>
-
         <Image
           source={WORDMARK}
           resizeMode="contain"
@@ -1414,7 +1418,7 @@ export default function RunnerDocumentDetailScreen() {
             }
             onPress={() =>
               sessionExpired
-                ? router.replace("/(auth)/login")
+                ? returnToLaunchForLogin()
                 : void loadOnboarding()
             }
             style={({ pressed }) => [
@@ -1549,9 +1553,7 @@ export default function RunnerDocumentDetailScreen() {
                 </Text>
 
                 <Pressable
-                  onPress={() =>
-                    router.replace("/(auth)/login")
-                  }
+                  onPress={returnToLaunchForLogin}
                   hitSlop={8}
                 >
                   <Text
@@ -1996,21 +1998,12 @@ const styles = StyleSheet.create({
   },
 
   header: {
-    minHeight: BACK_SIZE,
+    minHeight: 44,
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
     paddingHorizontal: 20,
     paddingTop: 12,
-  },
-
-  backButton: {
-    width: BACK_SIZE,
-    height: BACK_SIZE,
-    borderRadius: 14,
-    borderWidth: 1,
-    alignItems: "center",
-    justifyContent: "center",
   },
 
   wordmark: {
