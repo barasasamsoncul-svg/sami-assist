@@ -230,8 +230,6 @@ export default function HomeScreen() {
       }}
     >
       <StatusBar
-        translucent={false}
-        backgroundColor={palette.background}
         barStyle={
           palette.isDark
             ? "light-content"

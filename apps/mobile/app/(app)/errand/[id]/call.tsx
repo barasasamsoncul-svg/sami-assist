@@ -407,7 +407,7 @@ export default function ErrandVoiceCallScreen() {
 
   return (
     <SafeAreaView style={{ flex: 1, backgroundColor: colors.navy }}>
-      <StatusBar barStyle="light-content" backgroundColor={colors.navy} />
+      <StatusBar barStyle="light-content" />
       <View style={{ paddingHorizontal: 20, paddingTop: 10, flex: 1, justifyContent: "space-between", paddingBottom: 28 }}>
         <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between" }}>
           <Pressable

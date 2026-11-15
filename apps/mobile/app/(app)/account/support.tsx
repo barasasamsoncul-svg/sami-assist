@@ -561,7 +561,7 @@ export default function SupportScreen() {
 
   return (
     <SafeAreaView style={styles.safeArea} edges={["top"]}>
-      <StatusBar barStyle={isDark ? "light-content" : "dark-content"} backgroundColor={palette.background} />
+      <StatusBar barStyle={isDark ? "light-content" : "dark-content"} />
       <KeyboardAvoidingView style={styles.flex} behavior={Platform.OS === "ios" ? "padding" : undefined}>
         <View style={styles.header}>
           <Pressable

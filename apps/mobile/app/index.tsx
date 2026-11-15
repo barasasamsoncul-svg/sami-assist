@@ -187,8 +187,6 @@ export default function WelcomeScreen() {
       style={{ flex: 1, backgroundColor: NAVY }}
     >
       <StatusBar
-        translucent
-        backgroundColor="transparent"
         barStyle="light-content"
       />
 

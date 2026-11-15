@@ -1,5 +1,6 @@
 
 import { useRef, useState } from "react";
+import type { TextInputInstance, ViewInstance } from "react-native";
 
 import {
   ActivityIndicator,
@@ -71,8 +72,8 @@ export default function VerifyScreen() {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
 
-  const codeFieldRef = useRef<View>(null);
-  const codeInputRef = useRef<TextInput>(null);
+  const codeFieldRef = useRef<ViewInstance>(null);
+  const codeInputRef = useRef<TextInputInstance>(null);
 
   const {
     scrollRef,
@@ -139,7 +140,6 @@ export default function VerifyScreen() {
         barStyle={
           darkMode ? "light-content" : "dark-content"
         }
-        backgroundColor={palette.background}
       />
 
       <View

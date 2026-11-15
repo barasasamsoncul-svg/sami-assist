@@ -1,4 +1,3 @@
-
 import { useRef, useState } from "react";
 
 import {
@@ -13,6 +12,8 @@ import {
   TextInput,
   View,
   useColorScheme,
+  type TextInputInstance,
+  type ViewInstance,
 } from "react-native";
 
 import { Ionicons } from "@expo/vector-icons";
@@ -62,8 +63,8 @@ export default function LoginScreen() {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
 
-  const identifierFieldRef = useRef<View>(null);
-  const identifierInputRef = useRef<TextInput>(null);
+  const identifierFieldRef = useRef<ViewInstance>(null);
+  const identifierInputRef = useRef<TextInputInstance>(null);
 
   const {
     scrollRef,
@@ -150,7 +151,6 @@ export default function LoginScreen() {
         barStyle={
           darkMode ? "light-content" : "dark-content"
         }
-        backgroundColor={palette.background}
       />
 
       <View

@@ -5,16 +5,18 @@ import {
   ActivityIndicator,
   Image,
   Keyboard,
-  KeyboardTypeOptions,
   Pressable,
   SafeAreaView,
   ScrollView,
   StatusBar,
   Text,
   TextInput,
-  type TextInputProps,
   View,
   useColorScheme,
+  type KeyboardTypeOptions,
+  type TextInputInstance,
+  type ViewInstance,
+  type TextInputProps,
 } from "react-native";
 
 import { Ionicons } from "@expo/vector-icons";
@@ -80,8 +82,8 @@ type FormFieldProps = {
   value: string;
   onChangeText: (value: string) => void;
   placeholder: string;
-  fieldRef: RefObject<View | null>;
-  inputRef: RefObject<TextInput | null>;
+  fieldRef: RefObject<ViewInstance | null>;
+  inputRef: RefObject<TextInputInstance | null>;
   onFocus: () => void;
   palette: Palette;
   keyboardType?: KeyboardTypeOptions;
@@ -194,13 +196,13 @@ export default function RegisterScreen() {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
 
-  const fullNameFieldRef = useRef<View>(null);
-  const emailFieldRef = useRef<View>(null);
-  const phoneFieldRef = useRef<View>(null);
+  const fullNameFieldRef = useRef<ViewInstance>(null);
+  const emailFieldRef = useRef<ViewInstance>(null);
+  const phoneFieldRef = useRef<ViewInstance>(null);
 
-  const fullNameInputRef = useRef<TextInput>(null);
-  const emailInputRef = useRef<TextInput>(null);
-  const phoneInputRef = useRef<TextInput>(null);
+  const fullNameInputRef = useRef<TextInputInstance>(null);
+  const emailInputRef = useRef<TextInputInstance>(null);
+  const phoneInputRef = useRef<TextInputInstance>(null);
 
   const {
     scrollRef,
@@ -295,7 +297,6 @@ export default function RegisterScreen() {
         barStyle={
           darkMode ? "light-content" : "dark-content"
         }
-        backgroundColor={palette.background}
       />
 
       <View

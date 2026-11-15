@@ -312,8 +312,6 @@ export default function CustomerSignInScreen() {
     >
       <StatusBar
         hidden={false}
-        translucent={false}
-        backgroundColor={palette.background}
         barStyle={isDark ? "light-content" : "dark-content"}
       />
 

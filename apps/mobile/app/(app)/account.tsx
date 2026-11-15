@@ -294,8 +294,6 @@ export default function AccountScreen() {
     >
       <StatusBar
         hidden={false}
-        translucent={false}
-        backgroundColor={palette.background}
         barStyle={palette.statusBar}
       />
 
