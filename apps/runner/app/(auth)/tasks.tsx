@@ -5,6 +5,7 @@ import {
   ActivityIndicator,
   BackHandler,
   Image,
+  Keyboard,
   KeyboardAvoidingView,
   Platform,
   Pressable,
@@ -16,7 +17,12 @@ import {
   View,
 } from "react-native";
 
-import { router, Stack, useFocusEffect } from "expo-router";
+import {
+  router,
+  Stack,
+  useFocusEffect,
+  useLocalSearchParams,
+} from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import { SafeAreaView } from "react-native-safe-area-context";
 
@@ -33,6 +39,11 @@ const WORDMARK = require("../../assets/sami-wordmark.png");
 
 type ServiceKey = "pickup_deliver" | "shop_deliver";
 type VehicleType = "bike" | "motorbike" | "vehicle";
+
+type TaskInputKey =
+  | "serviceArea"
+  | "vehicleModel"
+  | "vehicleRegistration";
 
 type EarningChoice = {
   id: string;
@@ -127,12 +138,84 @@ function normalizeServiceArea(value: string): string {
   return value.trim().replace(/\s+/g, " ");
 }
 
-function normalizeRegistration(value: string): string {
-  return value.trim().toUpperCase().replace(/\s+/g, " ");
-}
-
 function normalizeVehicleModel(value: string): string {
   return value.trim().replace(/\s+/g, " ");
+}
+
+/**
+ * Remove spaces and punctuation from a registration number.
+ * Keep only letters and digits.
+ */
+function compactRegistration(value: string): string {
+  return value
+    .trim()
+    .toUpperCase()
+    .replace(/[^A-Z0-9]/g, "")
+    .slice(0, 7);
+}
+
+/**
+ * Format Kenyan registration numbers according to the
+ * transport type selected by the Runner.
+ *
+ * Ordinary vehicle: KDA 123A
+ * Motorcycle:       KMAB 123
+ */
+function formatKenyanRegistration(
+  value: string,
+  vehicleType: VehicleType,
+): string {
+  const compact = compactRegistration(value);
+
+  const splitAt = vehicleType === "motorbike" ? 4 : 3;
+
+  if (compact.length <= splitAt) {
+    return compact;
+  }
+
+  return `${compact.slice(0, splitAt)} ${compact.slice(splitAt)}`;
+}
+
+/**
+ * Validate the registration number for the selected vehicle.
+ *
+ * Ordinary civilian vehicle:
+ * K + two letters + three digits + final letter.
+ *
+ * Motorcycle:
+ * KM prefix followed by two letters and three digits.
+ */
+function isValidKenyanRegistration(
+  value: string,
+  vehicleType: VehicleType,
+): boolean {
+  const compact = compactRegistration(value);
+
+  if (vehicleType === "motorbike") {
+    return /^KM[A-HJ-NP-Z]{2}[0-9]{3}$/.test(compact);
+  }
+
+  if (vehicleType === "vehicle") {
+    return /^K[A-HJ-NP-Z]{2}[0-9]{3}[A-HJ-NP-Z]$/.test(
+      compact,
+    );
+  }
+
+  return false;
+}
+
+function registrationExample(vehicleType: VehicleType): string {
+  return vehicleType === "motorbike"
+    ? "KMAB 123"
+    : "KEA 123A";
+}
+
+function registrationErrorMessage(
+  vehicleType: VehicleType,
+): string {
+  return vehicleType === "motorbike"
+    ? "Enter a valid Kenyan motorcycle registration number, for example KMAB 123."
+    : "Enter a valid Kenyan vehicle registration number, for example KEA 123A.";
 }
 
 export default function RunnerTaskSelectionScreen() {
@@ -156,6 +239,10 @@ export default function RunnerTaskSelectionScreen() {
 
   const buttonBlue = isDark ? "#1D5DAD" : "#174F9F";
 
+  const params = useLocalSearchParams<{ edit?: string | string[] }>();
+  const editParam = Array.isArray(params.edit) ? params.edit[0] : params.edit;
+  const isEditMode = editParam?.toLowerCase() === "true";
+
   const [selectedChoiceId, setSelectedChoiceId] = useState("");
   const [serviceArea, setServiceArea] = useState("");
   const [vehicleModel, setVehicleModel] = useState("");
@@ -167,8 +254,9 @@ export default function RunnerTaskSelectionScreen() {
     nextStep: string;
   } | null>(null);
 
+  // Loading is kept internally to prevent edits before the server
+  // has restored the saved setup. No loading or refresh status is shown.
   const [loading, setLoading] = useState(true);
-  const [refreshing, setRefreshing] = useState(false);
   const [saving, setSaving] = useState(false);
   const [loadError, setLoadError] = useState("");
 
@@ -176,11 +264,24 @@ export default function RunnerTaskSelectionScreen() {
   const [vehicleModelFocused, setVehicleModelFocused] = useState(false);
   const [registrationFocused, setRegistrationFocused] = useState(false);
 
+  const [keyboardVisible, setKeyboardVisible] = useState(false);
+
   const scrollRef = useRef<ScrollView>(null);
   const mountedRef = useRef(true);
   const loadInFlightRef = useRef(false);
   const saveInFlightRef = useRef(false);
   const hasLoadedOnceRef = useRef(false);
+
+  const activeInputRef = useRef<TaskInputKey | null>(null);
+
+  const fieldOffsetsRef = useRef<Record<TaskInputKey, number>>({
+    serviceArea: 0,
+    vehicleModel: 0,
+    vehicleRegistration: 0,
+  });
+
+  const vehicleModelInputRef = useRef<TextInput>(null);
+  const registrationInputRef = useRef<TextInput>(null);
 
   useEffect(() => {
     mountedRef.current = true;
@@ -191,12 +292,87 @@ export default function RunnerTaskSelectionScreen() {
   }, []);
 
   /* =========================================================
+     KEYBOARD VISIBILITY AND INPUT POSITIONING
+
+     The active input is moved into the visible part of the
+     ScrollView whenever the keyboard opens.
+
+     The fixed Continue bar is hidden while typing so it
+     cannot cover the lower input fields.
+  ========================================================= */
+
+  useEffect(() => {
+    const showEvent =
+      Platform.OS === "ios"
+        ? "keyboardWillShow"
+        : "keyboardDidShow";
+
+    const hideEvent =
+      Platform.OS === "ios"
+        ? "keyboardWillHide"
+        : "keyboardDidHide";
+
+    const showSubscription = Keyboard.addListener(
+      showEvent,
+      () => {
+        setKeyboardVisible(true);
+
+        requestAnimationFrame(() => {
+          const activeField = activeInputRef.current;
+
+          if (!activeField) return;
+
+          const fieldOffset =
+            fieldOffsetsRef.current[activeField];
+
+          scrollRef.current?.scrollTo({
+            y: Math.max(0, fieldOffset - 75),
+            animated: true,
+          });
+        });
+      },
+    );
+
+    const hideSubscription = Keyboard.addListener(
+      hideEvent,
+      () => {
+        setKeyboardVisible(false);
+        activeInputRef.current = null;
+      },
+    );
+
+    return () => {
+      showSubscription.remove();
+      hideSubscription.remove();
+    };
+  }, []);
+
+  function rememberFieldPosition(
+    field: TaskInputKey,
+    y: number,
+  ) {
+    fieldOffsetsRef.current[field] = y;
+  }
+
+  function revealInput(field: TaskInputKey) {
+    activeInputRef.current = field;
+
+    requestAnimationFrame(() => {
+      const fieldOffset = fieldOffsetsRef.current[field];
+
+      scrollRef.current?.scrollTo({
+        y: Math.max(0, fieldOffset - 75),
+        animated: true,
+      });
+    });
+  }
+
+  /* =========================================================
      ANDROID BACK
 
-     Tasks is an authenticated onboarding destination.
-     Android Back exits the app without clearing the session.
-     Returning to the app restores the session and compliance
-     destination through the root launch resolver.
+     When Tasks is opened from Documents for editing, Android
+     Back returns to Documents. During initial onboarding, the
+     existing authenticated navigation behaviour is preserved.
   ========================================================= */
 
   useFocusEffect(
@@ -204,13 +380,18 @@ export default function RunnerTaskSelectionScreen() {
       const subscription = BackHandler.addEventListener(
         "hardwareBackPress",
         () => {
+          if (isEditMode) {
+            router.replace("/(auth)/documents");
+            return true;
+          }
+
           BackHandler.exitApp();
           return true;
         },
       );
 
       return () => subscription.remove();
-    }, []),
+    }, [isEditMode]),
   );
 
   /* =========================================================
@@ -224,8 +405,6 @@ export default function RunnerTaskSelectionScreen() {
 
     if (!hasLoadedOnceRef.current) {
       setLoading(true);
-    } else {
-      setRefreshing(true);
     }
 
     setLoadError("");
@@ -269,8 +448,9 @@ export default function RunnerTaskSelectionScreen() {
       if (!mountedRef.current) return;
 
       // The backend resolver decides whether this screen
-      // is still the correct destination.
-      if (onboarding.nextStep === "documents") {
+      // is still the correct destination. Documents is the
+      // expected destination during edit mode, so remain here.
+      if (onboarding.nextStep === "documents" && !isEditMode) {
         router.replace("/(auth)/documents");
         return;
       }
@@ -298,7 +478,15 @@ export default function RunnerTaskSelectionScreen() {
 
       setServiceArea(runner.serviceArea ?? "");
       setVehicleModel(runner.vehicleModel ?? "");
-      setVehicleRegistration(runner.vehicleRegistration ?? "");
+
+      setVehicleRegistration(
+        savedVehicle && requiresVehicleRegistration(savedVehicle)
+          ? formatKenyanRegistration(
+              runner.vehicleRegistration ?? "",
+              savedVehicle,
+            )
+          : "",
+      );
 
       setAccountState({
         onboardingStatus: onboarding.onboardingStatus,
@@ -330,10 +518,9 @@ export default function RunnerTaskSelectionScreen() {
 
       if (mountedRef.current) {
         setLoading(false);
-        setRefreshing(false);
       }
     }
-  }, [showOverlay]);
+  }, [isEditMode, showOverlay]);
 
   useFocusEffect(
     useCallback(() => {
@@ -374,27 +561,50 @@ export default function RunnerTaskSelectionScreen() {
       requiresVehicleRegistration(selectedChoice.vehicleType),
   );
 
+  const isExpectedStep = isEditMode
+    ? nextStep === "documents"
+    : nextStep === "tasks";
+
   const canEdit =
     Boolean(accountState) &&
-    nextStep === "tasks" &&
+    isExpectedStep &&
     !loading &&
-    !refreshing &&
     !loadError &&
     !saving &&
     !isApproved &&
-    !isPendingReview &&
     !isRestricted &&
-    !sessionExpired;
+    !sessionExpired &&
+    (isEditMode || !isPendingReview);
 
   function chooseEarningOption(choice: EarningChoice) {
     if (!canEdit || saving) return;
+
+    const previousChoice = EARNING_CHOICES.find(
+      (item) => item.id === selectedChoiceId,
+    );
 
     setSelectedChoiceId(choice.id);
 
     if (!requiresVehicleRegistration(choice.vehicleType)) {
       setVehicleModel("");
       setVehicleRegistration("");
+      return;
     }
+
+    // A different vehicle type may represent a different physical
+    // vehicle. Do not carry its model or registration into the new choice.
+    if (
+      previousChoice &&
+      previousChoice.vehicleType !== choice.vehicleType
+    ) {
+      setVehicleModel("");
+      setVehicleRegistration("");
+      return;
+    }
+
+    setVehicleRegistration((current) =>
+      formatKenyanRegistration(current, choice.vehicleType),
+    );
   }
 
   function openHelp() {
@@ -402,7 +612,7 @@ export default function RunnerTaskSelectionScreen() {
       type: "info",
       title: "SaMi Runner help",
       message:
-        "Choose one earning option. Each option combines the service you will provide with the vehicle you will use. All options require you to be at least 18 years old. Enter your main service area. Motorbike and Vehicle applicants must also enter the vehicle make, model and registration number. Your document checklist comes next.",
+        "Choose one earning option. Each option combines the service you will provide with the vehicle you will use. All options require you to be at least 18 years old. Enter your main service area. Motorbike and Vehicle applicants must also enter the vehicle make, model and Kenyan registration number. Your document checklist comes next. You can change your service or vehicle from the Documents screen while your application is still awaiting approval.",
       primaryAction: {
         label: "Got it",
       },
@@ -435,7 +645,10 @@ export default function RunnerTaskSelectionScreen() {
       normalizeVehicleModel(vehicleModel);
 
     const normalizedRegistration =
-      normalizeRegistration(vehicleRegistration);
+      formatKenyanRegistration(
+        vehicleRegistration,
+        selectedChoice.vehicleType,
+      );
 
     if (normalizedArea.length < 2 || normalizedArea.length > 120) {
       showOverlay({
@@ -470,15 +683,19 @@ export default function RunnerTaskSelectionScreen() {
 
     if (
       registrationRequired &&
-      normalizedRegistration.length < 3
+      !isValidKenyanRegistration(
+        normalizedRegistration,
+        selectedChoice.vehicleType,
+      )
     ) {
       showOverlay({
         type: "warning",
-        title: "Vehicle registration required",
-        message:
-          "Enter the registration number of the motorbike or vehicle you selected.",
+        title: "Invalid Kenyan registration number",
+        message: registrationErrorMessage(
+          selectedChoice.vehicleType,
+        ),
         primaryAction: {
-          label: "Understood",
+          label: "Correct registration",
         },
       });
 
@@ -487,6 +704,8 @@ export default function RunnerTaskSelectionScreen() {
 
     saveInFlightRef.current = true;
     setSaving(true);
+
+    let serviceSelectionSaved = false;
 
     try {
       // Save exactly one service category for the chosen combination.
@@ -514,6 +733,8 @@ export default function RunnerTaskSelectionScreen() {
         );
       }
 
+      serviceSelectionSaved = true;
+
       // Save service area, vehicle model and registration.
       // The server returns the mandatory documents for this setup.
       const onboardingResult = await updateRunnerOnboarding({
@@ -539,19 +760,27 @@ export default function RunnerTaskSelectionScreen() {
 
       if (!mountedRef.current) return;
 
-      // Tasks is complete. Replace it so Back cannot return
-      // to an already completed onboarding step.
+      // Both service and vehicle details have been confirmed by
+      // the server. Documents recalculates the checklist from them.
       router.replace("/(auth)/documents");
     } catch (cause) {
       if (!mountedRef.current) return;
 
+      const causeMessage =
+        cause instanceof Error
+          ? cause.message
+          : "Please try again.";
+
       showOverlay({
         type: "error",
-        title: "Could not save your setup",
-        message:
-          cause instanceof Error
-            ? cause.message
-            : "Your Runner setup could not be saved. Please try again.",
+        title: serviceSelectionSaved
+          ? "Vehicle details could not be saved"
+          : isEditMode
+            ? "Could not save your changes"
+            : "Could not save your setup",
+        message: serviceSelectionSaved
+          ? `Your service selection was saved, but the vehicle and service-area details were not confirmed. ${causeMessage} Reopen this screen and check your setup.`
+          : causeMessage,
         primaryAction: {
           label: "Close",
         },
@@ -576,11 +805,6 @@ export default function RunnerTaskSelectionScreen() {
       return;
     }
 
-    if (isPendingReview) {
-      router.replace("/(auth)/documents");
-      return;
-    }
-
     if (isRestricted) {
       showOverlay({
         type: "warning",
@@ -595,23 +819,40 @@ export default function RunnerTaskSelectionScreen() {
       return;
     }
 
+    if (isEditMode) {
+      void continueToDocuments();
+      return;
+    }
+
+    if (isPendingReview) {
+      router.replace("/(auth)/documents");
+      return;
+    }
+
     void continueToDocuments();
+  }
+
+  function cancelEdit() {
+    Keyboard.dismiss();
+    router.replace("/(auth)/documents");
   }
 
   const bottomButtonLabel = sessionExpired
     ? "Sign in again"
     : isApproved
       ? "Open Runner dashboard"
-      : isPendingReview
-        ? "Back to document checklist"
-        : isRestricted
-          ? "Account restricted"
-          : "Continue";
+      : isEditMode
+        ? "Save changes"
+        : isPendingReview
+          ? "Back to document checklist"
+          : isRestricted
+            ? "Account restricted"
+            : "Continue";
 
   const bottomButtonDisabled =
     saving ||
     loading ||
-    refreshing ||
+    (!sessionExpired && Boolean(loadError)) ||
     (!sessionExpired &&
       !isApproved &&
       !isPendingReview &&
@@ -644,13 +885,17 @@ export default function RunnerTaskSelectionScreen() {
 
       <KeyboardAvoidingView
         style={styles.keyboard}
-        behavior={Platform.OS === "ios" ? "padding" : undefined}
+        behavior={Platform.OS === "ios" ? "padding" : "height"}
       >
         <View style={styles.container}>
           <ScrollView
             ref={scrollRef}
-            contentContainerStyle={styles.scrollContent}
+            contentContainerStyle={[
+              styles.scrollContent,
+              keyboardVisible && styles.scrollContentWithKeyboard,
+            ]}
             keyboardShouldPersistTaps="handled"
+            keyboardDismissMode="on-drag"
             showsVerticalScrollIndicator={false}
           >
             {/* Header */}
@@ -700,32 +945,14 @@ export default function RunnerTaskSelectionScreen() {
                   { color: colors.text },
                 ]}
               >
-                Choose how you want to earn
+                {isEditMode
+                  ? "Change your service or vehicle"
+                  : "Choose how you want to earn"}
               </Text>
             </View>
 
-            {/* Loading */}
-            {loading && !hasLoadedOnceRef.current ? (
-              <View
-                style={styles.loadingState}
-                accessibilityRole="progressbar"
-                accessibilityLabel="Loading your Runner setup"
-              >
-                <ActivityIndicator
-                  size="large"
-                  color={colors.blueAction}
-                />
-
-                <Text
-                  style={[
-                    styles.loadingText,
-                    { color: supportingText },
-                  ]}
-                >
-                  Loading options…
-                </Text>
-              </View>
-            ) : loadError ? (
+            {/* Background loading remains invisible to the Runner. */}
+            {loadError ? (
               <View style={styles.loadError}>
                 <Text
                   style={[
@@ -756,6 +983,34 @@ export default function RunnerTaskSelectionScreen() {
               </View>
             ) : (
               <>
+                {isEditMode ? (
+                  <View
+                    style={[
+                      styles.editNotice,
+                      {
+                        backgroundColor: colors.blueSoft,
+                        borderColor: colors.border,
+                      },
+                    ]}
+                  >
+                    <Ionicons
+                      name="information-circle-outline"
+                      size={19}
+                      color={colors.blueAction}
+                    />
+                    <Text
+                      style={[
+                        styles.editNoticeText,
+                        { color: colors.text },
+                      ]}
+                    >
+                      {isPendingReview
+                        ? "Your application is under review. Changing your service or vehicle will update your document requirements and restart the review process."
+                        : "Changing your service or vehicle may change the documents you need to provide. Your checklist will be updated after you save."}
+                    </Text>
+                  </View>
+                ) : null}
+
                 {/* Combined service and vehicle options */}
                 <View style={styles.choiceList}>
                   {EARNING_CHOICES.map((choice) => {
@@ -847,7 +1102,15 @@ export default function RunnerTaskSelectionScreen() {
                 </View>
 
                 {/* Service area */}
-                <View style={styles.fieldGroup}>
+                <View
+                  style={styles.fieldGroup}
+                  onLayout={(event) =>
+                    rememberFieldPosition(
+                      "serviceArea",
+                      event.nativeEvent.layout.y,
+                    )
+                  }
+                >
                   <Text
                     style={[
                       styles.fieldLabel,
@@ -860,8 +1123,24 @@ export default function RunnerTaskSelectionScreen() {
                   <TextInput
                     value={serviceArea}
                     onChangeText={setServiceArea}
-                    onFocus={() => setServiceAreaFocused(true)}
-                    onBlur={() => setServiceAreaFocused(false)}
+                    onFocus={() => {
+                      setServiceAreaFocused(true);
+                      revealInput("serviceArea");
+                    }}
+                    onBlur={() => {
+                      setServiceAreaFocused(false);
+
+                      if (activeInputRef.current === "serviceArea") {
+                        activeInputRef.current = null;
+                      }
+                    }}
+                    onSubmitEditing={() => {
+                      if (registrationRequired) {
+                        vehicleModelInputRef.current?.focus();
+                      } else {
+                        Keyboard.dismiss();
+                      }
+                    }}
                     placeholder="e.g. Westlands, Nairobi"
                     placeholderTextColor={colors.textMuted}
                     editable={canEdit}
@@ -886,7 +1165,15 @@ export default function RunnerTaskSelectionScreen() {
 
                 {/* Vehicle model: motorbike and vehicle only */}
                 {registrationRequired ? (
-                  <View style={styles.fieldGroup}>
+                  <View
+                    style={styles.fieldGroup}
+                    onLayout={(event) =>
+                      rememberFieldPosition(
+                        "vehicleModel",
+                        event.nativeEvent.layout.y,
+                      )
+                    }
+                  >
                     <Text
                       style={[
                         styles.fieldLabel,
@@ -897,10 +1184,23 @@ export default function RunnerTaskSelectionScreen() {
                     </Text>
 
                     <TextInput
+                      ref={vehicleModelInputRef}
                       value={vehicleModel}
                       onChangeText={setVehicleModel}
-                      onFocus={() => setVehicleModelFocused(true)}
-                      onBlur={() => setVehicleModelFocused(false)}
+                      onFocus={() => {
+                        setVehicleModelFocused(true);
+                        revealInput("vehicleModel");
+                      }}
+                      onBlur={() => {
+                        setVehicleModelFocused(false);
+
+                        if (activeInputRef.current === "vehicleModel") {
+                          activeInputRef.current = null;
+                        }
+                      }}
+                      onSubmitEditing={() =>
+                        registrationInputRef.current?.focus()
+                      }
                       placeholder="e.g. Honda CG 125 or Toyota Vitz"
                       placeholderTextColor={colors.textMuted}
                       editable={canEdit}
@@ -923,9 +1223,17 @@ export default function RunnerTaskSelectionScreen() {
                   </View>
                 ) : null}
 
-                {/* Registration number: motorbike and vehicle only */}
-                {registrationRequired ? (
-                  <View style={styles.fieldGroup}>
+                {/* Kenyan registration number: motorbike and vehicle only */}
+                {registrationRequired && selectedChoice ? (
+                  <View
+                    style={styles.fieldGroup}
+                    onLayout={(event) =>
+                      rememberFieldPosition(
+                        "vehicleRegistration",
+                        event.nativeEvent.layout.y,
+                      )
+                    }
+                  >
                     <Text
                       style={[
                         styles.fieldLabel,
@@ -936,16 +1244,40 @@ export default function RunnerTaskSelectionScreen() {
                     </Text>
 
                     <TextInput
+                      ref={registrationInputRef}
                       value={vehicleRegistration}
-                      onChangeText={setVehicleRegistration}
-                      onFocus={() => setRegistrationFocused(true)}
-                      onBlur={() => setRegistrationFocused(false)}
-                      placeholder="Enter registration number"
+                      onChangeText={(value) =>
+                        setVehicleRegistration(
+                          formatKenyanRegistration(
+                            value,
+                            selectedChoice.vehicleType,
+                          ),
+                        )
+                      }
+                      onFocus={() => {
+                        setRegistrationFocused(true);
+                        revealInput("vehicleRegistration");
+                      }}
+                      onBlur={() => {
+                        setRegistrationFocused(false);
+
+                        if (
+                          activeInputRef.current ===
+                          "vehicleRegistration"
+                        ) {
+                          activeInputRef.current = null;
+                        }
+                      }}
+                      onSubmitEditing={() => Keyboard.dismiss()}
+                      placeholder={`e.g. ${registrationExample(
+                        selectedChoice.vehicleType,
+                      )}`}
                       placeholderTextColor={colors.textMuted}
                       editable={canEdit}
-                      maxLength={20}
+                      maxLength={8}
                       autoCapitalize="characters"
                       autoCorrect={false}
+                      keyboardType="default"
                       returnKeyType="done"
                       selectionColor={colors.blueAction}
                       style={[
@@ -959,55 +1291,99 @@ export default function RunnerTaskSelectionScreen() {
                         },
                       ]}
                     />
+
+                    <Text
+                      style={[
+                        styles.fieldHint,
+                        { color: supportingText },
+                      ]}
+                    >
+                      {selectedChoice.vehicleType === "motorbike"
+                        ? "Enter the seven-character Kenyan motorcycle plate beginning with KM."
+                        : "Enter your Kenyan civilian vehicle plate in the three-letter, three-digit, final-letter format."}
+                    </Text>
                   </View>
                 ) : null}
               </>
             )}
           </ScrollView>
 
-          {/* Fixed bottom action */}
-          <View
-            style={[
-              styles.bottomBar,
-              {
-                backgroundColor: colors.paper,
-                borderTopColor: colors.border,
-              },
-            ]}
-          >
-            <Pressable
-              accessibilityRole="button"
-              accessibilityLabel={bottomButtonLabel}
-              accessibilityState={{
-                disabled: bottomButtonDisabled,
-                busy: saving,
-              }}
-              disabled={bottomButtonDisabled}
-              onPress={handleBottomAction}
-              style={({ pressed }) => [
-                styles.continueButton,
-                { backgroundColor: buttonBlue },
-                bottomButtonDisabled && styles.disabled,
-                pressed && !bottomButtonDisabled && styles.pressed,
+          {/* The fixed action bar stays out of the keyboard area. */}
+          {!keyboardVisible && (!loadError || sessionExpired) ? (
+            <View
+              style={[
+                styles.bottomBar,
+                {
+                  backgroundColor: colors.paper,
+                  borderTopColor: colors.border,
+                },
               ]}
             >
-              {saving ? (
-                <ActivityIndicator color="#FFFFFF" />
-              ) : (
-                <>
-                  <Text style={styles.continueButtonText}>
-                    {bottomButtonLabel}
-                  </Text>
+              <View style={isEditMode ? styles.bottomActions : undefined}>
+                <Pressable
+                  accessibilityRole="button"
+                  accessibilityLabel={bottomButtonLabel}
+                  accessibilityState={{
+                    disabled: bottomButtonDisabled,
+                    busy: saving,
+                  }}
+                  disabled={bottomButtonDisabled}
+                  onPress={handleBottomAction}
+                  style={({ pressed }) => [
+                    styles.continueButton,
+                    isEditMode && styles.editSaveButton,
+                    { backgroundColor: buttonBlue },
+                    bottomButtonDisabled && styles.disabled,
+                    pressed && !bottomButtonDisabled && styles.pressed,
+                  ]}
+                >
+                  {saving ? (
+                    <ActivityIndicator color="#FFFFFF" />
+                  ) : (
+                    <>
+                      <Text style={styles.continueButtonText}>
+                        {bottomButtonLabel}
+                      </Text>
 
-                  <Ionicons
-                    name="arrow-forward"
-                    size={19}
-                    color="#FFFFFF"
-                  />
-                </>
-              )}
-            </Pressable>
-          </View>
+                      <Ionicons
+                        name={
+                          isEditMode
+                            ? "checkmark"
+                            : "arrow-forward"
+                        }
+                        size={19}
+                        color="#FFFFFF"
+                      />
+                    </>
+                  )}
+                </Pressable>
+
+                {isEditMode ? (
+                  <Pressable
+                    accessibilityRole="button"
+                    accessibilityLabel="Cancel and return to Documents"
+                    disabled={saving}
+                    onPress={cancelEdit}
+                    style={({ pressed }) => [
+                      styles.cancelButton,
+                      { borderColor: colors.border },
+                      pressed && styles.cancelPressed,
+                      saving && styles.disabled,
+                    ]}
+                  >
+                    <Text
+                      style={[
+                        styles.cancelText,
+                        { color: colors.text },
+                      ]}
+                    >
+                      Cancel
+                    </Text>
+                  </Pressable>
+                ) : null}
+              </View>
+            </View>
+          ) : null}
         </View>
       </KeyboardAvoidingView>
     </SafeAreaView>
@@ -1031,6 +1407,10 @@ const styles = StyleSheet.create({
     paddingHorizontal: 20,
     paddingTop: 12,
     paddingBottom: 24,
+  },
+
+  scrollContentWithKeyboard: {
+    paddingBottom: 48,
   },
 
   header: {
@@ -1064,6 +1444,24 @@ const styles = StyleSheet.create({
 
   intro: {
     marginBottom: 19,
+  },
+
+  editNotice: {
+    borderWidth: 1,
+    borderRadius: 12,
+    paddingHorizontal: 12,
+    paddingVertical: 11,
+    flexDirection: "row",
+    alignItems: "flex-start",
+    gap: 9,
+    marginBottom: 16,
+  },
+
+  editNoticeText: {
+    flex: 1,
+    fontSize: 12,
+    lineHeight: 18,
+    fontWeight: "600",
   },
 
   title: {
@@ -1131,24 +1529,18 @@ const styles = StyleSheet.create({
     fontWeight: "800",
   },
 
+  fieldHint: {
+    fontSize: 11,
+    lineHeight: 16,
+    fontWeight: "500",
+  },
+
   textInput: {
     minHeight: 50,
     borderWidth: 1,
     borderRadius: 12,
     paddingHorizontal: 14,
     fontSize: 14,
-  },
-
-  loadingState: {
-    minHeight: 180,
-    alignItems: "center",
-    justifyContent: "center",
-    gap: 12,
-  },
-
-  loadingText: {
-    fontSize: 13,
-    fontWeight: "600",
   },
 
   loadError: {
@@ -1180,6 +1572,35 @@ const styles = StyleSheet.create({
     paddingTop: 12,
     paddingBottom: 10,
     borderTopWidth: StyleSheet.hairlineWidth,
+  },
+
+  bottomActions: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 10,
+  },
+
+  editSaveButton: {
+    flex: 1,
+  },
+
+  cancelButton: {
+    minHeight: 54,
+    minWidth: 82,
+    paddingHorizontal: 17,
+    borderWidth: 1,
+    borderRadius: 13,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+
+  cancelText: {
+    fontSize: 14,
+    fontWeight: "800",
+  },
+
+  cancelPressed: {
+    opacity: 0.7,
   },
 
   continueButton: {

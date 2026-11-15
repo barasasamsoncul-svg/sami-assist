@@ -1,4 +1,3 @@
-
 import "server-only";
 
 /* =========================================================
@@ -169,6 +168,10 @@ function latestDocumentsByRequirement(
  * 4. Pending application review
  * 5. Approved account with all checks satisfied
  *
+ * A Runner must have exactly one selected service:
+ * - pickup_deliver
+ * - shop_deliver
+ *
  * A pending document counts as uploaded, but not approved.
  * A rejected document never satisfies a requirement.
  */
@@ -262,15 +265,28 @@ export function resolveRunnerCompliance(
     missingTaskFields.push("full_name");
   }
 
+  /*
+   * Exactly one supported service must be selected.
+   *
+   * This rejects:
+   * - No selected service
+   * - Both supported services
+   * - Any unsupported service
+   *
+   * The Tasks screen presents the six permitted
+   * service-and-transport combinations.
+   */
   if (
-    validCategories.length === 0 ||
+    validCategories.length !== 1 ||
     validCategories.length !== selectedCategories.length
   ) {
     missingTaskFields.push("service_selection");
   }
 
-  if (!hasText(input.serviceArea) ||
-      input.serviceArea!.trim().length < 2) {
+  if (
+    !hasText(input.serviceArea) ||
+    input.serviceArea!.trim().length < 2
+  ) {
     missingTaskFields.push("service_area");
   }
 

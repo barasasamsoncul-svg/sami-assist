@@ -1,5 +1,6 @@
 
 import React from "react";
+
 import {
   Image,
   ImageBackground,
@@ -42,7 +43,7 @@ export default function WelcomeScreen({
       type: "info",
       title: "SaMi Runner Help",
       message:
-        "New to SaMi Runner? Select Get started to begin registration. Already registered? Select Sign in to access your account. You will need access to the email address registered to your Runner account to receive your secure verification code.",
+        "SaMi Runner is for people who earn by completing customer jobs. Select Get started to register, choose Pick Up & Deliver and/or Shop & Deliver, select your transport type and submit the required documents. Once your application is approved, you can access available jobs through your Runner dashboard and earn from the work you complete. Already registered? Select Sign in.",
     });
   }
 
@@ -101,7 +102,7 @@ export default function WelcomeScreen({
             </Pressable>
           </View>
 
-          {/* MAIN MESSAGE — KEPT IN THE DARK SKY */}
+          {/* RUNNER EARNING MESSAGE */}
 
           <View
             style={[
@@ -123,7 +124,8 @@ export default function WelcomeScreen({
                 narrow && styles.headingNarrow,
               ]}
             >
-              Make every{"\n"}task count
+              Complete jobs.{"\n"}
+              Earn with SaMi
               <Text style={styles.headingAccent}>.</Text>
             </Text>
 
@@ -134,13 +136,13 @@ export default function WelcomeScreen({
                 narrow && styles.descriptionNarrow,
               ]}
             >
-              Shop, pick up, assist and complete
-              everyday tasks for your community
-              with SaMi.
+              Choose Pick Up & Deliver or Shop & Deliver,
+              help customers get things done, and earn
+              from the work you complete.
             </Text>
           </View>
 
-          {/* FLEXIBLE SPACE KEEPS ACTIONS AT THE BOTTOM */}
+          {/* FLEXIBLE SPACE */}
 
           <View style={styles.spacer} />
 
@@ -183,10 +185,6 @@ export default function WelcomeScreen({
   );
 }
 
-/* =========================================================
-   STYLES
-========================================================= */
-
 const styles = StyleSheet.create({
   background: {
     flex: 1,
@@ -198,10 +196,12 @@ const styles = StyleSheet.create({
     height: "100%",
   },
 
-  backgroundTint: {
-    ...StyleSheet.absoluteFill,
-    backgroundColor: "rgba(0, 5, 53, 0.07)",
-  },
+  
+backgroundTint: {
+  ...StyleSheet.absoluteFill,
+  backgroundColor: "rgba(0, 5, 53, 0.42)",
+},
+
 
   safeArea: {
     flex: 1,

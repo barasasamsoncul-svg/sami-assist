@@ -52,10 +52,25 @@ type RunnerVehicleType = "bike" | "motorbike" | "vehicle";
 
 type StoredVehicleType = "bicycle" | "motorcycle" | "car";
 
+const VALID_RUNNER_SERVICES = new Set([
+  "pickup_deliver",
+  "shop_deliver",
+]);
+
+const MOTORBIKE_REGISTRATION_PATTERN =
+  /^KM[A-HJ-NP-Z]{2}[0-9]{3}$/;
+
+const VEHICLE_REGISTRATION_PATTERN =
+  /^K[A-HJ-NP-Z]{2}[0-9]{3}[A-HJ-NP-Z]$/;
+
+/* -------------------------------------------------------------------------- */
+/* VEHICLE NORMALIZATION                                                      */
+/* -------------------------------------------------------------------------- */
+
 function normalizeVehicleType(
   value: string | null | undefined,
 ): RunnerVehicleType | null {
-  switch (value) {
+  switch (value?.trim().toLowerCase()) {
     case "bike":
     case "bicycle":
       return "bike";
@@ -90,6 +105,109 @@ function toStoredVehicleType(
   }
 }
 
+/**
+ * Remove spaces and punctuation so different presentations
+ * of the same registration normalize to the same value.
+ *
+ * Example:
+ * KDA 123A -> KDA123A
+ * KDA-123A -> KDA123A
+ */
+function compactKenyanRegistration(value: string): string {
+  return value
+    .trim()
+    .toUpperCase()
+    .replace(/[^A-Z0-9]/g, "");
+}
+
+/**
+ * Store the registration consistently:
+ *
+ * Motorcycle: KMAB 123
+ * Vehicle:    KDA 123A
+ */
+function normalizeKenyanRegistration(
+  value: string,
+  vehicleType: RunnerVehicleType,
+): string {
+  const compact = compactKenyanRegistration(value);
+
+  if (vehicleType === "motorbike") {
+    return compact.length > 4
+      ? `${compact.slice(0, 4)} ${compact.slice(4)}`
+      : compact;
+  }
+
+  if (vehicleType === "vehicle") {
+    return compact.length > 3
+      ? `${compact.slice(0, 3)} ${compact.slice(3)}`
+      : compact;
+  }
+
+  return "";
+}
+
+/**
+ * Validate the ordinary Kenyan registration formats used
+ * by the Runner onboarding flow.
+ *
+ * Motorcycle:
+ * KM + two letters + three digits.
+ *
+ * Ordinary motor vehicle:
+ * K + two letters + three digits + final letter.
+ */
+function isValidKenyanRegistration(
+  value: string,
+  vehicleType: RunnerVehicleType,
+): boolean {
+  const compact = compactKenyanRegistration(value);
+
+  if (vehicleType === "motorbike") {
+    return MOTORBIKE_REGISTRATION_PATTERN.test(compact);
+  }
+
+  if (vehicleType === "vehicle") {
+    return VEHICLE_REGISTRATION_PATTERN.test(compact);
+  }
+
+  return true;
+}
+
+function registrationValidationMessage(
+  vehicleType: RunnerVehicleType,
+): string {
+  return vehicleType === "motorbike"
+    ? "Enter a valid Kenyan motorcycle registration number, for example KMAB 123."
+    : "Enter a valid Kenyan vehicle registration number, for example KDA 123A.";
+}
+
+function isVehicleRegistrationUniqueViolation(
+  cause: unknown,
+): boolean {
+  if (
+    cause === null ||
+    typeof cause !== "object"
+  ) {
+    return false;
+  }
+
+  const databaseError = cause as {
+    code?: unknown;
+    constraint?: unknown;
+  };
+
+  return (
+    databaseError.code === "23505" &&
+    databaseError.constraint ===
+      "runner_profiles_vehicle_registration_normalized_uidx"
+  );
+}
+
+/* -------------------------------------------------------------------------- */
+/* ONBOARDING STATUS                                                          */
+/* -------------------------------------------------------------------------- */
+
 function onboardingState(status: string) {
   switch (status) {
     case "approved":
@@ -118,22 +236,10 @@ function response(
   });
 }
 
-/**
- * GET /api/runner/me/onboarding
- *
- * Returns the authenticated Runner's:
- * - Account and verification status
- * - Service-area information
- * - Vehicle type, model and registration
- * - Selected services
- * - Mandatory document requirements
- * - Uploaded document review results
- * - Server-resolved compliance decision
- *
- * The compliance resolver is the source of truth for the
- * next screen. Frontend screens must not independently
- * determine whether a Runner is eligible for the Dashboard.
- */
+/* -------------------------------------------------------------------------- */
+/* GET /api/runner/me/onboarding                                              */
+/* -------------------------------------------------------------------------- */
+
 export async function GET(request: Request) {
   try {
     const auth = await authenticateRunner(request, {
@@ -296,12 +402,10 @@ export async function GET(request: Request) {
     return response({
       ok: true,
 
-      // Retain the existing status field for current consumers.
       onboardingStatus: onboardingState(
         profile.verification_status,
       ),
 
-      // New authoritative compliance fields.
       complianceStatus: compliance.status,
       nextStep: compliance.nextStep,
       canSubmit: compliance.canSubmit,
@@ -340,23 +444,24 @@ export async function GET(request: Request) {
   }
 }
 
+/* -------------------------------------------------------------------------- */
+/* PUT /api/runner/me/onboarding                                              */
+/* -------------------------------------------------------------------------- */
+
 /**
- * PUT /api/runner/me/onboarding
+ * Saves Runner service area and transport details.
  *
- * Saves the Runner's service area and transport details.
+ * A Runner may use:
+ * - Bicycle
+ * - Motorbike
+ * - Vehicle
  *
- * Public vehicle values:
- * - bike
- * - motorbike
- * - vehicle
+ * Motorbike and Vehicle applicants must supply:
+ * - Vehicle make and model
+ * - Valid Kenyan registration number
  *
- * Motorbike and vehicle applicants must provide:
- * - Vehicle model
- * - Vehicle registration number
- *
- * Changes are allowed during initial onboarding and after
- * a rejection, but not while the application is under
- * review or after approval.
+ * A vehicle registration number may belong to only one
+ * Runner account at a time.
  */
 export async function PUT(request: Request) {
   const auth = await authenticateRunner(request);
@@ -409,14 +514,21 @@ export async function PUT(request: Request) {
           .slice(0, 120)
       : "";
 
-  const vehicleRegistration =
+  const rawVehicleRegistration =
     typeof body.vehicleRegistration === "string"
       ? body.vehicleRegistration
-          .trim()
-          .toUpperCase()
-          .replace(/\s+/g, " ")
-          .slice(0, 30)
       : "";
+
+  const compactRegistration =
+    compactKenyanRegistration(rawVehicleRegistration);
+
+  const vehicleRegistration =
+    vehicleType === "bike"
+      ? ""
+      : normalizeKenyanRegistration(
+          compactRegistration,
+          vehicleType,
+        );
 
   if (serviceArea.length < 2) {
     return errorResponse(
@@ -434,9 +546,14 @@ export async function PUT(request: Request) {
       );
     }
 
-    if (vehicleRegistration.length < 3) {
+    if (
+      !isValidKenyanRegistration(
+        compactRegistration,
+        vehicleType,
+      )
+    ) {
       return errorResponse(
-        "Enter the registration number of your vehicle.",
+        registrationValidationMessage(vehicleType),
       );
     }
   }
@@ -514,6 +631,51 @@ export async function PUT(request: Request) {
       );
     }
 
+    /*
+     * Friendly duplicate check.
+     *
+     * The normalization expression matches the unique
+     * database index added in the next migration.
+     *
+     * The current Runner is excluded so they can save
+     * their existing vehicle registration again.
+     */
+    if (savedVehicleRegistration) {
+      const duplicateResult =
+        await client.query<{ runner_id: string }>(
+          `SELECT runner_id
+           FROM public.runner_profiles
+           WHERE regexp_replace(
+             upper(btrim(vehicle_registration)),
+             '[^A-Z0-9]',
+             '',
+             'g'
+           ) = $1
+             AND runner_id <> $2
+           LIMIT 1`,
+          [
+            compactRegistration,
+            auth.runner.id,
+          ],
+        );
+
+      if (duplicateResult.rows.length > 0) {
+        await client.query("ROLLBACK");
+        transactionStarted = false;
+
+        return errorResponse(
+          "This vehicle registration is already registered to another SaMi Runner. Use a different vehicle registration number.",
+          409,
+        );
+      }
+    }
+
+    /*
+     * Save the profile.
+     *
+     * The unique expression index is the final protection
+     * against simultaneous registration attempts.
+     */
     const result = await client.query<{
       runner_id: string;
       service_area: string;
@@ -645,6 +807,21 @@ export async function PUT(request: Request) {
       );
     }
 
+    /*
+     * Two Runners may submit the same plate at almost
+     * exactly the same time. The database unique index
+     * decides which transaction succeeds.
+     *
+     * Return the same 409 response as the friendly
+     * pre-check when the unique index rejects the second.
+     */
+    if (isVehicleRegistrationUniqueViolation(cause)) {
+      return errorResponse(
+        "This vehicle registration is already registered to another SaMi Runner. Use a different vehicle registration number.",
+        409,
+      );
+    }
+
     console.error(
       "[SaMi Runner onboarding] Profile update failed.",
       cause instanceof Error
@@ -661,15 +838,18 @@ export async function PUT(request: Request) {
   }
 }
 
+/* -------------------------------------------------------------------------- */
+/* POST /api/runner/me/onboarding                                             */
+/* -------------------------------------------------------------------------- */
+
 /**
- * POST /api/runner/me/onboarding
- *
  * Submits a completed application for review.
  *
  * The server independently verifies:
  * - Service-area details
  * - Vehicle details
- * - Selected services
+ * - Exactly one selected Runner service
+ * - Valid Kenyan vehicle registration where applicable
  * - All mandatory documents
  *
  * The latest document for each requirement must be pending
@@ -779,11 +959,20 @@ export async function POST(request: Request) {
       );
     }
 
-    if (
-      ["motorcycle", "car", "van", "other"].includes(
-        profile.vehicle_type,
-      )
-    ) {
+    const normalizedVehicleType = normalizeVehicleType(
+      profile.vehicle_type,
+    );
+
+    if (!normalizedVehicleType) {
+      await client.query("ROLLBACK");
+
+      return errorResponse(
+        "Choose a supported transport type before submitting.",
+        409,
+      );
+    }
+
+    if (normalizedVehicleType !== "bike") {
       if (!profile.vehicle_model?.trim()) {
         await client.query("ROLLBACK");
 
@@ -801,6 +990,22 @@ export async function POST(request: Request) {
           409,
         );
       }
+
+      if (
+        !isValidKenyanRegistration(
+          profile.vehicle_registration,
+          normalizedVehicleType,
+        )
+      ) {
+        await client.query("ROLLBACK");
+
+        return errorResponse(
+          registrationValidationMessage(
+            normalizedVehicleType,
+          ),
+          409,
+        );
+      }
     }
 
     const categoriesResult =
@@ -815,11 +1020,19 @@ export async function POST(request: Request) {
       (row) => row.category_key,
     );
 
-    if (categories.length === 0) {
+    /*
+     * A Runner must have exactly one supported service.
+     * This also protects against legacy or manually modified
+     * database records that contain multiple service rows.
+     */
+    if (
+      categories.length !== 1 ||
+      !VALID_RUNNER_SERVICES.has(categories[0])
+    ) {
       await client.query("ROLLBACK");
 
       return errorResponse(
-        "Select at least one task category before submitting.",
+        "Select exactly one Runner service: Pick Up & Deliver or Shop & Deliver.",
         409,
       );
     }
@@ -851,7 +1064,7 @@ export async function POST(request: Request) {
       await client.query("ROLLBACK");
 
       return errorResponse(
-        "No mandatory verification documents are configured for your selected services and transport. Contact SaMi support before submitting.",
+        "No mandatory verification documents are configured for your selected service and transport. Contact SaMi support before submitting.",
         503,
       );
     }

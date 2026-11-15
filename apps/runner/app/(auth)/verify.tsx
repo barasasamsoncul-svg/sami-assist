@@ -112,8 +112,6 @@ export default function VerifyRunnerScreen() {
   const [resending, setResending] = useState(false);
   const [verified, setVerified] = useState(false);
 
-  // This boolean only controls the input border appearance.
-  // All actual error messages use the global overlay.
   const [inputHasError, setInputHasError] = useState(false);
   const [inputFocused, setInputFocused] = useState(false);
 
@@ -163,16 +161,6 @@ export default function VerifyRunnerScreen() {
 
   /* =========================================================
      ANDROID HARDWARE BACK
-
-     Before successful verification:
-     - Registration OTP returns to Register.
-     - Login OTP returns to Login.
-
-     The user can still use the existing Change Details
-     action on the screen.
-
-     During verification or account creation, Back is blocked
-     to avoid interrupting an in-flight authentication request.
   ========================================================= */
 
   useEffect(() => {
@@ -219,7 +207,6 @@ export default function VerifyRunnerScreen() {
 
   /* =========================================================
      MISSING INITIAL CHALLENGE
-     Feedback is displayed through the global overlay.
   ========================================================= */
 
   useEffect(() => {
@@ -282,15 +269,6 @@ export default function VerifyRunnerScreen() {
 
   /* =========================================================
      SESSION COMPLETION
-
-     Save the authenticated Runner session.
-
-     Keep Login/Register in history until verification succeeds.
-     After success, clear the authentication history so Back
-     cannot return to Login or Register.
-
-     The backend nextStep response determines the destination.
-     No obsolete profile-setup route is used.
   ========================================================= */
 
   async function completeSession(
@@ -317,12 +295,10 @@ export default function VerifyRunnerScreen() {
 
     if (!mountedRef.current) return;
 
-    // Successful authentication is the boundary.
-    // Remove previous Login, Register and OTP screens now,
-    // not before verification has completed.
     router.dismissAll();
 
-    // The server's compliance resolver decides the destination.
+    // Only the agreed Runner destinations are used.
+    // Restricted accounts remain within the Documents stage.
     switch (result.nextStep) {
       case "tasks":
       case "onboarding": {
@@ -343,15 +319,7 @@ export default function VerifyRunnerScreen() {
       }
 
       case "restricted": {
-        showOverlay({
-          type: "warning",
-          title: "Account access restricted",
-          message:
-            "Your Runner account is currently restricted. You cannot access Runner services until SaMi has resolved this restriction. Please contact SaMi Support for assistance.",
-          primaryAction: {
-            label: "Understood",
-          },
-        });
+        router.replace("/(auth)/documents");
         return;
       }
 
@@ -378,8 +346,6 @@ export default function VerifyRunnerScreen() {
     result: RunnerOtpFlowResult,
   ): Promise<void> {
     if (result.flow === "authenticated") {
-      // Ordinary registration without a Customer match,
-      // or the existing Runner login flow.
       await completeSession(result);
       return;
     }
@@ -390,8 +356,6 @@ export default function VerifyRunnerScreen() {
       );
     }
 
-    // An optional Customer match requires explicit consent.
-    // The user may still go back to Register before confirming.
     applyCustomerConfirmation(result);
   }
 
@@ -799,12 +763,7 @@ export default function VerifyRunnerScreen() {
           keyboardShouldPersistTaps="handled"
           showsVerticalScrollIndicator={false}
         >
-          {/* =================================================
-              HEADER
-              Logo left.
-              Help right.
-              No back arrow.
-          ================================================= */}
+          {/* HEADER */}
 
           <View style={styles.header}>
             <Image

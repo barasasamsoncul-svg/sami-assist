@@ -1,4 +1,3 @@
-
 import * as SecureStore from "expo-secure-store";
 import { fetch as expoFetch } from "expo/fetch";
 import { File as ExpoFile } from "expo-file-system";
@@ -299,7 +298,8 @@ export type RunnerOnboardingUpdateResult = {
 export type RunnerCategoriesUpdateResult = {
   ok: boolean;
   message: string;
-  categories?: RunnerCategory[];
+  selectedCategories: RunnerServiceKey[];
+  nextStep: "tasks";
 };
 
 /* -------------------------------------------------------------------------- */
@@ -403,23 +403,48 @@ function normalizeOnboardingData(
   };
 }
 
+/**
+ * A Runner must select exactly one service.
+ *
+ * Valid:
+ * - pickup_deliver
+ * - shop_deliver
+ *
+ * Invalid:
+ * - No service
+ * - Both services
+ * - Duplicate service entries
+ * - Unsupported service values
+ */
 function assertRunnerServiceKeys(
   categoryKeys: string[],
 ): asserts categoryKeys is RunnerServiceKey[] {
-  if (!Array.isArray(categoryKeys) || categoryKeys.length === 0) {
-    throw new Error("Select at least one Runner service.");
-  }
-
-  if (categoryKeys.some(
-    (key) => !RUNNER_SERVICE_KEYS.includes(key as RunnerServiceKey),
-  )) {
+  if (
+    !Array.isArray(categoryKeys) ||
+    categoryKeys.length !== 1
+  ) {
     throw new Error(
-      "Only Pick Up & Deliver and Shop & Deliver are supported Runner services.",
+      "Select exactly one Runner service: Pick Up & Deliver or Shop & Deliver.",
     );
   }
 
-  if (new Set(categoryKeys).size !== categoryKeys.length) {
-    throw new Error("A Runner service cannot be selected more than once.");
+  if (
+    categoryKeys.some(
+      (key) =>
+        !RUNNER_SERVICE_KEYS.includes(
+          key as RunnerServiceKey,
+        ),
+    )
+  ) {
+    throw new Error(
+      "Only Pick Up & Deliver or Shop & Deliver is supported.",
+    );
+  }
+
+  if (new Set(categoryKeys).size !== 1) {
+    throw new Error(
+      "A Runner can select only one service.",
+    );
   }
 }
 
@@ -937,9 +962,10 @@ export async function getRunnerCategories(): Promise<{
 }
 
 /**
- * Save the Runner's supported service selections.
+ * Save exactly one Runner service selection.
  *
- * The API accepts only the two current Runner service keys.
+ * The available catalogue contains two services, but each Runner
+ * account must select only one of them.
  */
 export async function updateRunnerCategories(
   categoryKeys: RunnerServiceKey[],

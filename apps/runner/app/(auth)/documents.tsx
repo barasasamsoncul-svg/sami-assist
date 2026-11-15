@@ -207,6 +207,7 @@ function documentIcon(
   if (type === "profile_photo") return "person-circle-outline";
   if (type === "driving_licence") return "id-card-outline";
   if (type === "vehicle_registration") return "car-outline";
+
   if (type === "motor_vehicle_insurance") {
     return "shield-checkmark-outline";
   }
@@ -731,6 +732,28 @@ export default function RunnerDocumentsScreen() {
       !loadError,
   );
 
+  // Runners can revise their service and transport selections
+  // from Documents, including while Operations is reviewing.
+  // The backend will restart compliance when a saved choice changes.
+  const canChangeSetup = Boolean(
+    data &&
+      data.nextStep === "documents" &&
+      !isRestricted &&
+      !isSessionExpired &&
+      !loadError,
+  );
+
+  function changeSetup() {
+    if (!canChangeSetup || !data) return;
+
+    router.push({
+      pathname: "/(auth)/tasks",
+      params: {
+        edit: "true",
+      },
+    });
+  }
+
   /* =========================================================
      REFRESH WHILE OPERATIONS REVIEWS THE APPLICATION
 
@@ -799,7 +822,7 @@ export default function RunnerDocumentsScreen() {
       type: "info",
       title: "SaMi Runner Help",
       message:
-        "Upload each required document using its row. Documents marked Under review have been received by SaMi Operations. You can still replace a file if you uploaded the wrong document. Approved documents cannot be changed. If Operations returns a document, the row will show Resubmit with the review reason.",
+        "Upload each required document using its row. Documents marked Under review have been received by SaMi Operations. You can replace a file if you uploaded the wrong document. You can also change your selected service or vehicle. Changing these choices may update your document checklist and restart the application review.",
       primaryAction: {
         label: "Got it",
       },
@@ -843,7 +866,7 @@ export default function RunnerDocumentsScreen() {
     : isApproved
       ? "Your Runner account has been approved."
       : isPendingReview
-        ? "Your documents are with SaMi Operations. You can replace a file if you uploaded the wrong document."
+        ? "Your documents are with SaMi Operations. You can replace a file or change your service and vehicle choices."
         : hasResubmissions || applicationReviewRejected
           ? "Some information needs your attention. Resubmit the requested documents below."
           : progress.remaining > 0
@@ -919,7 +942,7 @@ export default function RunnerDocumentsScreen() {
             </Pressable>
           </View>
 
-          {/* Read-only earning setup */}
+          {/* Editable earning setup summary */}
           <View style={styles.signingUpBlock}>
             <Text
               style={[
@@ -927,7 +950,7 @@ export default function RunnerDocumentsScreen() {
                 { color: supportingText },
               ]}
             >
-              SIGNING UP FOR
+              YOUR EARNING SETUP
             </Text>
 
             <View
@@ -1098,18 +1121,76 @@ export default function RunnerDocumentsScreen() {
                       </Text>
                     </View>
                   ) : null}
-
-                  <Text
-                    style={[
-                      styles.readOnlyHint,
-                      { color: supportingText },
-                    ]}
-                  >
-                    These details are read-only during onboarding.
-                  </Text>
                 </View>
               ) : null}
             </View>
+
+            {canChangeSetup ? (
+              <Pressable
+                accessibilityRole="button"
+                accessibilityLabel="Change selected service or vehicle"
+                onPress={changeSetup}
+                style={({ pressed }) => [
+                  styles.changeSetupButton,
+                  {
+                    borderColor: colors.border,
+                    backgroundColor: colors.surface,
+                    opacity: pressed ? 0.7 : 1,
+                  },
+                ]}
+              >
+                <View
+                  style={[
+                    styles.changeSetupIcon,
+                    { backgroundColor: colors.blueSoft },
+                  ]}
+                >
+                  <Ionicons
+                    name="options-outline"
+                    size={18}
+                    color={actionBlue}
+                  />
+                </View>
+
+                <View style={styles.changeSetupCopy}>
+                  <Text
+                    style={[
+                      styles.changeSetupTitle,
+                      { color: actionBlue },
+                    ]}
+                  >
+                    Change service or vehicle
+                  </Text>
+
+                  <Text
+                    style={[
+                      styles.changeSetupHint,
+                      { color: supportingText },
+                    ]}
+                  >
+                    Update your earning option and transport details
+                  </Text>
+                </View>
+
+                <Ionicons
+                  name="chevron-forward"
+                  size={19}
+                  color={colors.textMuted}
+                />
+              </Pressable>
+            ) : null}
+
+            {canChangeSetup && isPendingReview ? (
+              <Text
+                style={[
+                  styles.changeSetupWarning,
+                  { color: supportingText },
+                ]}
+              >
+                Changing these choices will restart your application
+                review and may require additional documents.
+              </Text>
+            ) : null}
           </View>
 
           {/* Welcome and onboarding progress */}
@@ -1439,8 +1520,9 @@ export default function RunnerDocumentsScreen() {
                 ]}
               >
                 Your application is under review. You may replace a
-                document if you uploaded the wrong file. The newest
-                version will be available to SaMi Operations.
+                document if you uploaded the wrong file, or change
+                your service and vehicle choices. Changing those
+                choices will restart the review process.
               </Text>
             </View>
           ) : isApproved ? (
@@ -1593,9 +1675,44 @@ const styles = StyleSheet.create({
     fontWeight: "700",
   },
 
-  readOnlyHint: {
-    fontSize: 10,
-    marginTop: 3,
+  changeSetupButton: {
+    minHeight: 65,
+    borderWidth: 1,
+    borderRadius: 12,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 11,
+  },
+
+  changeSetupIcon: {
+    width: 36,
+    height: 36,
+    borderRadius: 11,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+
+  changeSetupCopy: {
+    flex: 1,
+    gap: 3,
+  },
+
+  changeSetupTitle: {
+    fontSize: 12.5,
+    fontWeight: "800",
+  },
+
+  changeSetupHint: {
+    fontSize: 10.5,
+    lineHeight: 15,
+  },
+
+  changeSetupWarning: {
+    fontSize: 10.5,
+    lineHeight: 16,
+    marginTop: 1,
   },
 
   intro: {

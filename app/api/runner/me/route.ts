@@ -1,8 +1,15 @@
+
 import { NextResponse } from "next/server";
 
 import { authenticateRunner } from "@/apps/runner/server/auth";
-import { databasePool, query } from "@/apps/runner/server/db";
-import { errorResponse, isRecord } from "@/apps/runner/server/http";
+import {
+  databasePool,
+  query,
+} from "@/apps/runner/server/db";
+import {
+  errorResponse,
+  isRecord,
+} from "@/apps/runner/server/http";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -21,6 +28,145 @@ type RunnerProfileRow = {
   last_heartbeat_at: string | null;
 };
 
+type RunnerVehicleType =
+  | "bike"
+  | "motorbike"
+  | "vehicle";
+
+type StoredVehicleType =
+  | "bicycle"
+  | "motorcycle"
+  | "car";
+
+const MOTORBIKE_REGISTRATION_PATTERN =
+  /^KM[A-HJ-NP-Z]{2}[0-9]{3}$/;
+
+const VEHICLE_REGISTRATION_PATTERN =
+  /^K[A-HJ-NP-Z]{2}[0-9]{3}[A-HJ-NP-Z]$/;
+
+/* -------------------------------------------------------------------------- */
+/* VEHICLE NORMALIZATION                                                      */
+/* -------------------------------------------------------------------------- */
+
+function normalizeVehicleType(
+  value: string,
+): RunnerVehicleType | null {
+  switch (value.trim().toLowerCase()) {
+    case "bike":
+    case "bicycle":
+      return "bike";
+
+    case "motorbike":
+    case "motorcycle":
+      return "motorbike";
+
+    case "vehicle":
+    case "car":
+    case "van":
+    case "other":
+      return "vehicle";
+
+    default:
+      return null;
+  }
+}
+
+function toStoredVehicleType(
+  value: RunnerVehicleType,
+): StoredVehicleType {
+  switch (value) {
+    case "bike":
+      return "bicycle";
+
+    case "motorbike":
+      return "motorcycle";
+
+    case "vehicle":
+      return "car";
+  }
+}
+
+function compactKenyanRegistration(
+  value: string,
+): string {
+  return value
+    .trim()
+    .toUpperCase()
+    .replace(/[^A-Z0-9]/g, "");
+}
+
+function normalizeKenyanRegistration(
+  value: string,
+  vehicleType: RunnerVehicleType,
+): string {
+  const compact = compactKenyanRegistration(value);
+
+  if (vehicleType === "motorbike") {
+    return compact.length > 4
+      ? `${compact.slice(0, 4)} ${compact.slice(4)}`
+      : compact;
+  }
+
+  if (vehicleType === "vehicle") {
+    return compact.length > 3
+      ? `${compact.slice(0, 3)} ${compact.slice(3)}`
+      : compact;
+  }
+
+  return "";
+}
+
+function isValidKenyanRegistration(
+  value: string,
+  vehicleType: RunnerVehicleType,
+): boolean {
+  const compact = compactKenyanRegistration(value);
+
+  if (vehicleType === "motorbike") {
+    return MOTORBIKE_REGISTRATION_PATTERN.test(compact);
+  }
+
+  if (vehicleType === "vehicle") {
+    return VEHICLE_REGISTRATION_PATTERN.test(compact);
+  }
+
+  return true;
+}
+
+function registrationValidationMessage(
+  vehicleType: RunnerVehicleType,
+): string {
+  return vehicleType === "motorbike"
+    ? "Enter a valid Kenyan motorcycle registration number, for example KMAB 123."
+    : "Enter a valid Kenyan vehicle registration number, for example KDA 123A.";
+}
+
+function isVehicleRegistrationUniqueViolation(
+  cause: unknown,
+): boolean {
+  if (
+    cause === null ||
+    typeof cause !== "object"
+  ) {
+    return false;
+  }
+
+  const databaseError = cause as {
+    code?: unknown;
+    constraint?: unknown;
+  };
+
+  return (
+    databaseError.code === "23505" &&
+    databaseError.constraint ===
+      "runner_profiles_vehicle_registration_normalized_uidx"
+  );
+}
+
+/* -------------------------------------------------------------------------- */
+/* RESPONSE SHAPING                                                           */
+/* -------------------------------------------------------------------------- */
+
 function shapeRunner(row: RunnerProfileRow) {
   return {
     id: row.id,
@@ -30,8 +176,11 @@ function shapeRunner(row: RunnerProfileRow) {
     accountStatus: row.account_status,
     verificationStatus: row.verification_status,
     serviceArea: row.service_area,
-    vehicleType: row.vehicle_type,
+    vehicleType: normalizeVehicleType(
+      row.vehicle_type ?? "",
+    ) ?? row.vehicle_type,
     vehicleRegistration: row.vehicle_registration,
+
     profileComplete: Boolean(
       row.full_name &&
       row.full_name.trim().length >= 2 &&
@@ -39,12 +188,17 @@ function shapeRunner(row: RunnerProfileRow) {
       row.service_area.trim().length >= 2 &&
       row.vehicle_type,
     ),
+
     availability: {
       isOnline: row.is_online,
       lastHeartbeatAt: row.last_heartbeat_at,
     },
   };
 }
+
+/* -------------------------------------------------------------------------- */
+/* GET /api/runner/me                                                         */
+/* -------------------------------------------------------------------------- */
 
 export async function GET(request: Request) {
   try {
@@ -80,7 +234,10 @@ export async function GET(request: Request) {
     const row = result.rows[0];
 
     if (!row) {
-      return errorResponse("Runner profile not found.", 404);
+      return errorResponse(
+        "Runner profile not found.",
+        404,
+      );
     }
 
     return NextResponse.json(
@@ -107,6 +264,10 @@ export async function GET(request: Request) {
     );
   }
 }
+
+/* -------------------------------------------------------------------------- */
+/* PUT /api/runner/me                                                         */
+/* -------------------------------------------------------------------------- */
 
 export async function PUT(request: Request) {
   const auth = await authenticateRunner(request);
@@ -139,26 +300,34 @@ export async function PUT(request: Request) {
     .replace(/\s+/g, " ")
     .slice(0, 120);
 
-  const vehicleType = body.vehicleType
-    .trim()
-    .toLowerCase();
+  const vehicleType = normalizeVehicleType(
+    body.vehicleType,
+  );
 
-  const vehicleRegistration =
+  if (!vehicleType) {
+    return errorResponse(
+      "Choose Bicycle, Motorbike or Vehicle.",
+    );
+  }
+
+  const storedVehicleType =
+    toStoredVehicleType(vehicleType);
+
+  const rawRegistration =
     typeof body.vehicleRegistration === "string"
       ? body.vehicleRegistration
-          .trim()
-          .toUpperCase()
-          .replace(/\s+/g, " ")
-          .slice(0, 30)
       : "";
 
-  const allowedVehicles = new Set([
-    "motorcycle",
-    "bicycle",
-    "car",
-    "van",
-    "other",
-  ]);
+  const compactRegistration =
+    compactKenyanRegistration(rawRegistration);
+
+  const vehicleRegistration =
+    vehicleType === "bike"
+      ? ""
+      : normalizeKenyanRegistration(
+          compactRegistration,
+          vehicleType,
+        );
 
   if (fullName.length < 2 || fullName.length > 120) {
     return errorResponse(
@@ -166,33 +335,41 @@ export async function PUT(request: Request) {
     );
   }
 
-  if (serviceArea.length < 2) {
+  if (
+    serviceArea.length < 2 ||
+    serviceArea.length > 120
+  ) {
     return errorResponse(
       "Enter your main service area.",
     );
   }
 
-  if (!allowedVehicles.has(vehicleType)) {
+  if (
+    vehicleType !== "bike" &&
+    !isValidKenyanRegistration(
+      compactRegistration,
+      vehicleType,
+    )
+  ) {
     return errorResponse(
-      "Choose a valid vehicle type.",
+      registrationValidationMessage(vehicleType),
     );
   }
 
-  if (
-    ["motorcycle", "car", "van"].includes(vehicleType) &&
-    vehicleRegistration.length < 3
-  ) {
-    return errorResponse(
-      "Enter the registration number of your vehicle.",
-    );
-  }
+  const savedRegistration =
+    vehicleType === "bike"
+      ? null
+      : vehicleRegistration;
 
   const client = await databasePool().connect();
 
+  let transactionStarted = false;
+
   try {
     await client.query("BEGIN");
+    transactionStarted = true;
 
-    // Lock the Runner account before changing any details
+    // Lock the Runner account before changing details
     // that influence verification or document requirements.
     const accountResult = await client.query<{
       account_status: string;
@@ -212,6 +389,7 @@ export async function PUT(request: Request) {
 
     if (!account) {
       await client.query("ROLLBACK");
+      transactionStarted = false;
 
       return errorResponse(
         "Runner account not found.",
@@ -225,6 +403,7 @@ export async function PUT(request: Request) {
       )
     ) {
       await client.query("ROLLBACK");
+      transactionStarted = false;
 
       return errorResponse(
         "This Runner account cannot be updated.",
@@ -238,11 +417,47 @@ export async function PUT(request: Request) {
       )
     ) {
       await client.query("ROLLBACK");
+      transactionStarted = false;
 
       return errorResponse(
         "Your profile cannot be changed while your application is under review or after approval. Contact SaMi Operations if your verified details need to change.",
         409,
       );
+    }
+
+    /*
+     * Check whether another Runner already owns this plate.
+     * The current Runner is excluded so they can save
+     * their own existing registration again.
+     */
+    if (savedRegistration) {
+      const duplicateResult =
+        await client.query<{ runner_id: string }>(
+          `SELECT runner_id
+           FROM public.runner_profiles
+           WHERE regexp_replace(
+             upper(btrim(vehicle_registration)),
+             '[^A-Z0-9]',
+             '',
+             'g'
+           ) = $1
+             AND runner_id <> $2
+           LIMIT 1`,
+          [
+            compactRegistration,
+            auth.runner.id,
+          ],
+        );
+
+      if (duplicateResult.rows.length > 0) {
+        await client.query("ROLLBACK");
+        transactionStarted = false;
+
+        return errorResponse(
+          "This vehicle registration is already registered to another SaMi Runner. Use a different vehicle registration number.",
+          409,
+        );
+      }
     }
 
     await client.query(
@@ -276,12 +491,13 @@ export async function PUT(request: Request) {
       [
         auth.runner.id,
         serviceArea,
-        vehicleType,
-        vehicleRegistration || null,
+        storedVehicleType,
+        savedRegistration,
       ],
     );
 
     await client.query("COMMIT");
+    transactionStarted = false;
 
     return NextResponse.json(
       {
@@ -295,9 +511,23 @@ export async function PUT(request: Request) {
       },
     );
   } catch (cause) {
-    await client.query("ROLLBACK").catch(
-      () => undefined,
-    );
+    if (transactionStarted) {
+      await client.query("ROLLBACK").catch(
+        () => undefined,
+      );
+    }
+
+    /*
+     * The unique database index is the final protection
+     * when two Runner accounts submit the same plate
+     * at almost exactly the same time.
+     */
+    if (isVehicleRegistrationUniqueViolation(cause)) {
+      return errorResponse(
+        "This vehicle registration is already registered to another SaMi Runner. Use a different vehicle registration number.",
+        409,
+      );
+    }
 
     console.error(
       "[SaMi Runner profile] Update failed.",

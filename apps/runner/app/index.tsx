@@ -1,5 +1,10 @@
 
-import React, { useCallback, useRef, useState } from "react";
+import React, {
+  useCallback,
+  useEffect,
+  useRef,
+  useState,
+} from "react";
 
 import {
   ActivityIndicator,
@@ -12,20 +17,23 @@ import {
 import { SafeAreaView } from "react-native-safe-area-context";
 import { router } from "expo-router";
 
-import { getRunnerOnboarding, getRunnerSession } from "@/api";
+import {
+  getRunnerOnboarding,
+  getRunnerSession,
+} from "@/api";
 import { useRunnerTheme } from "@/theme";
 
 import SaMiLaunchAnimation from "../src/branding/SaMiLaunchAnimation";
 import WelcomeScreen from "../src/screens/WelcomeScreen";
 
 const BRAND_NAVY = "#000535";
+const ANIMATION_FALLBACK_MS = 5000;
 
 type LaunchStage =
   | "animation"
   | "restoring"
   | "welcome"
-  | "error"
-  | "restricted";
+  | "error";
 
 export default function LaunchScreen() {
   const { colors } = useRunnerTheme();
@@ -71,7 +79,8 @@ export default function LaunchScreen() {
           return;
 
         case "restricted":
-          setStage("restricted");
+          // Restrictions remain within the existing Documents stage.
+          router.replace("/(auth)/documents");
           return;
 
         default:
@@ -125,6 +134,22 @@ export default function LaunchScreen() {
   const handleRetry = useCallback(() => {
     void restoreRunnerSession();
   }, [restoreRunnerSession]);
+
+  // Prevent a broken or unavailable animation asset from
+  // leaving the Runner app permanently stuck at launch.
+  useEffect(() => {
+    if (stage !== "animation") {
+      return;
+    }
+
+    const fallbackTimer = setTimeout(() => {
+      handleAnimationComplete();
+    }, ANIMATION_FALLBACK_MS);
+
+    return () => {
+      clearTimeout(fallbackTimer);
+    };
+  }, [stage, handleAnimationComplete]);
 
   if (stage === "welcome") {
     return (
@@ -187,63 +212,8 @@ export default function LaunchScreen() {
               ]}
             >
               Please wait while SaMi checks your Runner
-              session and compliance status.
+              session and onboarding progress.
             </Text>
-          </>
-        ) : stage === "restricted" ? (
-          <>
-            <View
-              style={[
-                styles.statusIcon,
-                { backgroundColor: colors.dangerSoft },
-              ]}
-            >
-              <Text
-                style={[
-                  styles.statusIconText,
-                  { color: colors.red },
-                ]}
-              >
-                !
-              </Text>
-            </View>
-
-            <Text
-              accessibilityRole="header"
-              style={[
-                styles.title,
-                { color: colors.text },
-              ]}
-            >
-              Account access restricted
-            </Text>
-
-            <Text
-              style={[
-                styles.message,
-                { color: colors.textMuted },
-              ]}
-            >
-              This Runner account is currently restricted.
-              You cannot access Runner services until the
-              restriction has been resolved by SaMi.
-            </Text>
-
-            <Pressable
-              accessibilityRole="button"
-              onPress={handleRetry}
-              style={({ pressed }) => [
-                styles.primaryButton,
-                {
-                  backgroundColor: colors.blueAction,
-                  opacity: pressed ? 0.8 : 1,
-                },
-              ]}
-            >
-              <Text style={styles.primaryButtonText}>
-                Check status again
-              </Text>
-            </Pressable>
           </>
         ) : (
           <>
