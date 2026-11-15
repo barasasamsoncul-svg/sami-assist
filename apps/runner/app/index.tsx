@@ -1,4 +1,3 @@
-
 import React, {
   useCallback,
   useEffect,
@@ -7,7 +6,6 @@ import React, {
 } from "react";
 
 import {
-  ActivityIndicator,
   Pressable,
   StyleSheet,
   Text,
@@ -15,7 +13,7 @@ import {
 } from "react-native";
 
 import { SafeAreaView } from "react-native-safe-area-context";
-import { router } from "expo-router";
+import { router, useLocalSearchParams } from "expo-router";
 
 import {
   getRunnerOnboarding,
@@ -35,13 +33,34 @@ type LaunchStage =
   | "welcome"
   | "error";
 
+function firstParam(value?: string | string[]): string {
+  return Array.isArray(value) ? value[0] ?? "" : value ?? "";
+}
+
 export default function LaunchScreen() {
   const { colors } = useRunnerTheme();
+  const params = useLocalSearchParams<{
+    signedOut?: string | string[];
+  }>();
+
+  // Explicit logout and in-app session expiry both return here with
+  // signedOut=1. The animation still plays before Login is opened.
+  const mustOpenLogin = firstParam(params.signedOut) === "1";
 
   const [stage, setStage] = useState<LaunchStage>("animation");
   const [errorMessage, setErrorMessage] = useState("");
 
-  const launchCompleted = useRef(false);
+  const mountedRef = useRef(true);
+  const launchCompletedRef = useRef(false);
+  const restoreInFlightRef = useRef(false);
+
+  useEffect(() => {
+    mountedRef.current = true;
+
+    return () => {
+      mountedRef.current = false;
+    };
+  }, []);
 
   const handleGetStarted = useCallback(() => {
     router.push("/(auth)/register");
@@ -52,18 +71,40 @@ export default function LaunchScreen() {
   }, []);
 
   const restoreRunnerSession = useCallback(async (): Promise<void> => {
-    setStage("restoring");
+    if (restoreInFlightRef.current) return;
+
+    restoreInFlightRef.current = true;
     setErrorMessage("");
 
+    let aSavedSessionExisted = false;
+
     try {
+      // A deliberate sign-out or an in-app 401 must end at Login,
+      // never restore a previous authenticated destination.
+      if (mustOpenLogin) {
+        if (mountedRef.current) {
+          router.replace("/(auth)/login");
+        }
+        return;
+      }
+
       const sessionToken = await getRunnerSession();
 
+      if (!mountedRef.current) return;
+
+      aSavedSessionExisted = Boolean(sessionToken);
+
+      // A first-time install has no session and should see Welcome.
       if (!sessionToken) {
         setStage("welcome");
         return;
       }
 
+      // The server's compliance resolver is authoritative. A valid
+      // saved session resumes at its actual last required stage.
       const onboarding = await getRunnerOnboarding();
+
+      if (!mountedRef.current) return;
 
       switch (onboarding.nextStep) {
         case "tasks":
@@ -79,7 +120,8 @@ export default function LaunchScreen() {
           return;
 
         case "restricted":
-          // Restrictions remain within the existing Documents stage.
+          // Suspended and closed accounts remain in Documents,
+          // where the restricted-account state is displayed.
           router.replace("/(auth)/documents");
           return;
 
@@ -89,26 +131,32 @@ export default function LaunchScreen() {
           );
       }
     } catch (error) {
+      if (!mountedRef.current) return;
+
       console.warn(
         "[SaMi Runner Launch] Session restoration failed.",
         error,
       );
 
-      // An authenticated 401 clears the expired local token
-      // in the API layer. Only then should Welcome be shown.
-      // Network and server errors must not log the Runner out.
-      try {
-        const remainingSession = await getRunnerSession();
+      // A protected API 401 clears the saved token. If a token
+      // existed before the request and is now gone, the session
+      // expired or was revoked: send the Runner to Login.
+      if (aSavedSessionExisted) {
+        try {
+          const remainingSession = await getRunnerSession();
 
-        if (!remainingSession) {
-          setStage("welcome");
-          return;
+          if (!mountedRef.current) return;
+
+          if (!remainingSession) {
+            router.replace("/(auth)/login");
+            return;
+          }
+        } catch (sessionError) {
+          console.warn(
+            "[SaMi Runner Launch] Could not recheck the saved session.",
+            sessionError,
+          );
         }
-      } catch (sessionError) {
-        console.warn(
-          "[SaMi Runner Launch] Could not recheck the saved session.",
-          sessionError,
-        );
       }
 
       setErrorMessage(
@@ -118,37 +166,38 @@ export default function LaunchScreen() {
       );
 
       setStage("error");
+    } finally {
+      restoreInFlightRef.current = false;
     }
-  }, []);
+  }, [mustOpenLogin]);
 
   const handleAnimationComplete = useCallback(() => {
-    if (launchCompleted.current) {
-      return;
-    }
+    if (launchCompletedRef.current) return;
 
-    launchCompleted.current = true;
+    launchCompletedRef.current = true;
+    setStage("restoring");
 
+    // Session restoration starts only after the full launch animation.
+    // The animation remains on screen while the server resolves the route.
     void restoreRunnerSession();
   }, [restoreRunnerSession]);
 
   const handleRetry = useCallback(() => {
-    void restoreRunnerSession();
-  }, [restoreRunnerSession]);
+    launchCompletedRef.current = false;
+    setErrorMessage("");
+    setStage("animation");
+  }, []);
 
-  // Prevent a broken or unavailable animation asset from
-  // leaving the Runner app permanently stuck at launch.
+  // Fallback protects against an animation image that fails to report
+  // its display event. It still preserves the animation-first flow.
   useEffect(() => {
-    if (stage !== "animation") {
-      return;
-    }
+    if (stage !== "animation") return;
 
     const fallbackTimer = setTimeout(() => {
       handleAnimationComplete();
     }, ANIMATION_FALLBACK_MS);
 
-    return () => {
-      clearTimeout(fallbackTimer);
-    };
+    return () => clearTimeout(fallbackTimer);
   }, [stage, handleAnimationComplete]);
 
   if (stage === "welcome") {
@@ -160,7 +209,7 @@ export default function LaunchScreen() {
     );
   }
 
-  if (stage === "animation") {
+  if (stage === "animation" || stage === "restoring") {
     return (
       <View style={styles.launch}>
         <SaMiLaunchAnimation
@@ -187,89 +236,57 @@ export default function LaunchScreen() {
           },
         ]}
       >
-        {stage === "restoring" ? (
-          <>
-            <ActivityIndicator
-              size="large"
-              color={colors.blue}
-              style={styles.loader}
-            />
+        <View
+          style={[
+            styles.statusIcon,
+            { backgroundColor: colors.warningSoft },
+          ]}
+        >
+          <Text
+            style={[
+              styles.statusIconText,
+              { color: colors.warning },
+            ]}
+          >
+            !
+          </Text>
+        </View>
 
-            <Text
-              accessibilityRole="header"
-              style={[
-                styles.title,
-                { color: colors.text },
-              ]}
-            >
-              Checking your account
-            </Text>
+        <Text
+          accessibilityRole="header"
+          style={[
+            styles.title,
+            { color: colors.text },
+          ]}
+        >
+          Unable to check your account
+        </Text>
 
-            <Text
-              style={[
-                styles.message,
-                { color: colors.textMuted },
-              ]}
-            >
-              Please wait while SaMi checks your Runner
-              session and onboarding progress.
-            </Text>
-          </>
-        ) : (
-          <>
-            <View
-              style={[
-                styles.statusIcon,
-                { backgroundColor: colors.warningSoft },
-              ]}
-            >
-              <Text
-                style={[
-                  styles.statusIconText,
-                  { color: colors.warning },
-                ]}
-              >
-                !
-              </Text>
-            </View>
+        <Text
+          style={[
+            styles.message,
+            { color: colors.textMuted },
+          ]}
+        >
+          {errorMessage ||
+            "We could not verify your Runner session. Check your connection and try again."}
+        </Text>
 
-            <Text
-              accessibilityRole="header"
-              style={[
-                styles.title,
-                { color: colors.text },
-              ]}
-            >
-              Unable to check your account
-            </Text>
-
-            <Text
-              style={[
-                styles.message,
-                { color: colors.textMuted },
-              ]}
-            >
-              {errorMessage ||
-                "We could not verify your Runner session. Check your connection and try again."}
-            </Text>
-
-            <Pressable
-              accessibilityRole="button"
-              onPress={handleRetry}
-              style={({ pressed }) => [
-                styles.primaryButton,
-                {
-                  backgroundColor: colors.blueAction,
-                  opacity: pressed ? 0.8 : 1,
-                },
-              ]}
-            >
-              <Text style={styles.primaryButtonText}>
-                Try again
-              </Text>
-            </Pressable>
-          </>
-        )}
+        <Pressable
+          accessibilityRole="button"
+          onPress={handleRetry}
+          style={({ pressed }) => [
+            styles.primaryButton,
+            {
+              backgroundColor: colors.blueAction,
+              opacity: pressed ? 0.8 : 1,
+            },
+          ]}
+        >
+          <Text style={styles.primaryButtonText}>
+            Try again
+          </Text>
+        </Pressable>
       </View>
 
       <Text
@@ -309,17 +326,12 @@ const styles = StyleSheet.create({
     gap: 14,
   },
 
-  loader: {
-    marginVertical: 8,
-  },
-
   statusIcon: {
     width: 52,
     height: 52,
     borderRadius: 18,
     alignItems: "center",
     justifyContent: "center",
-    marginBottom: 3,
   },
 
   statusIconText: {

@@ -17,12 +17,7 @@ import {
   View,
 } from "react-native";
 
-import {
-  router,
-  Stack,
-  useFocusEffect,
-  useLocalSearchParams,
-} from "expo-router";
+import { router, Stack, useFocusEffect, useLocalSearchParams } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import { SafeAreaView } from "react-native-safe-area-context";
 
@@ -30,7 +25,6 @@ import {
   apiRequest,
   getRunnerCategories,
   getRunnerOnboarding,
-  updateRunnerOnboarding,
 } from "@/api";
 
 import { useRunnerTheme } from "@/theme";
@@ -705,82 +699,72 @@ export default function RunnerTaskSelectionScreen() {
     saveInFlightRef.current = true;
     setSaving(true);
 
-    let serviceSelectionSaved = false;
-
     try {
-      // Save exactly one service category for the chosen combination.
-      const categoryResult = await apiRequest<{
+      // Save the selected service, service area and transport profile
+      // through one server transaction. This avoids a partial save where
+      // the service is changed but the corresponding vehicle update fails.
+      const setupResult = await apiRequest<{
         ok: boolean;
         message?: string;
-        selectedCategories: string[];
-      }>("/api/runner/me/categories", {
+        reviewRestarted?: boolean;
+        onboardingStatus?: string;
+        runner?: {
+          serviceArea: string;
+          vehicleType: VehicleType | null;
+          vehicleModel: string | null;
+          vehicleRegistration: string | null;
+          selectedCategories: string[];
+        };
+        requirements: unknown[];
+      }>("/api/runner/me/onboarding/setup", {
         method: "PUT",
         body: {
-          categoryKeys: [selectedChoice.serviceKey],
+          categoryKey: selectedChoice.serviceKey,
+          serviceArea: normalizedArea,
+          vehicleType: selectedChoice.vehicleType,
+          vehicleModel: registrationRequired
+            ? normalizedVehicleModel
+            : "",
+          vehicleRegistration: registrationRequired
+            ? normalizedRegistration
+            : "",
         },
       });
 
       if (
-        !categoryResult?.ok ||
-        !Array.isArray(categoryResult.selectedCategories) ||
-        categoryResult.selectedCategories.length !== 1 ||
-        categoryResult.selectedCategories[0] !==
-          selectedChoice.serviceKey
+        !setupResult?.ok ||
+        !setupResult.runner ||
+        !Array.isArray(setupResult.runner.selectedCategories) ||
+        setupResult.runner.selectedCategories.length !== 1 ||
+        setupResult.runner.selectedCategories[0] !==
+          selectedChoice.serviceKey ||
+        setupResult.runner.vehicleType !== selectedChoice.vehicleType ||
+        !Array.isArray(setupResult.requirements) ||
+        setupResult.requirements.length === 0
       ) {
         throw new Error(
-          categoryResult?.message ||
-            "SaMi could not confirm your selected service. Please try again.",
-        );
-      }
-
-      serviceSelectionSaved = true;
-
-      // Save service area, vehicle model and registration.
-      // The server returns the mandatory documents for this setup.
-      const onboardingResult = await updateRunnerOnboarding({
-        serviceArea: normalizedArea,
-        vehicleType: selectedChoice.vehicleType,
-        vehicleModel: registrationRequired
-          ? normalizedVehicleModel
-          : undefined,
-        vehicleRegistration: registrationRequired
-          ? normalizedRegistration
-          : "",
-      });
-
-      if (
-        !onboardingResult?.ok ||
-        !Array.isArray(onboardingResult.requirements)
-      ) {
-        throw new Error(
-          onboardingResult?.message ||
-            "Your service and vehicle details were not confirmed. Please try again.",
+          setupResult?.message ||
+            "SaMi could not confirm your complete service and vehicle setup. Please try again.",
         );
       }
 
       if (!mountedRef.current) return;
 
-      // Both service and vehicle details have been confirmed by
-      // the server. Documents recalculates the checklist from them.
+      // The server committed the service and vehicle as one transaction.
+      // Documents now loads the authoritative, recalculated checklist.
       router.replace("/(auth)/documents");
     } catch (cause) {
       if (!mountedRef.current) return;
 
-      const causeMessage =
-        cause instanceof Error
-          ? cause.message
-          : "Please try again.";
-
       showOverlay({
         type: "error",
-        title: serviceSelectionSaved
-          ? "Vehicle details could not be saved"
-          : isEditMode
-            ? "Could not save your changes"
-            : "Could not save your setup",
-        message: serviceSelectionSaved
-          ? `Your service selection was saved, but the vehicle and service-area details were not confirmed. ${causeMessage} Reopen this screen and check your setup.`
-          : causeMessage,
+        title: isEditMode
+          ? "Could not save your changes"
+          : "Could not save your setup",
+        message:
+          cause instanceof Error
+            ? cause.message
+            : "Your Runner setup could not be saved. Please try again.",
         primaryAction: {
           label: "Close",
         },

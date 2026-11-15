@@ -1,4 +1,3 @@
-
 import { NextResponse } from "next/server";
 
 import { authenticateRunner } from "@/apps/runner/server/auth";
@@ -20,6 +19,10 @@ const ALLOWED_SERVICE_KEYS = new Set<string>(
   RUNNER_SERVICE_TYPES,
 );
 
+type RunnerServiceCategoryRow = {
+  key: string;
+};
+
 function response(
   body: Record<string, unknown>,
   status = 200,
@@ -32,6 +35,57 @@ function response(
   });
 }
 
+/**
+ * GET /api/runner/categories
+ *
+ * The mobile Tasks screen loads this catalogue before rendering the
+ * six service-and-vehicle combinations. Keep the response contract
+ * aligned with getRunnerCategories(): { ok, categories: [{ key }] }.
+ */
+export async function GET(request: Request) {
+  const auth = await authenticateRunner(request, {
+    allowRestricted: true,
+  });
+
+  if (auth.response) {
+    return auth.response;
+  }
+
+  try {
+    const result = await databasePool().query<RunnerServiceCategoryRow>(
+      `SELECT category_key AS key
+       FROM public.runner_service_categories
+       WHERE is_active = true
+         AND category_key = ANY($1::text[])
+       ORDER BY display_order ASC, category_key ASC`,
+      [RUNNER_SERVICE_TYPES],
+    );
+
+    return response({
+      ok: true,
+      categories: result.rows,
+    });
+  } catch (cause) {
+    console.error(
+      "[SaMi Runner categories] Catalogue read failed.",
+      cause instanceof Error
+        ? cause.message
+        : "unknown error",
+    );
+
+    return errorResponse(
+      "The Runner service catalogue could not be loaded. Please try again.",
+      503,
+    );
+  }
+}
+
+/**
+ * PUT /api/runner/me/categories
+ *
+ * Kept for existing callers. New Tasks setup writes should use the
+ * combined /api/runner/me/onboarding/setup endpoint instead.
+ */
 export async function PUT(request: Request) {
   const auth = await authenticateRunner(request);
 
@@ -45,7 +99,7 @@ export async function PUT(request: Request) {
     )
   ) {
     return errorResponse(
-      "This Runner account cannot update its services.",
+      "This Runner account cannot update its service.",
       403,
     );
   }
@@ -59,15 +113,14 @@ export async function PUT(request: Request) {
     !Array.isArray(body.categoryKeys)
   ) {
     return errorResponse(
-      "Choose Pick Up & Deliver, Shop & Deliver, or both.",
+      "Choose one Runner service.",
     );
   }
 
   const rawKeys = body.categoryKeys;
 
   if (
-    rawKeys.length < 1 ||
-    rawKeys.length > RUNNER_SERVICE_TYPES.length ||
+    rawKeys.length !== 1 ||
     !rawKeys.every(
       (key): key is string =>
         typeof key === "string" &&
@@ -75,7 +128,7 @@ export async function PUT(request: Request) {
     )
   ) {
     return errorResponse(
-      "Select one or both of the two available Runner services.",
+      "Select exactly one Runner service: Pick Up & Deliver or Shop & Deliver.",
     );
   }
 
@@ -87,11 +140,9 @@ export async function PUT(request: Request) {
     ...new Set(categoryKeys),
   ];
 
-  if (
-    uniqueCategoryKeys.length !== categoryKeys.length
-  ) {
+  if (uniqueCategoryKeys.length !== 1) {
     return errorResponse(
-      "A Runner service has been selected more than once.",
+      "A Runner can select only one service.",
     );
   }
 
@@ -101,7 +152,7 @@ export async function PUT(request: Request) {
     )
   ) {
     return errorResponse(
-      "Only Pick Up & Deliver and Shop & Deliver are available Runner services.",
+      "Only Pick Up & Deliver or Shop & Deliver is available for Runners.",
     );
   }
 
@@ -143,7 +194,7 @@ export async function PUT(request: Request) {
       await client.query("ROLLBACK");
 
       return errorResponse(
-        "This Runner account cannot update its services.",
+        "This Runner account cannot update its service.",
         403,
       );
     }
@@ -156,7 +207,7 @@ export async function PUT(request: Request) {
       await client.query("ROLLBACK");
 
       return errorResponse(
-        "Runner services cannot be changed after an application has been submitted or approved.",
+        "Runner service selection cannot be changed after an application has been submitted or approved.",
         409,
       );
     }
@@ -174,13 +225,14 @@ export async function PUT(request: Request) {
       );
 
     if (
-      activeCategoriesResult.rows.length !==
-      uniqueCategoryKeys.length
+      activeCategoriesResult.rows.length !== 1 ||
+      activeCategoriesResult.rows[0]?.category_key !==
+        uniqueCategoryKeys[0]
     ) {
       await client.query("ROLLBACK");
 
       return errorResponse(
-        "One or more selected Runner services are unavailable. Refresh the list and try again.",
+        "The selected Runner service is unavailable. Refresh the list and try again.",
         409,
       );
     }
@@ -197,14 +249,10 @@ export async function PUT(request: Request) {
          category_key,
          selected_at
        )
-       SELECT
-         $1,
-         selected.category_key,
-         now()
-       FROM unnest($2::text[]) AS selected(category_key)`,
+       VALUES ($1, $2, now())`,
       [
         auth.runner.id,
-        uniqueCategoryKeys,
+        uniqueCategoryKeys[0],
       ],
     );
 
@@ -212,7 +260,7 @@ export async function PUT(request: Request) {
 
     return response({
       ok: true,
-      message: "Your Runner services have been saved.",
+      message: "Your Runner service has been saved.",
       selectedCategories: uniqueCategoryKeys,
       nextStep: "tasks",
     });
@@ -229,7 +277,7 @@ export async function PUT(request: Request) {
     );
 
     return errorResponse(
-      "Your Runner services could not be saved. Please try again.",
+      "Your Runner service could not be saved. Please try again.",
       503,
     );
   } finally {
