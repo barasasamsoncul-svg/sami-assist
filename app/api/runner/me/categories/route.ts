@@ -19,10 +19,6 @@ const ALLOWED_SERVICE_KEYS = new Set<string>(
   RUNNER_SERVICE_TYPES,
 );
 
-type RunnerServiceCategoryRow = {
-  key: string;
-};
-
 function response(
   body: Record<string, unknown>,
   status = 200,
@@ -36,55 +32,13 @@ function response(
 }
 
 /**
- * GET /api/runner/categories
- *
- * The mobile Tasks screen loads this catalogue before rendering the
- * six service-and-vehicle combinations. Keep the response contract
- * aligned with getRunnerCategories(): { ok, categories: [{ key }] }.
- */
-export async function GET(request: Request) {
-  const auth = await authenticateRunner(request, {
-    allowRestricted: true,
-  });
-
-  if (auth.response) {
-    return auth.response;
-  }
-
-  try {
-    const result = await databasePool().query<RunnerServiceCategoryRow>(
-      `SELECT category_key AS key
-       FROM public.runner_service_categories
-       WHERE is_active = true
-         AND category_key = ANY($1::text[])
-       ORDER BY display_order ASC, category_key ASC`,
-      [RUNNER_SERVICE_TYPES],
-    );
-
-    return response({
-      ok: true,
-      categories: result.rows,
-    });
-  } catch (cause) {
-    console.error(
-      "[SaMi Runner categories] Catalogue read failed.",
-      cause instanceof Error
-        ? cause.message
-        : "unknown error",
-    );
-
-    return errorResponse(
-      "The Runner service catalogue could not be loaded. Please try again.",
-      503,
-    );
-  }
-}
-
-/**
  * PUT /api/runner/me/categories
  *
- * Kept for existing callers. New Tasks setup writes should use the
- * combined /api/runner/me/onboarding/setup endpoint instead.
+ * Saves exactly one selected Runner service.
+ *
+ * Supported services:
+ * - pickup_deliver
+ * - shop_deliver
  */
 export async function PUT(request: Request) {
   const auth = await authenticateRunner(request);
@@ -237,6 +191,8 @@ export async function PUT(request: Request) {
       );
     }
 
+    // Replace the existing service selection.
+    // This guarantees exactly one selected service per Runner.
     await client.query(
       `DELETE FROM public.runner_account_service_categories
        WHERE runner_id = $1`,
