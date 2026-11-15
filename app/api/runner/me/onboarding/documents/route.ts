@@ -1,3 +1,4 @@
+
 import { randomUUID } from "node:crypto";
 import { NextResponse } from "next/server";
 
@@ -45,6 +46,13 @@ type UploadedDocument = {
   requirement_key: string;
   review_status: string;
   submitted_at: Date | string;
+};
+
+type ExistingDocument = {
+  id: string;
+  requirement_key: string;
+  review_status: string;
+  submitted_at: Date | string | null;
 };
 
 type RunnerProfile = {
@@ -324,14 +332,14 @@ export async function POST(request: Request) {
     );
   }
 
+  // An approved application is permanently locked.
+  // A submitted application is intentionally allowed to
+  // upload replacement documents while Operations reviews it.
   if (
-    auth.runner.verification_status === "submitted" ||
     auth.runner.verification_status === "approved"
   ) {
     return errorResponse(
-      auth.runner.verification_status === "approved"
-        ? "Your Runner application is already approved."
-        : "Your application is currently under Operations review. Wait for a review decision before uploading more documents.",
+      "Your Runner application is already approved.",
       409,
     );
   }
@@ -435,14 +443,13 @@ export async function POST(request: Request) {
       );
     }
 
+    // Recheck approval after acquiring the account lock.
+    // Submitted applications remain eligible for replacement uploads.
     if (
-      account.verification_status === "submitted" ||
       account.verification_status === "approved"
     ) {
       return await rejectTransaction(
-        account.verification_status === "approved"
-          ? "Your Runner application is already approved."
-          : "Your application is currently under Operations review. Wait for a review decision before uploading more documents.",
+        "Your Runner application is already approved.",
         409,
       );
     }
@@ -597,6 +604,64 @@ export async function POST(request: Request) {
           409,
         );
       }
+    }
+
+    // Find the most recent uploaded version of each requested
+    // requirement. Lock those rows while checking their review
+    // state so approved documents cannot be replaced.
+    //
+    // Older versions are retained as part of the document
+    // review history. Only the latest version controls whether
+    // this requirement can be replaced.
+    const existingDocumentsResult =
+      await client.query<ExistingDocument>(
+        `SELECT
+           id,
+           requirement_key,
+           review_status,
+           submitted_at
+         FROM public.runner_verification_documents
+         WHERE runner_id = $1
+           AND requirement_key = ANY($2::text[])
+         ORDER BY
+           requirement_key ASC,
+           submitted_at DESC NULLS LAST,
+           id DESC
+         FOR UPDATE`,
+        [
+          auth.runner.id,
+          requirementKeys,
+        ],
+      );
+
+    const latestStatusByRequirement =
+      new Map<string, string>();
+
+    for (const document of existingDocumentsResult.rows) {
+      if (
+        !latestStatusByRequirement.has(
+          document.requirement_key,
+        )
+      ) {
+        latestStatusByRequirement.set(
+          document.requirement_key,
+          document.review_status,
+        );
+      }
+    }
+
+    const approvedRequirement = requirementKeys.find(
+      (requirementKey) =>
+        latestStatusByRequirement.get(
+          requirementKey,
+        ) === "approved",
+    );
+
+    if (approvedRequirement) {
+      return await rejectTransaction(
+        "This document has already been approved and cannot be replaced. Contact SaMi support if you believe it needs correction.",
+        409,
+      );
     }
 
     // Upload all files to the existing R2 bucket.

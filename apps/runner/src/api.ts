@@ -1,3 +1,4 @@
+
 import * as SecureStore from "expo-secure-store";
 import { fetch as expoFetch } from "expo/fetch";
 import { File as ExpoFile } from "expo-file-system";
@@ -125,11 +126,64 @@ export type RunnerOnboardingStatus =
   | "approved"
   | "changes_required";
 
+/**
+ * Authoritative destinations returned by Runner compliance.
+ *
+ * Legacy values are retained temporarily while the OTP endpoint
+ * and its screen consumer are migrated to the same resolver.
+ */
 export type RunnerNextStep =
   | "tasks"
+  | "documents"
+  | "dashboard"
+  | "restricted"
   | "onboarding"
   | "status"
   | "app";
+
+export type RunnerComplianceStage =
+  | "tasks"
+  | "documents"
+  | "dashboard"
+  | "restricted";
+
+export type RunnerComplianceStatus =
+  | "incomplete"
+  | "pending_review"
+  | "changes_required"
+  | "approved"
+  | "restricted"
+  | "configuration_error";
+
+export type RunnerComplianceResult = {
+  status: RunnerComplianceStatus;
+  nextStep: RunnerComplianceStage;
+
+  account: {
+    eligible: boolean;
+    restricted: boolean;
+  };
+
+  tasks: {
+    complete: boolean;
+    selectedCategories: string[];
+    missingFields: string[];
+  };
+
+  documents: {
+    configured: boolean;
+    complete: boolean;
+    approved: boolean;
+    requiredCount: number;
+    satisfiedCount: number;
+    pendingCount: number;
+    missingRequirements: string[];
+    rejectedRequirements: string[];
+  };
+
+  canSubmit: boolean;
+  reasons: string[];
+};
 
 export type RunnerOtpVerificationResult = {
   ok: boolean;
@@ -175,6 +229,13 @@ export type RunnerUploadedDocument = {
 export type RunnerOnboardingData = {
   ok: boolean;
   onboardingStatus: RunnerOnboardingStatus;
+
+  /** Server-calculated compliance decision. */
+  complianceStatus: RunnerComplianceStatus;
+  nextStep: RunnerComplianceStage;
+  canSubmit: boolean;
+  compliance: RunnerComplianceResult;
+
   runner: {
     id: string;
     fullName: string | null;
@@ -187,6 +248,7 @@ export type RunnerOnboardingData = {
     vehicleRegistration: string | null;
     selectedCategories: string[];
   };
+
   requirements: RunnerDocumentRequirement[];
   documents: RunnerUploadedDocument[];
 };
@@ -303,13 +365,41 @@ function normalizeRequirements(
 function normalizeOnboardingData(
   data: RunnerOnboardingData,
 ): RunnerOnboardingData {
+  if (
+    !data ||
+    !data.runner ||
+    !data.compliance ||
+    !Array.isArray(data.requirements) ||
+    !Array.isArray(data.documents)
+  ) {
+    throw new Error(
+      "The Runner server returned an incomplete compliance response. Refresh your onboarding information.",
+    );
+  }
+
+  const validNextSteps = new Set<RunnerComplianceStage>([
+    "tasks",
+    "documents",
+    "dashboard",
+    "restricted",
+  ]);
+
+  if (
+    !validNextSteps.has(data.nextStep) ||
+    data.compliance.nextStep !== data.nextStep ||
+    data.compliance.status !== data.complianceStatus ||
+    data.compliance.canSubmit !== data.canSubmit
+  ) {
+    throw new Error(
+      "The Runner server returned an inconsistent compliance decision. Refresh your onboarding information.",
+    );
+  }
+
   return {
     ...data,
     runner: normalizeRunnerAccount(data.runner),
-    requirements: normalizeRequirements(
-      Array.isArray(data.requirements) ? data.requirements : [],
-    ),
-    documents: Array.isArray(data.documents) ? data.documents : [],
+    requirements: normalizeRequirements(data.requirements),
+    documents: data.documents,
   };
 }
 
@@ -486,9 +576,9 @@ function normalizeKenyanPhone(value: string): string {
 /* -------------------------------------------------------------------------- */
 
 export async function getRunnerSession(): Promise<string | null> {
-  return SecureStore.getItemAsync(SESSION_KEY).catch(
-    () => null,
-  );
+  // Let SecureStore failures propagate. A storage failure is not
+  // the same thing as a user who has no saved session.
+  return SecureStore.getItemAsync(SESSION_KEY);
 }
 
 export async function saveRunnerSession(
@@ -510,9 +600,11 @@ export async function saveRunnerSession(
  * Local credentials are cleared even if the device is offline.
  */
 export async function clearRunnerSession(): Promise<void> {
-  const token = await getRunnerSession();
-
   try {
+    // Read the token inside the try block so a SecureStore read
+    // failure cannot prevent local cleanup during explicit logout.
+    const token = await getRunnerSession();
+
     if (token) {
       const response = await expoFetch(
         apiBase() + "/api/runner/auth/logout",
@@ -542,12 +634,12 @@ export async function clearRunnerSession(): Promise<void> {
     }
   } catch (cause) {
     console.warn(
-      "[SaMi Runner Auth] Could not reach the logout endpoint.",
+      "[SaMi Runner Auth] Could not complete server-side logout.",
       describeError(cause),
     );
   } finally {
-    // Always remove the local credential, even if the
-    // device is offline or the server cannot be reached.
+    // Explicit logout always removes the local credential,
+    // even when the device is offline or SecureStore fails.
     await clearSession();
   }
 }
@@ -560,7 +652,14 @@ export async function apiRequest<T>(
   path: string,
   options: ApiOptions = {},
 ): Promise<T> {
-  const token = await getRunnerSession();
+  const isPublicAuthRequest = PUBLIC_AUTH_PATHS.includes(path);
+
+  // Public OTP requests must remain usable without reading an existing
+  // session. Protected endpoints propagate SecureStore read failures.
+  const token = isPublicAuthRequest
+    ? null
+    : await getRunnerSession();
+
   const method = options.method || "GET";
   const requestUrl = apiBase() + path;
 
@@ -607,9 +706,6 @@ export async function apiRequest<T>(
   );
 
   if (!response.ok) {
-    const isPublicAuthRequest =
-      PUBLIC_AUTH_PATHS.includes(path);
-
     // A rejected authenticated request clears the expired or invalid
     // credential. Ordinary navigation does not clear the session.
     if (

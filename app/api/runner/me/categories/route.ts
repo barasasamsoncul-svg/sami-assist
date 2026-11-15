@@ -1,8 +1,12 @@
+
 import { NextResponse } from "next/server";
 
 import { authenticateRunner } from "@/apps/runner/server/auth";
 import { databasePool } from "@/apps/runner/server/db";
-import { errorResponse, isRecord } from "@/apps/runner/server/http";
+import {
+  errorResponse,
+  isRecord,
+} from "@/apps/runner/server/http";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -75,7 +79,6 @@ export async function PUT(request: Request) {
     );
   }
 
-  // Normalize service keys before validation.
   const categoryKeys = rawKeys.map((key) =>
     key.trim().toLowerCase(),
   );
@@ -92,7 +95,6 @@ export async function PUT(request: Request) {
     );
   }
 
-  // Only these two service types are permitted.
   if (
     !uniqueCategoryKeys.every((key) =>
       ALLOWED_SERVICE_KEYS.has(key),
@@ -108,8 +110,6 @@ export async function PUT(request: Request) {
   try {
     await client.query("BEGIN");
 
-    // Lock the Runner account while validating and replacing
-    // the service selection.
     const accountResult = await client.query<{
       account_status: string;
       verification_status: string;
@@ -161,7 +161,6 @@ export async function PUT(request: Request) {
       );
     }
 
-    // Verify that every requested service exists and is active.
     const activeCategoriesResult =
       await client.query<{
         category_key: string;
@@ -186,7 +185,6 @@ export async function PUT(request: Request) {
       );
     }
 
-    // Replace the complete selection transactionally.
     await client.query(
       `DELETE FROM public.runner_account_service_categories
        WHERE runner_id = $1`,
@@ -216,7 +214,7 @@ export async function PUT(request: Request) {
       ok: true,
       message: "Your Runner services have been saved.",
       selectedCategories: uniqueCategoryKeys,
-      nextStep: "transport",
+      nextStep: "tasks",
     });
   } catch (cause) {
     await client.query("ROLLBACK").catch(

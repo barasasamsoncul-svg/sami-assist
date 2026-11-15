@@ -1,7 +1,9 @@
+
 import { useCallback, useEffect, useRef, useState } from "react";
 
 import {
   ActivityIndicator,
+  BackHandler,
   Image,
   KeyboardAvoidingView,
   Platform,
@@ -14,7 +16,7 @@ import {
   View,
 } from "react-native";
 
-import { router, useFocusEffect } from "expo-router";
+import { router, Stack, useFocusEffect } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import { SafeAreaView } from "react-native-safe-area-context";
 
@@ -162,6 +164,7 @@ export default function RunnerTaskSelectionScreen() {
   const [accountState, setAccountState] = useState<{
     onboardingStatus: string;
     accountStatus: string;
+    nextStep: string;
   } | null>(null);
 
   const [loading, setLoading] = useState(true);
@@ -186,6 +189,33 @@ export default function RunnerTaskSelectionScreen() {
       mountedRef.current = false;
     };
   }, []);
+
+  /* =========================================================
+     ANDROID BACK
+
+     Tasks is an authenticated onboarding destination.
+     Android Back exits the app without clearing the session.
+     Returning to the app restores the session and compliance
+     destination through the root launch resolver.
+  ========================================================= */
+
+  useFocusEffect(
+    useCallback(() => {
+      const subscription = BackHandler.addEventListener(
+        "hardwareBackPress",
+        () => {
+          BackHandler.exitApp();
+          return true;
+        },
+      );
+
+      return () => subscription.remove();
+    }, []),
+  );
+
+  /* =========================================================
+     LOAD SAVED RUNNER SETUP
+  ========================================================= */
 
   const loadSetup = useCallback(async () => {
     if (loadInFlightRef.current) return;
@@ -238,6 +268,18 @@ export default function RunnerTaskSelectionScreen() {
 
       if (!mountedRef.current) return;
 
+      // The backend resolver decides whether this screen
+      // is still the correct destination.
+      if (onboarding.nextStep === "documents") {
+        router.replace("/(auth)/documents");
+        return;
+      }
+
+      if (onboarding.nextStep === "dashboard") {
+        router.replace("/(app)");
+        return;
+      }
+
       const runner = onboarding.runner;
 
       const savedServices = runner.selectedCategories.filter(
@@ -261,6 +303,7 @@ export default function RunnerTaskSelectionScreen() {
       setAccountState({
         onboardingStatus: onboarding.onboardingStatus,
         accountStatus: runner.accountStatus,
+        nextStep: onboarding.nextStep,
       });
 
       hasLoadedOnceRef.current = true;
@@ -299,12 +342,23 @@ export default function RunnerTaskSelectionScreen() {
     }, [loadSetup]),
   );
 
+  /* =========================================================
+     CURRENT ACCOUNT STATE
+  ========================================================= */
+
   const onboardingStatus = accountState?.onboardingStatus ?? "";
   const accountStatus = accountState?.accountStatus ?? "";
+  const nextStep = accountState?.nextStep ?? "";
 
-  const isApproved = onboardingStatus === "approved";
+  const isApproved =
+    onboardingStatus === "approved" ||
+    nextStep === "dashboard";
+
   const isPendingReview = onboardingStatus === "pending_review";
-  const isRestricted = ["suspended", "closed"].includes(accountStatus);
+
+  const isRestricted =
+    nextStep === "restricted" ||
+    ["suspended", "closed"].includes(accountStatus);
 
   const sessionExpired =
     /session has expired|sign in again|no valid runner session/i.test(
@@ -322,6 +376,7 @@ export default function RunnerTaskSelectionScreen() {
 
   const canEdit =
     Boolean(accountState) &&
+    nextStep === "tasks" &&
     !loading &&
     !refreshing &&
     !loadError &&
@@ -353,6 +408,10 @@ export default function RunnerTaskSelectionScreen() {
       },
     });
   }
+
+  /* =========================================================
+     SAVE TASK, TRANSPORT AND SERVICE AREA
+  ========================================================= */
 
   async function continueToDocuments() {
     if (saveInFlightRef.current || !canEdit) return;
@@ -480,7 +539,9 @@ export default function RunnerTaskSelectionScreen() {
 
       if (!mountedRef.current) return;
 
-      router.push("/(auth)/documents");
+      // Tasks is complete. Replace it so Back cannot return
+      // to an already completed onboarding step.
+      router.replace("/(auth)/documents");
     } catch (cause) {
       if (!mountedRef.current) return;
 
@@ -543,7 +604,9 @@ export default function RunnerTaskSelectionScreen() {
       ? "Open Runner dashboard"
       : isPendingReview
         ? "Back to document checklist"
-        : "Continue";
+        : isRestricted
+          ? "Account restricted"
+          : "Continue";
 
   const bottomButtonDisabled =
     saving ||
@@ -555,6 +618,10 @@ export default function RunnerTaskSelectionScreen() {
       !isRestricted &&
       !selectedChoice);
 
+  /* =========================================================
+     RENDER
+  ========================================================= */
+
   return (
     <SafeAreaView
       edges={["top", "bottom"]}
@@ -563,6 +630,13 @@ export default function RunnerTaskSelectionScreen() {
         { backgroundColor: colors.paper },
       ]}
     >
+      <Stack.Screen
+        options={{
+          gestureEnabled: false,
+          headerBackVisible: false,
+        }}
+      />
+
       <StatusBar
         barStyle={isDark ? "light-content" : "dark-content"}
         backgroundColor={colors.paper}

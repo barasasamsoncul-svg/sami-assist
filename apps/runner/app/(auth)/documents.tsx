@@ -49,7 +49,13 @@ type DocumentCard = {
 };
 
 type DocumentProgress = {
-  status: "required" | "partial" | "completed" | "approved" | "resubmit";
+  status:
+    | "required"
+    | "partial"
+    | "completed"
+    | "pending_review"
+    | "approved"
+    | "resubmit";
   label: string;
   completed: number;
   total: number;
@@ -88,6 +94,7 @@ function buildDocumentCards(
   requirements: RunnerDocumentRequirement[],
 ): DocumentCard[] {
   const mandatory = requirements.filter((item) => item.required);
+
   const nationalIdKeys = new Set([
     "identity_national_id_front",
     "identity_national_id_back",
@@ -96,7 +103,10 @@ function buildDocumentCards(
   const nationalId = mandatory.filter((item) =>
     nationalIdKeys.has(item.key),
   );
-  const others = mandatory.filter((item) => !nationalIdKeys.has(item.key));
+
+  const others = mandatory.filter(
+    (item) => !nationalIdKeys.has(item.key),
+  );
 
   const cards: DocumentCard[] = [];
 
@@ -129,9 +139,16 @@ function getDocumentProgress(
 
   const rejected = current.some(isResubmissionRequired);
   const completed = current.filter(isSatisfied).length;
+
   const allApproved =
     current.length > 0 &&
-    current.every((document) => document?.reviewStatus === "approved");
+    current.every(
+      (document) => document?.reviewStatus === "approved",
+    );
+
+  const allSatisfied =
+    current.length > 0 &&
+    current.every(isSatisfied);
 
   if (rejected) {
     return {
@@ -142,10 +159,19 @@ function getDocumentProgress(
     };
   }
 
-  if (current.length > 0 && completed === current.length) {
+  if (allApproved) {
     return {
-      status: allApproved ? "approved" : "completed",
-      label: allApproved ? "Approved" : "Completed",
+      status: "approved",
+      label: "Approved",
+      completed,
+      total: current.length,
+    };
+  }
+
+  if (allSatisfied) {
+    return {
+      status: "pending_review",
+      label: "Under review",
       completed,
       total: current.length,
     };
@@ -174,17 +200,36 @@ function documentIcon(
   const key = requirement.key;
   const type = requirement.documentType;
 
-  if (key.startsWith("identity_national_id")) return "card-outline";
+  if (key.startsWith("identity_national_id")) {
+    return "card-outline";
+  }
+
   if (type === "profile_photo") return "person-circle-outline";
   if (type === "driving_licence") return "id-card-outline";
   if (type === "vehicle_registration") return "car-outline";
-  if (type === "motor_vehicle_insurance") return "shield-checkmark-outline";
-  if (type === "vehicle_authorisation") return "document-lock-outline";
-  if (type === "police_clearance" || key.includes("good_conduct")) {
+  if (type === "motor_vehicle_insurance") {
     return "shield-checkmark-outline";
   }
-  if (type === "kra_pin" || key.includes("kra_pin")) return "document-text-outline";
-  if (type === "food_handling_certificate") return "restaurant-outline";
+
+  if (type === "vehicle_authorisation") {
+    return "document-lock-outline";
+  }
+
+  if (
+    type === "police_clearance" ||
+    key.includes("good_conduct")
+  ) {
+    return "shield-checkmark-outline";
+  }
+
+  if (type === "kra_pin" || key.includes("kra_pin")) {
+    return "document-text-outline";
+  }
+
+  if (type === "food_handling_certificate") {
+    return "restaurant-outline";
+  }
+
   if (type === "pet_care_qualification") return "paw-outline";
   if (type === "professional_qualification") return "ribbon-outline";
 
@@ -198,12 +243,19 @@ function statusColor(
   switch (status) {
     case "approved":
       return colors.success;
+
     case "completed":
       return colors.blue;
+
+    case "pending_review":
+      return colors.warning;
+
     case "resubmit":
       return colors.red;
+
     case "partial":
       return colors.warning;
+
     default:
       return colors.textMuted;
   }
@@ -216,7 +268,9 @@ function serviceLabel(categoryKeys: string[]): string {
     return key.replace(/_/g, " ");
   });
 
-  return labels.length > 0 ? labels.join(" · ") : "Not selected";
+  return labels.length > 0
+    ? labels.join(" · ")
+    : "Not selected";
 }
 
 function vehicleLabel(value: string | null | undefined): string {
@@ -224,14 +278,18 @@ function vehicleLabel(value: string | null | undefined): string {
     case "bike":
     case "bicycle":
       return "Bicycle";
+
     case "motorbike":
     case "motorcycle":
       return "Motorbike";
+
     case "vehicle":
     case "car":
       return "Vehicle";
+
     case "van":
       return "Van";
+
     default:
       return value?.trim() || "Not selected";
   }
@@ -250,8 +308,14 @@ function getLatestReviewForCard(
   if (!feedback) return undefined;
 
   for (const requirement of card.requirements) {
-    const document = latestDocument(documents, requirement.key);
-    if (!document || !isResubmissionRequired(document)) continue;
+    const document = latestDocument(
+      documents,
+      requirement.key,
+    );
+
+    if (!document || !isResubmissionRequired(document)) {
+      continue;
+    }
 
     const review = feedback.documentReviews.find(
       (item) => item.documentId === document.id,
@@ -282,19 +346,29 @@ function hasUnresolvedDocumentReview(
       review.requirementKey,
     );
 
-    // A replacement upload creates a new document record. The older
-    // rejection remains in review history but is no longer outstanding.
-    return !current || current.id === review.documentId || isResubmissionRequired(current);
+    // A replacement upload creates a new document record.
+    // Older rejection history is no longer outstanding.
+    return (
+      !current ||
+      current.id === review.documentId ||
+      isResubmissionRequired(current)
+    );
   });
 }
 
-function allRequiredDocumentsSatisfied(data: RunnerOnboardingData): boolean {
-  const required = data.requirements.filter((item) => item.required);
+function allRequiredDocumentsSatisfied(
+  data: RunnerOnboardingData,
+): boolean {
+  const required = data.requirements.filter(
+    (item) => item.required,
+  );
 
   return (
     required.length > 0 &&
     required.every((requirement) =>
-      isSatisfied(latestDocument(data.documents, requirement.key)),
+      isSatisfied(
+        latestDocument(data.documents, requirement.key),
+      ),
     )
   );
 }
@@ -306,31 +380,39 @@ function shouldAutoSubmit(
   if (!allRequiredDocumentsSatisfied(data)) return false;
 
   const status = data.runner.verificationStatus;
+
   const isAwaitingReview =
-    data.onboardingStatus === "pending_review" || status === "submitted";
-  const isApproved =
-    data.onboardingStatus === "approved" || status === "approved";
-  const isRestricted = ["suspended", "closed"].includes(
-    data.runner.accountStatus,
-  );
+    data.complianceStatus === "pending_review" ||
+    data.onboardingStatus === "pending_review" ||
+    status === "submitted";
 
-  if (isAwaitingReview || isApproved || isRestricted) return false;
+  const isApproved = data.nextStep === "dashboard";
+  const isRestricted = data.nextStep === "restricted";
 
-  const isInitialSetup = data.onboardingStatus === "incomplete";
+  if (isAwaitingReview || isApproved || isRestricted) {
+    return false;
+  }
+
+  const isInitialSetup =
+    data.onboardingStatus === "incomplete";
+
   const isResubmission =
-    data.onboardingStatus === "changes_required" || status === "rejected";
+    data.onboardingStatus === "changes_required" ||
+    status === "rejected";
 
   if (!isInitialSetup && !isResubmission) return false;
 
   if (isResubmission) {
-    // Do not resubmit until the Runner has replaced every document that
-    // Operations explicitly returned. A general application rejection
-    // is kept visible for the Operations feedback workflow to resolve.
-    if (!feedback || feedback.applicationReview?.decision === "rejected") {
+    if (
+      !feedback ||
+      feedback.applicationReview?.decision === "rejected"
+    ) {
       return false;
     }
 
-    if (hasUnresolvedDocumentReview(data, feedback)) return false;
+    if (hasUnresolvedDocumentReview(data, feedback)) {
+      return false;
+    }
   }
 
   return true;
@@ -345,13 +427,17 @@ export default function RunnerDocumentsScreen() {
 
   const isDark = mode === "dark";
   const supportingText = isDark ? "#C1CCDA" : "#526176";
-  const brandColor = isDark ? "#F5F7FB" : "#000535";
   const actionBlue = colors.blueAction;
 
-  const [data, setData] = useState<RunnerOnboardingData | null>(null);
-  const [feedback, setFeedback] = useState<RunnerReviewFeedback | null>(null);
+  const [data, setData] =
+    useState<RunnerOnboardingData | null>(null);
+
+  const [feedback, setFeedback] =
+    useState<RunnerReviewFeedback | null>(null);
+
   const [loading, setLoading] = useState(true);
   const [expandedSetup, setExpandedSetup] = useState(false);
+
   const [loadError, setLoadError] = useState("");
   const [feedbackError, setFeedbackError] = useState("");
   const [autoSubmitError, setAutoSubmitError] = useState("");
@@ -377,12 +463,24 @@ export default function RunnerDocumentsScreen() {
 
   const progress = useMemo(() => {
     if (!data) {
-      return { completed: 0, total: 0, remaining: 0 };
+      return {
+        completed: 0,
+        total: 0,
+        remaining: 0,
+      };
     }
 
     const completed = cards.filter((card) => {
-      const state = getDocumentProgress(card, data.documents).status;
-      return state === "completed" || state === "approved";
+      const state = getDocumentProgress(
+        card,
+        data.documents,
+      ).status;
+
+      return (
+        state === "completed" ||
+        state === "pending_review" ||
+        state === "approved"
+      );
     }).length;
 
     return {
@@ -392,11 +490,19 @@ export default function RunnerDocumentsScreen() {
     };
   }, [cards, data]);
 
+  /* =========================================================
+     LOAD SERVER-OWNED ONBOARDING AND COMPLIANCE STATE
+  ========================================================= */
+
   const loadDocuments = useCallback(async () => {
     if (loadInFlightRef.current) return;
+
     loadInFlightRef.current = true;
 
-    if (!hasLoadedOnceRef.current) setLoading(true);
+    if (!hasLoadedOnceRef.current) {
+      setLoading(true);
+    }
+
     setLoadError("");
     setFeedbackError("");
     setAutoSubmitError("");
@@ -417,12 +523,15 @@ export default function RunnerDocumentsScreen() {
 
       if (!mountedRef.current) return;
 
-      // Approval is handled in this active onboarding session.
-      // Never send the Runner to a separate application-review screen.
-      if (
-        result.runner.verificationStatus === "approved" &&
-        !["suspended", "closed"].includes(result.runner.accountStatus)
-      ) {
+      // Tasks must be completed before the document checklist.
+      if (result.nextStep === "tasks") {
+        router.replace("/(auth)/tasks");
+        return;
+      }
+
+      // Approval is determined by the compliance resolver,
+      // not by verification_status alone.
+      if (result.nextStep === "dashboard") {
         router.replace("/(app)");
         return;
       }
@@ -433,6 +542,7 @@ export default function RunnerDocumentsScreen() {
         reviewResult = await getRunnerReviewFeedback();
       } catch (cause) {
         if (!mountedRef.current) return;
+
         setFeedbackError(
           cause instanceof Error
             ? cause.message
@@ -450,7 +560,11 @@ export default function RunnerDocumentsScreen() {
         const signature = result.requirements
           .filter((item) => item.required)
           .map((item) => {
-            const document = latestDocument(result.documents, item.key);
+            const document = latestDocument(
+              result.documents,
+              item.key,
+            );
+
             return `${item.key}:${document?.id ?? "missing"}`;
           })
           .sort()
@@ -475,27 +589,30 @@ export default function RunnerDocumentsScreen() {
             }
 
             const refreshed = await getRunnerOnboarding();
+
             if (!mountedRef.current) return;
 
-            if (
-              refreshed.runner.verificationStatus === "approved" &&
-              !["suspended", "closed"].includes(
-                refreshed.runner.accountStatus,
-              )
-            ) {
+            if (refreshed.nextStep === "dashboard") {
               router.replace("/(app)");
+              return;
+            }
+
+            if (refreshed.nextStep === "tasks") {
+              router.replace("/(auth)/tasks");
               return;
             }
 
             setData(refreshed);
           } catch (cause) {
             attemptedSubmissionRef.current = "";
+
             if (mountedRef.current) {
-              setAutoSubmitError(
+              const message =
                 cause instanceof Error
                   ? cause.message
-                  : "Your application could not be sent for review. Please try again.",
-              );
+                  : "Your application could not be sent for review. Please try again.";
+
+              setAutoSubmitError(message);
 
               showOverlay({
                 type: "error",
@@ -504,7 +621,9 @@ export default function RunnerDocumentsScreen() {
                   cause instanceof Error
                     ? cause.message
                     : "Your documents are saved, but the application could not be sent for review.",
-                primaryAction: { label: "Got it" },
+                primaryAction: {
+                  label: "Got it",
+                },
               });
             }
           } finally {
@@ -521,20 +640,27 @@ export default function RunnerDocumentsScreen() {
           : "Your document requirements could not be loaded.";
 
       setLoadError(message);
+
       showOverlay({
         type: "error",
         title: "Documents unavailable",
         message,
-        primaryAction: { label: "Close" },
+        primaryAction: {
+          label: "Close",
+        },
       });
     } finally {
       loadInFlightRef.current = false;
-      if (mountedRef.current) setLoading(false);
+
+      if (mountedRef.current) {
+        setLoading(false);
+      }
     }
   }, [showOverlay]);
 
   useFocusEffect(
     useCallback(() => {
+      mountedRef.current = true;
       void loadDocuments();
     }, [loadDocuments]),
   );
@@ -542,13 +668,9 @@ export default function RunnerDocumentsScreen() {
   /* =========================================================
      DOCUMENTS SCREEN BACK BEHAVIOUR
 
-     Android: the checklist is the end of the editable setup
-     journey. Hardware Back exits the app rather than reopening
-     the previous onboarding screens.
-
-     This listener is registered only while the checklist is
-     focused. When an individual document screen is opened,
-     this listener is removed so Back returns to the checklist.
+     Android Back exits the app without clearing the session.
+     Opening an individual document removes this listener while
+     that detail screen is focused, so Back returns here.
   ========================================================= */
 
   useFocusEffect(
@@ -565,47 +687,64 @@ export default function RunnerDocumentsScreen() {
     }, []),
   );
 
+  /* =========================================================
+     RUNNER AND COMPLIANCE STATE
+  ========================================================= */
+
   const runner = data?.runner as RunnerSummary | undefined;
+
   const categories = runner?.selectedCategories ?? [];
-  const serviceArea = runner?.serviceArea?.trim() || "Not provided";
+  const serviceArea =
+    runner?.serviceArea?.trim() || "Not provided";
+
   const currentVehicle = vehicleLabel(runner?.vehicleType);
   const model = runner?.vehicleModel?.trim();
   const registration = runner?.vehicleRegistration?.trim();
 
-  const isApproved = Boolean(
-    data &&
-      (data.onboardingStatus === "approved" ||
-        data.runner.verificationStatus === "approved"),
-  );
+  // The compliance resolver is authoritative.
+  const isApproved = data?.nextStep === "dashboard";
 
   const isPendingReview = Boolean(
     data &&
-      (data.onboardingStatus === "pending_review" ||
-        data.runner.verificationStatus === "submitted"),
+      (
+        data.complianceStatus === "pending_review" ||
+        data.runner.verificationStatus === "submitted"
+      ) &&
+      data.nextStep === "documents",
   );
 
-  const isRestricted = Boolean(
-    data && ["suspended", "closed"].includes(data.runner.accountStatus),
-  );
+  const isRestricted = data?.nextStep === "restricted";
 
-  const isSessionExpired = /session has expired|sign in to continue|no valid runner session/i.test(
-    loadError,
-  );
+  const isSessionExpired =
+    /session has expired|sign in to continue|no valid runner session/i.test(
+      loadError,
+    );
 
+  // Pending documents can be opened for replacement.
+  // Approved documents remain read-only.
   const canUpload = Boolean(
     data &&
+      data.nextStep === "documents" &&
       !isApproved &&
-      !isPendingReview &&
       !isRestricted &&
-      !isSessionExpired,
+      !isSessionExpired &&
+      !loadError,
   );
 
-  // While Admin reviews the submitted application, keep the Runner on
-  // this checklist and refresh its state in the same active session.
-  // Approval immediately routes to the dashboard; a returned document
-  // appears as Resubmit on this same screen.
+  /* =========================================================
+     REFRESH WHILE OPERATIONS REVIEWS THE APPLICATION
+
+     The checklist stays open and refreshes its state.
+     A replacement document should appear as the newest version.
+  ========================================================= */
+
   useEffect(() => {
-    if (!isPendingReview || isApproved || isRestricted || isSessionExpired) {
+    if (
+      !isPendingReview ||
+      isApproved ||
+      isRestricted ||
+      isSessionExpired
+    ) {
       return;
     }
 
@@ -615,11 +754,14 @@ export default function RunnerDocumentsScreen() {
       }
     }, 10000);
 
-    const subscription = AppState.addEventListener("change", (state) => {
-      if (state === "active") {
-        void loadDocuments();
-      }
-    });
+    const subscription = AppState.addEventListener(
+      "change",
+      (state) => {
+        if (state === "active") {
+          void loadDocuments();
+        }
+      },
+    );
 
     return () => {
       clearInterval(interval);
@@ -637,8 +779,16 @@ export default function RunnerDocumentsScreen() {
     if (!data) return "";
 
     const next = cards.find((card) => {
-      const status = getDocumentProgress(card, data.documents).status;
-      return status === "required" || status === "partial";
+      const status = getDocumentProgress(
+        card,
+        data.documents,
+      ).status;
+
+      return (
+        status === "required" ||
+        status === "partial" ||
+        status === "resubmit"
+      );
     });
 
     return next?.key ?? "";
@@ -649,49 +799,75 @@ export default function RunnerDocumentsScreen() {
       type: "info",
       title: "SaMi Runner Help",
       message:
-        "Upload each required document using its row. Documents marked Completed have been received and are awaiting verification. If SaMi Operations returns a document, the row will show Resubmit with the reason. Your service and vehicle selection cannot be changed from this screen.",
-      primaryAction: { label: "Got it" },
+        "Upload each required document using its row. Documents marked Under review have been received by SaMi Operations. You can still replace a file if you uploaded the wrong document. Approved documents cannot be changed. If Operations returns a document, the row will show Resubmit with the review reason.",
+      primaryAction: {
+        label: "Got it",
+      },
     });
   }
 
   function openDocument(card: DocumentCard) {
-    if (!canUpload) return;
+    if (!canUpload || !data) return;
 
-    const status = getDocumentProgress(card, data!.documents).status;
-    if (status === "completed" || status === "approved") return;
+    const status = getDocumentProgress(
+      card,
+      data.documents,
+    ).status;
+
+    // Approved documents are never replaceable.
+    if (status === "approved") return;
 
     router.push({
       pathname: "/(auth)/document/[key]",
-      params: { key: card.key },
+      params: {
+        key: card.key,
+      },
     });
   }
 
   const hasResubmissions = Boolean(
     cards.some(
       (card) =>
-        getDocumentProgress(card, data?.documents ?? []).status === "resubmit",
+        getDocumentProgress(
+          card,
+          data?.documents ?? [],
+        ).status === "resubmit",
     ),
   );
 
   const applicationReviewRejected =
     feedback?.applicationReview?.decision === "rejected";
 
-  const titleInstruction = isApproved
-    ? "Your Runner account has been approved."
-    : isPendingReview
-      ? "Your documents are with SaMi Operations for review."
-      : hasResubmissions || applicationReviewRejected
-        ? "Some information needs your attention. Resubmit the requested documents below."
-        : progress.remaining > 0
-          ? `Complete ${progress.remaining} more ${progress.remaining === 1 ? "step" : "steps"} to start earning.`
-          : "Your documents have been received. SaMi Operations will review them.";
+  const titleInstruction = isRestricted
+    ? "Your account is restricted. Contact SaMi Operations for assistance."
+    : isApproved
+      ? "Your Runner account has been approved."
+      : isPendingReview
+        ? "Your documents are with SaMi Operations. You can replace a file if you uploaded the wrong document."
+        : hasResubmissions || applicationReviewRejected
+          ? "Some information needs your attention. Resubmit the requested documents below."
+          : progress.remaining > 0
+            ? `Complete ${progress.remaining} more ${progress.remaining === 1 ? "step" : "steps"} to start earning.`
+            : "Your documents have been received. SaMi Operations will review them.";
+
+  /* =========================================================
+     RENDER
+  ========================================================= */
 
   return (
     <SafeAreaView
       edges={["top", "bottom"]}
-      style={[styles.safeArea, { backgroundColor: colors.paper }]}
+      style={[
+        styles.safeArea,
+        { backgroundColor: colors.paper },
+      ]}
     >
-      <Stack.Screen options={{ gestureEnabled: false }} />
+      <Stack.Screen
+        options={{
+          gestureEnabled: false,
+          headerBackVisible: false,
+        }}
+      />
 
       <StatusBar
         barStyle={isDark ? "light-content" : "dark-content"}
@@ -731,7 +907,13 @@ export default function RunnerDocumentsScreen() {
                 size={17}
                 color={actionBlue}
               />
-              <Text style={[styles.helpText, { color: colors.text }]}>
+
+              <Text
+                style={[
+                  styles.helpText,
+                  { color: colors.text },
+                ]}
+              >
                 Help
               </Text>
             </Pressable>
@@ -739,7 +921,12 @@ export default function RunnerDocumentsScreen() {
 
           {/* Read-only earning setup */}
           <View style={styles.signingUpBlock}>
-            <Text style={[styles.eyebrow, { color: supportingText }]}>
+            <Text
+              style={[
+                styles.eyebrow,
+                { color: supportingText },
+              ]}
+            >
               SIGNING UP FOR
             </Text>
 
@@ -755,8 +942,12 @@ export default function RunnerDocumentsScreen() {
               <Pressable
                 accessibilityRole="button"
                 accessibilityLabel="Show selected service and vehicle details"
-                accessibilityState={{ expanded: expandedSetup }}
-                onPress={() => setExpandedSetup((value) => !value)}
+                accessibilityState={{
+                  expanded: expandedSetup,
+                }}
+                onPress={() =>
+                  setExpandedSetup((value) => !value)
+                }
                 style={({ pressed }) => [
                   styles.setupSummaryTrigger,
                   { opacity: pressed ? 0.75 : 1 },
@@ -764,13 +955,20 @@ export default function RunnerDocumentsScreen() {
               >
                 <View style={styles.setupSummaryText}>
                   <Text
-                    style={[styles.setupPrimary, { color: colors.text }]}
+                    style={[
+                      styles.setupPrimary,
+                      { color: colors.text },
+                    ]}
                     numberOfLines={1}
                   >
                     {serviceArea} · {serviceLabel(categories)}
                   </Text>
+
                   <Text
-                    style={[styles.setupSecondary, { color: supportingText }]}
+                    style={[
+                      styles.setupSecondary,
+                      { color: supportingText },
+                    ]}
                     numberOfLines={1}
                   >
                     {currentVehicle}
@@ -780,7 +978,11 @@ export default function RunnerDocumentsScreen() {
                 </View>
 
                 <Ionicons
-                  name={expandedSetup ? "chevron-up" : "chevron-down"}
+                  name={
+                    expandedSetup
+                      ? "chevron-up"
+                      : "chevron-down"
+                  }
                   size={20}
                   color={colors.text}
                 />
@@ -794,50 +996,115 @@ export default function RunnerDocumentsScreen() {
                   ]}
                 >
                   <View style={styles.setupDetailRow}>
-                    <Text style={[styles.setupDetailLabel, { color: supportingText }]}>
+                    <Text
+                      style={[
+                        styles.setupDetailLabel,
+                        { color: supportingText },
+                      ]}
+                    >
                       Service area
                     </Text>
-                    <Text style={[styles.setupDetailValue, { color: colors.text }]}>
+
+                    <Text
+                      style={[
+                        styles.setupDetailValue,
+                        { color: colors.text },
+                      ]}
+                    >
                       {serviceArea}
                     </Text>
                   </View>
+
                   <View style={styles.setupDetailRow}>
-                    <Text style={[styles.setupDetailLabel, { color: supportingText }]}>
+                    <Text
+                      style={[
+                        styles.setupDetailLabel,
+                        { color: supportingText },
+                      ]}
+                    >
                       Service
                     </Text>
-                    <Text style={[styles.setupDetailValue, { color: colors.text }]}>
+
+                    <Text
+                      style={[
+                        styles.setupDetailValue,
+                        { color: colors.text },
+                      ]}
+                    >
                       {serviceLabel(categories)}
                     </Text>
                   </View>
+
                   <View style={styles.setupDetailRow}>
-                    <Text style={[styles.setupDetailLabel, { color: supportingText }]}>
+                    <Text
+                      style={[
+                        styles.setupDetailLabel,
+                        { color: supportingText },
+                      ]}
+                    >
                       Vehicle
                     </Text>
-                    <Text style={[styles.setupDetailValue, { color: colors.text }]}>
+
+                    <Text
+                      style={[
+                        styles.setupDetailValue,
+                        { color: colors.text },
+                      ]}
+                    >
                       {currentVehicle}
                     </Text>
                   </View>
+
                   {model ? (
                     <View style={styles.setupDetailRow}>
-                      <Text style={[styles.setupDetailLabel, { color: supportingText }]}>
+                      <Text
+                        style={[
+                          styles.setupDetailLabel,
+                          { color: supportingText },
+                        ]}
+                      >
                         Model
                       </Text>
-                      <Text style={[styles.setupDetailValue, { color: colors.text }]}>
+
+                      <Text
+                        style={[
+                          styles.setupDetailValue,
+                          { color: colors.text },
+                        ]}
+                      >
                         {model}
                       </Text>
                     </View>
                   ) : null}
+
                   {registration ? (
                     <View style={styles.setupDetailRow}>
-                      <Text style={[styles.setupDetailLabel, { color: supportingText }]}>
+                      <Text
+                        style={[
+                          styles.setupDetailLabel,
+                          { color: supportingText },
+                        ]}
+                      >
                         Registration
                       </Text>
-                      <Text style={[styles.setupDetailValue, { color: colors.text }]}>
+
+                      <Text
+                        style={[
+                          styles.setupDetailValue,
+                          { color: colors.text },
+                        ]}
+                      >
                         {registration}
                       </Text>
                     </View>
                   ) : null}
-                  <Text style={[styles.readOnlyHint, { color: supportingText }]}>
+
+                  <Text
+                    style={[
+                      styles.readOnlyHint,
+                      { color: supportingText },
+                    ]}
+                  >
                     These details are read-only during onboarding.
                   </Text>
                 </View>
@@ -847,11 +1114,24 @@ export default function RunnerDocumentsScreen() {
 
           {/* Welcome and onboarding progress */}
           <View style={styles.intro}>
-            <Text style={[styles.title, { color: colors.text }]}>
+            <Text
+              style={[
+                styles.title,
+                { color: colors.text },
+              ]}
+            >
               Welcome, {firstName(runner?.fullName)}
             </Text>
-            <Text style={[styles.subtitle, { color: supportingText }]}>
-              {loading ? "Loading your document checklist…" : titleInstruction}
+
+            <Text
+              style={[
+                styles.subtitle,
+                { color: supportingText },
+              ]}
+            >
+              {loading
+                ? "Loading your document checklist…"
+                : titleInstruction}
             </Text>
 
             {data && cards.length > 0 ? (
@@ -866,8 +1146,16 @@ export default function RunnerDocumentsScreen() {
                 }}
               >
                 {cards.map((card) => {
-                  const status = getDocumentProgress(card, data.documents).status;
-                  const filled = status === "completed" || status === "approved";
+                  const status = getDocumentProgress(
+                    card,
+                    data.documents,
+                  ).status;
+
+                  const filled =
+                    status === "completed" ||
+                    status === "pending_review" ||
+                    status === "approved";
+
                   return (
                     <View
                       key={card.key}
@@ -889,47 +1177,98 @@ export default function RunnerDocumentsScreen() {
           {/* Individual document rows */}
           {loading && !hasLoadedOnceRef.current ? (
             <View style={styles.loadingState}>
-              <ActivityIndicator size="small" color={actionBlue} />
-              <Text style={[styles.loadingText, { color: supportingText }]}>
+              <ActivityIndicator
+                size="small"
+                color={actionBlue}
+              />
+
+              <Text
+                style={[
+                  styles.loadingText,
+                  { color: supportingText },
+                ]}
+              >
                 Loading required documents…
               </Text>
             </View>
           ) : loadError && !data ? (
             <View style={styles.loadError}>
-              <Text style={[styles.errorText, { color: colors.red }]}>
+              <Text
+                style={[
+                  styles.errorText,
+                  { color: colors.red },
+                ]}
+              >
                 {loadError}
               </Text>
+
               <Pressable
                 accessibilityRole="button"
                 onPress={() => void loadDocuments()}
-                style={({ pressed }) => [styles.retryButton, { opacity: pressed ? 0.6 : 1 }]}
+                style={({ pressed }) => [
+                  styles.retryButton,
+                  {
+                    opacity: pressed ? 0.6 : 1,
+                  },
+                ]}
               >
-                <Text style={[styles.retryText, { color: actionBlue }]}>Try again</Text>
+                <Text
+                  style={[
+                    styles.retryText,
+                    { color: actionBlue },
+                  ]}
+                >
+                  Try again
+                </Text>
               </Pressable>
             </View>
           ) : data ? (
-            <View style={[styles.documentList, { borderTopColor: colors.border }]}>
-              {cards.map((card, index) => {
-                const progressState = getDocumentProgress(card, data.documents);
-                const review = getLatestReviewForCard(card, data.documents, feedback);
-                const statusTextColor = statusColor(progressState.status, colors);
-                const isFirstIncomplete = firstIncompleteKey === card.key;
+            <View
+              style={[
+                styles.documentList,
+                { borderTopColor: colors.border },
+              ]}
+            >
+              {cards.map((card) => {
+                const progressState = getDocumentProgress(
+                  card,
+                  data.documents,
+                );
+
+                const review = getLatestReviewForCard(
+                  card,
+                  data.documents,
+                  feedback,
+                );
+
+                const statusTextColor = statusColor(
+                  progressState.status,
+                  colors,
+                );
+
+                const isFirstIncomplete =
+                  firstIncompleteKey === card.key;
+
                 const canOpen =
                   canUpload &&
-                  progressState.status !== "completed" &&
                   progressState.status !== "approved";
+
                 const hint =
                   progressState.status === "resubmit"
-                    ? review?.reason || "SaMi Operations requested a replacement. Tap to upload a new document."
-                    : progressState.status === "required" && isFirstIncomplete
-                      ? "Recommended next step"
-                      : progressState.status === "partial"
-                        ? "Complete the remaining side"
-                        : progressState.status === "completed"
-                          ? ""
-                          : progressState.status === "approved"
-                            ? ""
-                            : "Required";
+                    ? review?.reason ||
+                      "SaMi Operations requested a replacement. Tap to upload a new document."
+                    : progressState.status === "pending_review"
+                      ? "Received by SaMi. You can replace this file if needed."
+                      : progressState.status === "required" &&
+                          isFirstIncomplete
+                        ? "Recommended next step"
+                        : progressState.status === "partial"
+                          ? "Complete the remaining side"
+                          : progressState.status === "completed"
+                            ? "Received"
+                            : progressState.status === "approved"
+                              ? "Verified by SaMi Operations"
+                              : "Required";
 
                 return (
                   <Pressable
@@ -938,19 +1277,20 @@ export default function RunnerDocumentsScreen() {
                     accessibilityLabel={`${card.title}. ${progressState.label}`}
                     accessibilityHint={
                       canOpen
-                        ? progressState.status === "resubmit"
-                          ? "Opens the existing upload screen to submit a replacement"
-                          : "Opens the existing document upload screen"
+                        ? "Opens the document screen to upload or replace this document"
                         : "This document cannot be changed at this time"
                     }
-                    accessibilityState={{ disabled: !canOpen }}
+                    accessibilityState={{
+                      disabled: !canOpen,
+                    }}
                     disabled={!canOpen}
                     onPress={() => openDocument(card)}
                     style={({ pressed }) => [
                       styles.documentRow,
                       {
                         borderBottomColor: colors.border,
-                        opacity: pressed && canOpen ? 0.72 : 1,
+                        opacity:
+                          pressed && canOpen ? 0.72 : 1,
                       },
                     ]}
                   >
@@ -961,18 +1301,24 @@ export default function RunnerDocumentsScreen() {
                         color={
                           progressState.status === "resubmit"
                             ? colors.red
-                            : actionBlue
+                            : progressState.status === "approved"
+                              ? colors.success
+                              : actionBlue
                         }
                       />
                     </View>
 
                     <View style={styles.documentCopy}>
                       <Text
-                        style={[styles.documentTitle, { color: colors.text }]}
+                        style={[
+                          styles.documentTitle,
+                          { color: colors.text },
+                        ]}
                         numberOfLines={2}
                       >
                         {card.title}
                       </Text>
+
                       <Text
                         style={[
                           styles.documentHint,
@@ -980,21 +1326,41 @@ export default function RunnerDocumentsScreen() {
                         ]}
                         numberOfLines={3}
                       >
-                        {hint || progressState.label}
+                        {hint}
                       </Text>
                     </View>
 
                     <View style={styles.documentRight}>
                       <Text
-                        style={[styles.documentStatus, { color: statusTextColor }]}
+                        style={[
+                          styles.documentStatus,
+                          { color: statusTextColor },
+                        ]}
                       >
                         {progressState.label}
                       </Text>
-                      <Ionicons
-                        name="chevron-forward"
-                        size={19}
-                        color={colors.textMuted}
-                      />
+
+                      {canOpen ? (
+                        <Ionicons
+                          name="chevron-forward"
+                          size={19}
+                          color={colors.textMuted}
+                        />
+                      ) : (
+                        <Ionicons
+                          name={
+                            progressState.status === "approved"
+                              ? "checkmark-circle"
+                              : "lock-closed-outline"
+                          }
+                          size={17}
+                          color={
+                            progressState.status === "approved"
+                              ? colors.success
+                              : colors.textMuted
+                          }
+                        />
+                      )}
                     </View>
                   </Pressable>
                 );
@@ -1003,23 +1369,50 @@ export default function RunnerDocumentsScreen() {
           ) : null}
 
           {feedbackError ? (
-            <Text style={[styles.feedbackHint, { color: supportingText }]}>
-              Operations review comments could not be refreshed. Document upload status is still shown above.
+            <Text
+              style={[
+                styles.feedbackHint,
+                { color: supportingText },
+              ]}
+            >
+              Operations review comments could not be refreshed.
+              Document upload status is still shown above.
             </Text>
           ) : null}
 
           {autoSubmitError ? (
-            <Text style={[styles.feedbackHint, { color: colors.red }]}>
+            <Text
+              style={[
+                styles.feedbackHint,
+                { color: colors.red },
+              ]}
+            >
               {autoSubmitError}
             </Text>
           ) : null}
 
           {applicationReviewRejected && feedback?.applicationReview ? (
-            <View style={[styles.applicationFeedback, { borderColor: colors.red }]}>
-              <Text style={[styles.applicationFeedbackTitle, { color: colors.red }]}>
+            <View
+              style={[
+                styles.applicationFeedback,
+                { borderColor: colors.red },
+              ]}
+            >
+              <Text
+                style={[
+                  styles.applicationFeedbackTitle,
+                  { color: colors.red },
+                ]}
+              >
                 Application returned
               </Text>
-              <Text style={[styles.applicationFeedbackText, { color: colors.text }]}>
+
+              <Text
+                style={[
+                  styles.applicationFeedbackText,
+                  { color: colors.text },
+                ]}
+              >
                 {feedback.applicationReview.reason ||
                   "SaMi Operations has returned your application for correction."}
               </Text>
@@ -1027,13 +1420,61 @@ export default function RunnerDocumentsScreen() {
           ) : null}
 
           {isPendingReview ? (
-            <Text style={[styles.footerNote, { color: supportingText }]}>
-              Your documents have been received. SaMi Operations is reviewing your application.
-            </Text>
+            <View
+              style={[
+                styles.reviewNotice,
+                { backgroundColor: colors.warningSoft },
+              ]}
+            >
+              <Ionicons
+                name="time-outline"
+                size={19}
+                color={colors.warning}
+              />
+
+              <Text
+                style={[
+                  styles.reviewNoticeText,
+                  { color: colors.text },
+                ]}
+              >
+                Your application is under review. You may replace a
+                document if you uploaded the wrong file. The newest
+                version will be available to SaMi Operations.
+              </Text>
+            </View>
           ) : isApproved ? (
-            <Text style={[styles.footerNote, { color: colors.success }]}>
+            <Text
+              style={[
+                styles.footerNote,
+                { color: colors.success },
+              ]}
+            >
               Your Runner account is approved.
             </Text>
+          ) : isRestricted ? (
+            <View
+              style={[
+                styles.reviewNotice,
+                { backgroundColor: colors.dangerSoft },
+              ]}
+            >
+              <Ionicons
+                name="lock-closed-outline"
+                size={19}
+                color={colors.red}
+              />
+
+              <Text
+                style={[
+                  styles.reviewNoticeText,
+                  { color: colors.text },
+                ]}
+              >
+                This account is restricted. Document changes are
+                unavailable. Contact SaMi Operations for assistance.
+              </Text>
+            </View>
           ) : null}
         </ScrollView>
       </View>
@@ -1045,14 +1486,17 @@ const styles = StyleSheet.create({
   safeArea: {
     flex: 1,
   },
+
   container: {
     flex: 1,
   },
+
   scrollContent: {
     paddingHorizontal: 20,
     paddingTop: 12,
     paddingBottom: 28,
   },
+
   header: {
     minHeight: 42,
     flexDirection: "row",
@@ -1060,10 +1504,12 @@ const styles = StyleSheet.create({
     justifyContent: "space-between",
     marginBottom: 27,
   },
+
   wordmark: {
     width: 112,
     height: 36,
   },
+
   helpButton: {
     minHeight: 38,
     paddingHorizontal: 13,
@@ -1074,24 +1520,29 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     gap: 6,
   },
+
   helpText: {
     fontSize: 13,
     fontWeight: "700",
   },
+
   signingUpBlock: {
     gap: 8,
     marginBottom: 30,
   },
+
   eyebrow: {
     fontSize: 10,
     fontWeight: "800",
     letterSpacing: 0.9,
   },
+
   setupSummary: {
     borderWidth: 1,
     borderRadius: 12,
     overflow: "hidden",
   },
+
   setupSummaryTrigger: {
     minHeight: 54,
     paddingHorizontal: 13,
@@ -1100,18 +1551,22 @@ const styles = StyleSheet.create({
     alignItems: "center",
     gap: 10,
   },
+
   setupSummaryText: {
     flex: 1,
     gap: 3,
   },
+
   setupPrimary: {
     fontSize: 12.5,
     fontWeight: "800",
   },
+
   setupSecondary: {
     fontSize: 11,
     lineHeight: 15,
   },
+
   setupDetails: {
     borderTopWidth: StyleSheet.hairlineWidth,
     paddingHorizontal: 13,
@@ -1119,52 +1574,63 @@ const styles = StyleSheet.create({
     paddingBottom: 12,
     gap: 8,
   },
+
   setupDetailRow: {
     flexDirection: "row",
     justifyContent: "space-between",
     alignItems: "flex-start",
     gap: 12,
   },
+
   setupDetailLabel: {
     fontSize: 11,
   },
+
   setupDetailValue: {
     flex: 1,
     textAlign: "right",
     fontSize: 11,
     fontWeight: "700",
   },
+
   readOnlyHint: {
     fontSize: 10,
     marginTop: 3,
   },
+
   intro: {
     gap: 13,
     marginBottom: 26,
   },
+
   title: {
     fontSize: 28,
     lineHeight: 34,
     fontWeight: "800",
     letterSpacing: -0.7,
   },
+
   subtitle: {
     fontSize: 13.5,
     lineHeight: 20,
   },
+
   progressSegments: {
     flexDirection: "row",
     gap: 7,
     marginTop: 5,
   },
+
   progressSegment: {
     flex: 1,
     height: 7,
     borderRadius: 2,
   },
+
   documentList: {
     borderTopWidth: StyleSheet.hairlineWidth,
   },
+
   documentRow: {
     minHeight: 74,
     paddingVertical: 13,
@@ -1173,36 +1639,43 @@ const styles = StyleSheet.create({
     gap: 12,
     borderBottomWidth: StyleSheet.hairlineWidth,
   },
+
   documentIconWrap: {
     width: 28,
     alignItems: "center",
     justifyContent: "center",
   },
+
   documentCopy: {
     flex: 1,
     gap: 4,
   },
+
   documentTitle: {
     fontSize: 14,
     lineHeight: 19,
     fontWeight: "700",
   },
+
   documentHint: {
     fontSize: 11.5,
     lineHeight: 16,
   },
+
   documentRight: {
     alignItems: "flex-end",
     justifyContent: "center",
     gap: 4,
-    maxWidth: 90,
+    maxWidth: 100,
   },
+
   documentStatus: {
     fontSize: 10.5,
     lineHeight: 14,
     fontWeight: "800",
     textAlign: "right",
   },
+
   loadingState: {
     minHeight: 100,
     flexDirection: "row",
@@ -1210,45 +1683,71 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     gap: 10,
   },
+
   loadingText: {
     fontSize: 12,
   },
+
   loadError: {
     paddingVertical: 18,
     gap: 12,
   },
+
   errorText: {
     fontSize: 13,
     lineHeight: 19,
   },
+
   retryButton: {
     alignSelf: "flex-start",
     paddingVertical: 8,
     paddingRight: 12,
   },
+
   retryText: {
     fontSize: 13,
     fontWeight: "800",
   },
+
   feedbackHint: {
     marginTop: 14,
     fontSize: 11,
     lineHeight: 16,
   },
+
   applicationFeedback: {
     marginTop: 18,
     borderLeftWidth: 3,
     paddingLeft: 11,
     gap: 5,
   },
+
   applicationFeedbackTitle: {
     fontSize: 12,
     fontWeight: "800",
   },
+
   applicationFeedbackText: {
     fontSize: 12,
     lineHeight: 18,
   },
+
+  reviewNotice: {
+    marginTop: 20,
+    borderRadius: 14,
+    padding: 13,
+    flexDirection: "row",
+    alignItems: "flex-start",
+    gap: 10,
+  },
+
+  reviewNoticeText: {
+    flex: 1,
+    fontSize: 12,
+    lineHeight: 18,
+    fontWeight: "600",
+  },
+
   footerNote: {
     marginTop: 20,
     textAlign: "center",

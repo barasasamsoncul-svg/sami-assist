@@ -9,6 +9,10 @@ import {
 } from "@/lib/otp";
 
 import {
+  resolveRunnerCompliance,
+} from "@/apps/runner/server/compliance";
+
+import {
   databasePool,
   query,
 } from "@/apps/runner/server/db";
@@ -43,6 +47,8 @@ type RunnerAccount = {
 type RunnerProfile = RunnerAccount & {
   service_area: string | null;
   vehicle_type: string | null;
+  vehicle_model: string | null;
+  vehicle_registration: string | null;
 };
 
 type RegistrationData = {
@@ -143,9 +149,6 @@ function parseRegistrationData(
       ? parsed.matchedCustomerName.trim()
       : "";
 
-  // Customer recognition must never prevent normal registration.
-  // If the optional match information is incomplete, treat this
-  // as an ordinary Runner registration.
   const hasValidCustomerMatch =
     matchedBy !== "none" &&
     rawCustomerName.length > 0 &&
@@ -160,38 +163,6 @@ function parseRegistrationData(
     matchedCustomerName: hasValidCustomerMatch
       ? rawCustomerName
       : null,
-  };
-}
-
-function getOnboardingState(account: RunnerAccount) {
-  const approved =
-    account.account_status === "active" &&
-    account.verification_status === "approved";
-
-  if (approved) {
-    return {
-      onboardingStatus: "approved",
-      nextStep: "app",
-    };
-  }
-
-  if (account.verification_status === "submitted") {
-    return {
-      onboardingStatus: "pending_review",
-      nextStep: "status",
-    };
-  }
-
-  if (account.verification_status === "rejected") {
-    return {
-      onboardingStatus: "changes_required",
-      nextStep: "onboarding",
-    };
-  }
-
-  return {
-    onboardingStatus: "incomplete",
-    nextStep: "onboarding",
   };
 }
 
@@ -223,7 +194,6 @@ async function createRegistrationConfirmation(input: {
   const token = randomBytes(32).toString("base64url");
   const tokenHash = hashToken(token);
 
-  // Invalidate older outstanding confirmations for this email.
   await input.client.query(
     `UPDATE public.runner_registration_confirmations
      SET cancelled_at = NOW()
@@ -269,7 +239,8 @@ async function createRegistrationConfirmation(input: {
 /**
  * Creates Runner profile, availability and authenticated session.
  *
- * All writes are made through the Runner transaction client.
+ * All writes and compliance reads are made through the same
+ * Runner transaction client.
  */
 async function createRunnerSession(input: {
   client: PoolClient;
@@ -306,7 +277,9 @@ async function createRunnerSession(input: {
          a.account_status,
          a.verification_status,
          p.service_area,
-         p.vehicle_type
+         p.vehicle_type,
+         p.vehicle_model,
+         p.vehicle_registration
        FROM public.runner_accounts AS a
        LEFT JOIN public.runner_profiles AS p
          ON p.runner_id = a.id
@@ -367,23 +340,112 @@ async function createRunnerSession(input: {
     runner.vehicle_type,
   );
 
-  // A new Runner must choose task categories first.
-  // Existing Runner logins continue through saved onboarding state.
-  const state =
+  /* =======================================================
+     SERVER-SIDE RUNNER COMPLIANCE
+
+     Login uses the exact same compliance resolver as the
+     saved-session onboarding endpoint.
+
+     Registration always begins at Tasks because the new
+     Runner has not yet selected services or transport.
+  ======================================================= */
+
+  const requiredDocumentsResult =
+    await client.query<{ requirement_key: string }>(
+      `SELECT requirement_key
+       FROM public.runner_onboarding_document_requirements
+       WHERE is_active = true
+         AND is_required = true
+         AND (
+           category_key IS NULL
+           OR category_key = ANY($1::text[])
+         )
+         AND (
+           vehicle_type = 'any'
+           OR vehicle_type = $2
+         )
+       ORDER BY
+         category_key NULLS FIRST,
+         display_order,
+         requirement_key`,
+      [
+        selectedCategories,
+        runner.vehicle_type,
+      ],
+    );
+
+  const uploadedDocumentsResult =
+    await client.query<{
+      id: string;
+      requirement_key: string | null;
+      review_status: string;
+      submitted_at: Date | string;
+    }>(
+      `SELECT
+         id,
+         requirement_key,
+         review_status,
+         submitted_at
+       FROM public.runner_verification_documents
+       WHERE runner_id = $1
+       ORDER BY submitted_at DESC, id DESC`,
+      [runner.id],
+    );
+
+  const compliance = resolveRunnerCompliance({
+    accountStatus: runner.account_status,
+    verificationStatus: runner.verification_status,
+
+    fullName: runner.full_name,
+
+    selectedCategories,
+
+    serviceArea: runner.service_area,
+    vehicleType: runner.vehicle_type,
+    vehicleModel: runner.vehicle_model,
+    vehicleRegistration: runner.vehicle_registration,
+
+    requiredDocuments:
+      requiredDocumentsResult.rows.map((item) => ({
+        key: item.requirement_key,
+      })),
+
+    uploadedDocuments:
+      uploadedDocumentsResult.rows.map((item) => ({
+        id: item.id,
+        requirementKey: item.requirement_key,
+        reviewStatus: item.review_status,
+        submittedAt:
+          item.submitted_at instanceof Date
+            ? item.submitted_at.toISOString()
+            : item.submitted_at,
+      })),
+  });
+
+  const onboardingStatus =
+    compliance.status === "approved"
+      ? "approved"
+      : compliance.status === "pending_review"
+        ? "pending_review"
+        : compliance.status === "changes_required"
+          ? "changes_required"
+          : "incomplete";
+
+  const nextStep =
     purpose === "register"
-      ? {
-          onboardingStatus: "incomplete",
-          nextStep: "tasks",
-        }
-      : getOnboardingState(runner);
+      ? "tasks"
+      : compliance.nextStep;
 
   return {
     ok: true as const,
     sessionToken,
     expiresInDays: sessionDays,
     profileComplete,
-    onboardingStatus: state.onboardingStatus,
-    nextStep: state.nextStep,
+    onboardingStatus,
+    nextStep,
+    complianceStatus: compliance.status,
+    canSubmit: compliance.canSubmit,
+    compliance,
     runner: {
       id: runner.id,
       email: runner.email,
@@ -447,7 +509,6 @@ export async function POST(request: Request) {
   const client = await databasePool().connect();
 
   try {
-    // Resolve challenge owner before acquiring the email lock.
     const ownerResult = await query<{
       email: string;
       purpose: string;
@@ -480,7 +541,6 @@ export async function POST(request: Request) {
 
     await client.query("BEGIN");
 
-    // Serialize OTP verification for this actual email.
     await client.query(
       "SELECT pg_advisory_xact_lock(hashtext($1))",
       ["sami-runner-email-otp:" + email],
@@ -590,7 +650,6 @@ export async function POST(request: Request) {
       );
     }
 
-    // Consume the email challenge once the OTP is verified.
     await client.query(
       `UPDATE public.runner_email_otp_challenges
        SET consumed_at = NOW()
@@ -599,7 +658,6 @@ export async function POST(request: Request) {
       [challengeId],
     );
 
-    // Serialize Runner account creation for this email.
     await client.query(
       "SELECT pg_advisory_xact_lock(hashtext($1))",
       ["sami-runner-account-email:" + email],
@@ -621,7 +679,6 @@ export async function POST(request: Request) {
         );
       }
 
-      // Use the same phone lock as request-otp.
       await client.query(
         "SELECT pg_advisory_xact_lock(hashtext($1))",
         ["sami-runner-phone:" + registration.phoneE164],
@@ -695,9 +752,9 @@ export async function POST(request: Request) {
       );
     }
 
-    // ======================================================================
-    // REGISTRATION: OPTIONAL CUSTOMER RECOGNITION
-    // ======================================================================
+    /* =====================================================
+       REGISTRATION: OPTIONAL CUSTOMER RECOGNITION
+    ===================================================== */
 
     if (purpose === "register" && registration) {
       const hasCustomerMatch =
@@ -705,8 +762,6 @@ export async function POST(request: Request) {
         Boolean(registration.matchedCustomerName);
 
       if (hasCustomerMatch) {
-        // Do not create a Runner account until the applicant
-        // explicitly confirms the separate registration.
         const confirmationToken =
           await createRegistrationConfirmation({
             client,
@@ -740,7 +795,6 @@ export async function POST(request: Request) {
       }
 
       // No Customer match: ordinary Runner registration.
-      // Customer membership is not required.
       const createdResult =
         await client.query<RunnerAccount>(
           `INSERT INTO public.runner_accounts (
@@ -808,7 +862,7 @@ export async function POST(request: Request) {
       );
     }
 
-    // Create the Runner session and base records.
+    // Create the Runner session and resolve compliance.
     const result = await createRunnerSession({
       client,
       account,

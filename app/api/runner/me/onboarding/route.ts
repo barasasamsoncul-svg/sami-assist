@@ -1,6 +1,8 @@
+
 import { NextResponse } from "next/server";
 
 import { authenticateRunner } from "@/apps/runner/server/auth";
+import { resolveRunnerCompliance } from "@/apps/runner/server/compliance";
 import {
   databasePool,
   query,
@@ -126,6 +128,11 @@ function response(
  * - Selected services
  * - Mandatory document requirements
  * - Uploaded document review results
+ * - Server-resolved compliance decision
+ *
+ * The compliance resolver is the source of truth for the
+ * next screen. Frontend screens must not independently
+ * determine whether a Runner is eligible for the Dashboard.
  */
 export async function GET(request: Request) {
   try {
@@ -252,11 +259,54 @@ export async function GET(request: Request) {
       }),
     );
 
+    /* =====================================================
+       CENTRAL COMPLIANCE DECISION
+
+       All required information is read from the database.
+       The frontend cannot override this decision.
+    ===================================================== */
+
+    const compliance = resolveRunnerCompliance({
+      accountStatus: profile.account_status,
+      verificationStatus: profile.verification_status,
+
+      fullName: profile.full_name,
+
+      selectedCategories: categories,
+
+      serviceArea: profile.service_area,
+      vehicleType: profile.vehicle_type,
+      vehicleModel: profile.vehicle_model,
+      vehicleRegistration: profile.vehicle_registration,
+
+      requiredDocuments:
+        requirementsResult.rows.map((item) => ({
+          key: item.requirement_key,
+        })),
+
+      uploadedDocuments:
+        documentsResult.rows.map((item) => ({
+          id: item.id,
+          requirementKey: item.requirement_key,
+          reviewStatus: item.review_status,
+          submittedAt: item.submitted_at,
+        })),
+    });
+
     return response({
       ok: true,
+
+      // Retain the existing status field for current consumers.
       onboardingStatus: onboardingState(
         profile.verification_status,
       ),
+
+      // New authoritative compliance fields.
+      complianceStatus: compliance.status,
+      nextStep: compliance.nextStep,
+      canSubmit: compliance.canSubmit,
+      compliance,
+
       runner: {
         id: profile.id,
         fullName: profile.full_name,
@@ -271,6 +321,7 @@ export async function GET(request: Request) {
         vehicleRegistration: profile.vehicle_registration,
         selectedCategories: categories,
       },
+
       requirements,
       documents,
     });
@@ -304,8 +355,8 @@ export async function GET(request: Request) {
  * - Vehicle registration number
  *
  * Changes are allowed during initial onboarding and after
- * a rejection, but not while Operations is reviewing the
- * application or after approval.
+ * a rejection, but not while the application is under
+ * review or after approval.
  */
 export async function PUT(request: Request) {
   const auth = await authenticateRunner(request);
@@ -408,8 +459,7 @@ export async function PUT(request: Request) {
     await client.query("BEGIN");
     transactionStarted = true;
 
-    // Serialize transport changes against document uploads
-    // and Admin decisions using the Runner account row.
+    // Lock the Runner account while changing transport details.
     const accountResult = await client.query<{
       account_status: string;
       verification_status: string;
@@ -614,7 +664,7 @@ export async function PUT(request: Request) {
 /**
  * POST /api/runner/me/onboarding
  *
- * Submits a completed application for Operations review.
+ * Submits a completed application for review.
  *
  * The server independently verifies:
  * - Service-area details
@@ -638,8 +688,7 @@ export async function POST(request: Request) {
   try {
     await client.query("BEGIN");
 
-    // Serialize submission with Runner document uploads
-    // and Admin review decisions.
+    // Serialize submission with Runner document uploads.
     const accountResult = await client.query<{
       account_status: string;
       verification_status: string;
@@ -691,7 +740,7 @@ export async function POST(request: Request) {
       await client.query("ROLLBACK");
 
       return errorResponse(
-        "Your application is already under Operations review.",
+        "Your application is already under review.",
         409,
       );
     }
@@ -802,7 +851,7 @@ export async function POST(request: Request) {
       await client.query("ROLLBACK");
 
       return errorResponse(
-        "No mandatory verification documents are configured for your selected services and transport. Contact SaMi Operations before submitting.",
+        "No mandatory verification documents are configured for your selected services and transport. Contact SaMi support before submitting.",
         503,
       );
     }
@@ -898,7 +947,7 @@ export async function POST(request: Request) {
     return response({
       ok: true,
       message:
-        "Your Runner application has been submitted for Operations review.",
+        "Your Runner application has been submitted for review.",
       onboardingStatus: "pending_review",
       runner: {
         accountStatus:

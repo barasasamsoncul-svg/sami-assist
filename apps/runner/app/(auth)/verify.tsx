@@ -289,8 +289,8 @@ export default function VerifyRunnerScreen() {
      After success, clear the authentication history so Back
      cannot return to Login or Register.
 
-     Use the backend nextStep response to decide where
-     the authenticated Runner should continue.
+     The backend nextStep response determines the destination.
+     No obsolete profile-setup route is used.
   ========================================================= */
 
   async function completeSession(
@@ -322,29 +322,49 @@ export default function VerifyRunnerScreen() {
     // not before verification has completed.
     router.dismissAll();
 
-    // Navigate directly to the correct Runner destination.
-    // Never return to "/" after successful authentication.
+    // The server's compliance resolver decides the destination.
     switch (result.nextStep) {
+      case "tasks":
+      case "onboarding": {
+        router.replace("/(auth)/tasks");
+        return;
+      }
+
+      case "documents":
+      case "status": {
+        router.replace("/(auth)/documents");
+        return;
+      }
+
+      case "dashboard":
       case "app": {
         router.replace("/(app)");
         return;
       }
 
-      case "tasks": {
-        router.replace("/(auth)/tasks");
+      case "restricted": {
+        showOverlay({
+          type: "warning",
+          title: "Account access restricted",
+          message:
+            "Your Runner account is currently restricted. You cannot access Runner services until SaMi has resolved this restriction. Please contact SaMi Support for assistance.",
+          primaryAction: {
+            label: "Understood",
+          },
+        });
         return;
       }
 
-      case "status": {
-        router.replace("/(app)/profile-setup?mode=status");
-        return;
-      }
-
-      case "onboarding":
       default: {
-        // The profile-setup screen resolves the exact saved
-        // onboarding stage: tasks, transport, documents or review.
-        router.replace("/(app)/profile-setup");
+        showOverlay({
+          type: "error",
+          title: "Account destination unavailable",
+          message:
+            "Your verification succeeded, but SaMi could not determine the next step for your Runner account. Please try signing in again or contact SaMi Support.",
+          primaryAction: {
+            label: "Understood",
+          },
+        });
         return;
       }
     }
