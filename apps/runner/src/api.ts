@@ -71,6 +71,11 @@ export type RunnerMe = RunnerProfile & {
   };
 };
 
+export type RunnerCoordinates = {
+  latitude: number;
+  longitude: number;
+};
+
 export type RunnerJob = {
   id: string;
   publicCode: string;
@@ -78,7 +83,9 @@ export type RunnerJob = {
   category: string;
   description: string;
   pickupLabel: string;
+  pickupCoordinates: RunnerCoordinates | null;
   destinationLabel: string;
+  destinationCoordinates: RunnerCoordinates | null;
   distanceKm: number | null;
   runnerPayoutAmount: number | null;
   currency: string;
