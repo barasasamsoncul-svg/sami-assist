@@ -1,0 +1,10 @@
+
+{
+  "platforms": ["android", "apple"],
+  "android": {
+    "modules": ["com.sami.runner.mapbox.SaMiMapboxModule"]
+  },
+  "apple": {
+    "modules": ["SaMiMapboxModule"]
+  }
+}
