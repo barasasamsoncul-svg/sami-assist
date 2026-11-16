@@ -1,5 +1,9 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-
+import type {
+  ScrollViewInstance,
+  TextInputInstance,
+} from "react-native";
+import { StatusBar } from "expo-status-bar";
 import {
   ActivityIndicator,
   BackHandler,
@@ -9,7 +13,6 @@ import {
   Platform,
   Pressable,
   ScrollView,
-  StatusBar,
   StyleSheet,
   Text,
   TextInput,
@@ -282,7 +285,7 @@ export default function RunnerTaskSelectionScreen() {
 
   const [keyboardVisible, setKeyboardVisible] = useState(false);
 
-  const scrollRef = useRef<ScrollView>(null);
+  const scrollRef = useRef<ScrollViewInstance>(null);
   const mountedRef = useRef(true);
   const loadInFlightRef = useRef(false);
   const saveInFlightRef = useRef(false);
@@ -296,8 +299,8 @@ export default function RunnerTaskSelectionScreen() {
     vehicleRegistration: 0,
   });
 
-  const vehicleModelInputRef = useRef<TextInput>(null);
-  const registrationInputRef = useRef<TextInput>(null);
+ const vehicleModelInputRef = useRef<TextInputInstance>(null);
+const registrationInputRef = useRef<TextInputInstance>(null);
 
   useEffect(() => {
     mountedRef.current = true;
@@ -894,10 +897,9 @@ export default function RunnerTaskSelectionScreen() {
         }}
       />
 
-      <StatusBar
-        barStyle={isDark ? "light-content" : "dark-content"}
-        backgroundColor={colors.paper}
-      />
+     <StatusBar
+  style={isDark ? "light" : "dark"}
+/>
 
       <KeyboardAvoidingView
         style={styles.keyboard}

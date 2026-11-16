@@ -1,4 +1,7 @@
-
+import { StatusBar } from "expo-status-bar";
+import type {
+  TextInputInstance,
+} from "react-native";
 import React, {
   useCallback,
   useEffect,
@@ -16,7 +19,6 @@ import {
   Platform,
   Pressable,
   ScrollView,
-  StatusBar,
   StyleSheet,
   Text,
   TextInput,
@@ -85,7 +87,7 @@ type RegistrationFieldProps = {
   onChangeText: (value: string) => void;
   placeholder: string;
   colors: ReturnType<typeof useRunnerTheme>["colors"];
-  inputRef: React.RefObject<TextInput | null>;
+  inputRef: React.RefObject<TextInputInstance | null>;
   keyboardType?: KeyboardTypeOptions;
   autoCapitalize?: TextInputProps["autoCapitalize"];
   autoComplete?: TextInputProps["autoComplete"];
@@ -206,9 +208,9 @@ export default function RunnerRegistrationScreen() {
      INPUT REFERENCES
   ======================================================= */
 
-  const nameInputRef = useRef<TextInput | null>(null);
-  const emailInputRef = useRef<TextInput | null>(null);
-  const phoneInputRef = useRef<TextInput | null>(null);
+  const nameInputRef = useRef<TextInputInstance>(null);
+const emailInputRef = useRef<TextInputInstance>(null);
+const phoneInputRef = useRef<TextInputInstance>(null);
 
   /* =======================================================
      LIFECYCLE AND SUBMISSION PROTECTION
@@ -478,12 +480,9 @@ export default function RunnerRegistrationScreen() {
       ]}
     >
       <StatusBar
-        barStyle={
-          isDark ? "light-content" : "dark-content"
-        }
-        backgroundColor={colors.paper}
-        translucent={false}
-      />
+  style={mode === "dark" ? "light" : "dark"}
+  hidden={false}
+/>
 
       <KeyboardAvoidingView
         style={styles.keyboardContainer}

@@ -1,6 +1,6 @@
-
+import type { TextInputInstance } from "react-native";
 import { useEffect, useRef, useState } from "react";
-
+import { StatusBar } from "expo-status-bar";
 import {
   ActivityIndicator,
   BackHandler,
@@ -9,7 +9,6 @@ import {
   Platform,
   Pressable,
   ScrollView,
-  StatusBar,
   StyleSheet,
   Text,
   TextInput,
@@ -128,7 +127,7 @@ export default function VerifyRunnerScreen() {
       : 0,
   );
 
-  const codeInputRef = useRef<TextInput>(null);
+  const codeInputRef = useRef<TextInputInstance>(null);
   const mountedRef = useRef(true);
 
   const verificationInFlightRef = useRef(false);
@@ -748,10 +747,9 @@ export default function VerifyRunnerScreen() {
         { backgroundColor: colors.paper },
       ]}
     >
-      <StatusBar
-        barStyle={isDark ? "light-content" : "dark-content"}
-        backgroundColor={colors.paper}
-      />
+     <StatusBar
+  style={isDark ? "light" : "dark"}
+/>
 
       <KeyboardAvoidingView
         style={styles.keyboardContainer}

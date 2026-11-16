@@ -941,7 +941,6 @@ export default function RunnerDocumentsScreen() {
 
       <StatusBar
         barStyle={isDark ? "light-content" : "dark-content"}
-        backgroundColor={colors.paper}
       />
 
       <View style={styles.container}>

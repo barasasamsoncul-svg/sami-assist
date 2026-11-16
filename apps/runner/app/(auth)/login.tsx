@@ -1,6 +1,6 @@
-
+import type { TextInputInstance } from "react-native";
 import { useEffect, useRef, useState } from "react";
-
+import { StatusBar } from "expo-status-bar";
 import {
   AccessibilityInfo,
   ActivityIndicator,
@@ -12,7 +12,6 @@ import {
   Platform,
   Pressable,
   ScrollView,
-  StatusBar,
   StyleSheet,
   Text,
   TextInput,
@@ -86,7 +85,7 @@ export default function RunnerLoginScreen() {
      REFERENCES
   ------------------------------------------------------- */
 
-  const emailInputRef = useRef<TextInput | null>(null);
+  const emailInputRef = useRef<TextInputInstance>(null);
 
   const mountedRef = useRef(true);
   const submitLockRef = useRef(false);
@@ -406,15 +405,9 @@ export default function RunnerLoginScreen() {
       edges={["top"]}
     >
       <StatusBar
-        barStyle={
-          mode === "dark"
-            ? "light-content"
-            : "dark-content"
-        }
-        backgroundColor={colors.paper}
-        translucent={false}
-        hidden={false}
-      />
+  style={mode === "dark" ? "light" : "dark"}
+  hidden={false}
+/>
 
       <KeyboardAvoidingView
         style={styles.keyboardContainer}

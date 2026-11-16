@@ -5,8 +5,7 @@
     "strict": true,
     "noEmit": true,
     "paths": {
-      "@/*": ["./src/*"],
-      "react-native": ["./node_modules/react-native"]
+      "@/*": ["./src/*"]
     }
   },
   "include": [

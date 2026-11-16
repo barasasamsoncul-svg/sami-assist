@@ -25,11 +25,7 @@ export default function RootLayout() {
     <SafeAreaProvider>
       <RunnerThemeProvider>
         <View style={styles.root} onLayout={handleRootLayout}>
-          <StatusBar
-            barStyle="light-content"
-            backgroundColor={BRAND_NAVY}
-            translucent={false}
-          />
+        <StatusBar barStyle="light-content" />
 
           <Stack
             screenOptions={{

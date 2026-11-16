@@ -1,3 +1,4 @@
+
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   ActivityIndicator,
@@ -488,7 +489,7 @@ export default function RunnerDashboardScreen() {
           useNativeDriver: true,
         }),
       ]),
-      { resetBeforeIteration: true },
+      { iterations: -1, resetBeforeIteration: true },
     );
 
     loop.start();
@@ -726,11 +727,7 @@ export default function RunnerDashboardScreen() {
 
   return (
     <View style={styles.root}>
-      <StatusBar
-        barStyle={isDark ? "light-content" : "dark-content"}
-        backgroundColor="transparent"
-        translucent
-      />
+      <StatusBar barStyle={isDark ? "light-content" : "dark-content"} />
 
       {/* MAP */}
       <MapView

@@ -1307,7 +1307,6 @@ export default function RunnerDocumentDetailScreen() {
 
       <StatusBar
         barStyle={isDark ? "light-content" : "dark-content"}
-        backgroundColor={colors.paper}
       />
 
       {/* HEADER — LOGO LEFT, HELP RIGHT */}
