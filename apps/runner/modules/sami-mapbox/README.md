@@ -7,8 +7,10 @@ This is a SaMi-owned Expo native module. It integrates Mapbox's official Android
 | Platform | SDK | Version |
 |---|---|---:|
 | Android | Mapbox Maps SDK | 11.35.0 |
-| Android | Mapbox Navigation SDK Core | 3.35.0 |
+| Android | Navigation SDK Core | 3.35.0 |
+| Android | Navigation session API | 3.35.0 |
 | Android | Navigation UI Maps utilities | 3.35.0 |
+| Android | Navigation Trip Data | 3.35.0 |
 | Android | Navigation Voice | 3.35.0 |
 | iOS | Mapbox Maps SDK | 11.35.0 |
 | iOS | Mapbox Navigation SDK Core | 3.35.0 |
