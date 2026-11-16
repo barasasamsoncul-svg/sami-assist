@@ -14,13 +14,44 @@ type RunnerJobRow = {
   category: string;
   description: string;
   pickup_label: string;
+  pickup_latitude: number | null;
+  pickup_longitude: number | null;
   destination_label: string;
+  destination_latitude: number | null;
+  destination_longitude: number | null;
   distance_km: number | null;
   runner_payout_amount: number | null;
   currency: string;
   status: string;
   offer_expires_at: string | null;
 };
+
+function shapeCoordinates(
+  latitude: number | null,
+  longitude: number | null,
+) {
+  if (latitude === null || longitude === null) {
+    return null;
+  }
+
+  const coordinates = {
+    latitude: Number(latitude),
+    longitude: Number(longitude),
+  };
+
+  if (
+    !Number.isFinite(coordinates.latitude) ||
+    !Number.isFinite(coordinates.longitude) ||
+    coordinates.latitude < -90 ||
+    coordinates.latitude > 90 ||
+    coordinates.longitude < -180 ||
+    coordinates.longitude > 180
+  ) {
+    return null;
+  }
+
+  return coordinates;
+}
 
 function shapeJob(row: RunnerJobRow) {
   return {
@@ -30,7 +61,9 @@ function shapeJob(row: RunnerJobRow) {
     category: row.category,
     description: row.description,
     pickupLabel: row.pickup_label,
+    pickupCoordinates: shapeCoordinates(row.pickup_latitude, row.pickup_longitude),
     destinationLabel: row.destination_label,
+    destinationCoordinates: shapeCoordinates(row.destination_latitude, row.destination_longitude),
     distanceKm: row.distance_km === null ? null : Number(row.distance_km),
     runnerPayoutAmount:
       row.runner_payout_amount === null ? null : Number(row.runner_payout_amount),
@@ -49,7 +82,9 @@ export async function GET(request: Request) {
       query<RunnerJobRow>(
         `SELECT
            j.id, j.public_code, j.title, j.category, j.description,
-           j.pickup_label, j.destination_label, j.distance_km,
+           j.pickup_label, j.pickup_latitude, j.pickup_longitude,
+           j.destination_label, j.destination_latitude, j.destination_longitude,
+           j.distance_km,
            j.runner_payout_amount, j.currency, j.status,
            o.expires_at AS offer_expires_at
          FROM public.runner_job_offers AS o
@@ -66,7 +101,9 @@ export async function GET(request: Request) {
       query<RunnerJobRow>(
         `SELECT
            j.id, j.public_code, j.title, j.category, j.description,
-           j.pickup_label, j.destination_label, j.distance_km,
+           j.pickup_label, j.pickup_latitude, j.pickup_longitude,
+           j.destination_label, j.destination_latitude, j.destination_longitude,
+           j.distance_km,
            j.runner_payout_amount, j.currency, j.status,
            NULL::timestamptz AS offer_expires_at
          FROM public.runner_jobs AS j
