@@ -1,6 +1,6 @@
 # SaMi native Mapbox module
 
-This is a SaMi-owned Expo native module. It integrates Mapbox's official Android and iOS SDKs directly. It does not use `@rnmapbox/maps`, `@maplibre/maplibre-react-native`, or another community Mapbox wrapper.
+This is a SaMi-owned Expo native module. It integrates Mapbox's official Android and iOS SDKs directly. It does not use `@rnmapbox/maps` or another community Mapbox wrapper.
 
 ## SDK versions
 
@@ -12,10 +12,14 @@ This is a SaMi-owned Expo native module. It integrates Mapbox's official Android
 | Android | Navigation Voice | 3.35.0 |
 | iOS | Mapbox Maps SDK | 11.35.0 |
 | iOS | Mapbox Navigation SDK Core | 3.35.0 |
+| iOS | Mapbox Navigation Native | 324.35.0 |
+| iOS | Mapbox Common | 24.35.0 |
+| iOS | Mapbox Core Maps | 11.35.0 |
+| iOS | Turf | 4.1.0 |
 
-Android uses the official NDK 27 artifacts and pins NDK 27.1.12297006 for 16 KB page-size compatibility.
+Android uses official NDK 27 artifacts and pins NDK 27.1.12297006 for 16 KB page-size compatibility.
 
-iOS uses the official Mapbox Swift Package Manager repositories through React Native's `spm_dependency` CocoaPods integration. Only NavigationCore and Maps products are linked; SaMi owns the presentation and interaction UI.
+iOS uses the official Mapbox Swift Package Manager repositories through React Native 0.88.1's `spm_dependency` CocoaPods integration. The SaMi config plugin makes the SaMi Mapbox pod dynamic and adds an app build phase to embed Mapbox's transitive dynamic runtime frameworks. SaMi owns the presentation and interaction UI; Mapbox's prebuilt UIKit navigation interface is not installed.
 
 ## Credentials
 

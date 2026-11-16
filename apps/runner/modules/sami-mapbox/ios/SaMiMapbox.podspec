@@ -8,7 +8,6 @@ Pod::Spec.new do |s|
   s.license        = { :type => 'Proprietary' }
   s.source         = { :git => '' }
   s.platform       = :ios, '16.4'
-  s.static_framework = true
 
   s.dependency 'ExpoModulesCore'
 
@@ -18,38 +17,56 @@ Pod::Spec.new do |s|
     'SWIFT_COMPILATION_MODE' => 'wholemodule'
   }
 
-  s.source_files = 'ios/**/*.{h,m,mm,swift,hpp,cpp}'
+  s.source_files = "**/*.{h,m,mm,swift,hpp,cpp}"
 
   unless defined?(spm_dependency)
     raise 'SaMi Mapbox requires React Native Swift Package Manager podspec support (spm_dependency).'
   end
 
-  # Official Mapbox Navigation SDK v3. SaMi uses NavigationCore and owns
-  # its own dashboard, navigation controls, and turn-by-turn presentation.
+  # Official Mapbox Navigation SDK v3. SaMi uses NavigationCore, not the
+  # prebuilt Mapbox UIKit navigation interface.
   spm_dependency(
     s,
     url: 'https://github.com/mapbox/mapbox-navigation-ios.git',
     requirement: { kind: 'exactVersion', version: '3.35.0' },
-    products: ['MapboxNavigationCore', 'MapboxDirections'],
-    embed_frameworks: [
-      'MapboxNavigationCore',
-      'MapboxDirections',
-      'MapboxNavigationNative'
-    ]
+    products: ['MapboxNavigationCore', 'MapboxDirections']
   )
 
-  # Explicit Maps product dependency makes MapboxMaps directly importable
-  # by the SaMi native map view. Navigation v3 pins this same Maps release.
+  # Official Mapbox Maps SDK. Navigation v3 pins this same Maps release.
   spm_dependency(
     s,
     url: 'https://github.com/mapbox/mapbox-maps-ios.git',
     requirement: { kind: 'exactVersion', version: '11.35.0' },
-    products: ['MapboxMaps'],
-    embed_frameworks: [
-      'MapboxMaps',
-      'MapboxCommon',
-      'MapboxCoreMaps',
-      'Turf'
-    ]
+    products: ['MapboxMaps']
+  )
+
+  # React Native 0.88.1's SPM helper only registers declared products.
+  # Declare the transitive runtime products explicitly for linking/embedding.
+  spm_dependency(
+    s,
+    url: 'https://github.com/mapbox/mapbox-navigation-native-ios.git',
+    requirement: { kind: 'exactVersion', version: '324.35.0' },
+    products: ['MapboxNavigationNative']
+  )
+
+  spm_dependency(
+    s,
+    url: 'https://github.com/mapbox/mapbox-common-ios.git',
+    requirement: { kind: 'exactVersion', version: '24.35.0' },
+    products: ['MapboxCommon']
+  )
+
+  spm_dependency(
+    s,
+    url: 'https://github.com/mapbox/mapbox-core-maps-ios.git',
+    requirement: { kind: 'exactVersion', version: '11.35.0' },
+    products: ['MapboxCoreMaps']
+  )
+
+  spm_dependency(
+    s,
+    url: 'https://github.com/mapbox/turf-swift.git',
+    requirement: { kind: 'exactVersion', version: '4.1.0' },
+    products: ['Turf']
   )
 end
