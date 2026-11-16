@@ -24,7 +24,7 @@ permissions:
 
 jobs:
   runner-mobile:
-    name: Runner mobile export and type-check
+    name: Runner mobile export, type-check, and native prebuild
     runs-on: ubuntu-latest
     defaults:
       run:
@@ -39,11 +39,59 @@ jobs:
           cache: npm
           cache-dependency-path: apps/runner/package.json
       - name: Install Runner mobile dependencies
-        run: npm install --no-audit --no-fund
+        run: npm ci --no-audit --no-fund
       - name: Generate Expo Router route types and export Android bundle
         run: npx expo export --platform android --output-dir .expo/ci-export
       - name: Type-check Runner mobile app
         run: npx tsc --noEmit
+      - name: Generate Android and iOS native projects with CNG
+        run: npx expo prebuild --no-install
+      - name: Verify generated SaMi Mapbox native configuration
+        shell: bash
+        run: |
+          set -euo pipefail
+          node <<'NODE'
+          const fs = require("node:fs");
+          const assert = require("node:assert/strict");
+
+          const settings = fs.readFileSync("android/settings.gradle", "utf8");
+          const appGradle = fs.readFileSync("android/app/build.gradle", "utf8");
+          const podfile = fs.readFileSync("ios/Podfile", "utf8");
+          const podspec = fs.readFileSync(
+            "modules/sami-mapbox/ios/SaMiMapbox.podspec",
+            "utf8"
+          );
+
+          assert.ok(
+            settings.includes("https://api.mapbox.com/downloads/v2/releases/maven"),
+            "Mapbox authenticated Maven repository is missing from Android settings.gradle"
+          );
+          assert.ok(
+            appGradle.includes('ndkVersion "27.1.12297006"'),
+            "Android NDK 27 pin is missing"
+          );
+          assert.ok(
+            podfile.includes("# @generated begin SaMi Mapbox iOS SPM integration"),
+            "SaMi iOS Podfile integration was not generated"
+          );
+          assert.ok(
+            podfile.includes("[SaMi] Embed Mapbox SPM Frameworks"),
+            "SaMi Mapbox SPM framework embedding phase is missing"
+          );
+          assert.ok(
+            podspec.includes("MapboxNavigationCore") &&
+              podspec.includes("MapboxMaps"),
+            "Official Mapbox iOS SDK products are missing from the podspec"
+          );
+          assert.ok(
+            !podspec.includes("embed_frameworks:"),
+            "Do not use the newer embed_frameworks keyword with React Native 0.88.1"
+          );
+
+          console.log("SaMi Mapbox Android and iOS native configuration verified.");
+          NODE
+          ruby -c ios/Podfile
+          ruby -c modules/sami-mapbox/ios/SaMiMapbox.podspec
 
   shared-vercel-app:
     name: Shared SaMi Next.js build (includes Runner API)
