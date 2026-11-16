@@ -14,12 +14,12 @@
     "doctor": "npx expo-doctor",
     "check:expo": "npx expo install --check",
     "build:android:apk": "npx eas-cli@latest build --platform android --profile production",
-    "update:production": "npx eas-cli@latest update --channel runner-production --platform android --environment production"
+    "update:production": "npx eas-cli@latest update --channel runner-production --platform android --environment production",
+    "eas-build-pre-install": "node ./scripts/configure-mapbox-credentials.js"
   },
   "dependencies": {
     "@config-plugins/react-native-webrtc": "15.0.2",
     "@expo/vector-icons": "^15.0.2",
-    "@maplibre/maplibre-react-native": "^11.5.1",
     "expo": "^58.0.25",
     "expo-constants": "~58.0.16",
     "expo-document-picker": "~58.0.5",

@@ -1,4 +1,3 @@
-
 plugins {
     id 'com.android.library'
     id 'expo-module-gradle-plugin'
@@ -26,9 +25,15 @@ android {
 }
 
 dependencies {
-    // Official Mapbox Maps SDK — NDK 27
+    // Official Mapbox Maps SDK (NDK 27 / 16 KB page-size compatible).
     implementation 'com.mapbox.maps:android-ndk27:11.35.0'
 
-    // Official Mapbox Navigation SDK — NDK 27
+    // Official Mapbox Navigation SDK core.
     implementation 'com.mapbox.navigationcore:android-ndk27:3.35.0'
+
+    // Map integration utilities; SaMi still owns the presentation UI.
+    implementation 'com.mapbox.navigationcore:ui-maps-ndk27:3.35.0'
+
+    // Spoken turn-by-turn instructions.
+    implementation 'com.mapbox.navigationcore:voice-ndk27:3.35.0'
 }

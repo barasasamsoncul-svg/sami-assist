@@ -1,5 +1,3 @@
-
-
 import type { ConfigContext, ExpoConfig } from "expo/config";
 
 const RUNNER_EAS_PROJECT_ID = "8fcd647e-3514-4436-b1ce-c1b417f6c1d3";
@@ -7,7 +5,6 @@ const RUNNER_PRODUCTION_CHANNEL = "runner-production";
 const RUNNER_BUNDLE_BACKGROUND = "#000535";
 
 export default ({ config }: ConfigContext): ExpoConfig => {
-  // 1. Validate SaMi Runner Expo project identity
   const configuredProjectId = process.env.EXPO_PROJECT_ID?.trim();
   const easBuildProjectId = process.env.EAS_BUILD_PROJECT_ID?.trim();
 
@@ -29,7 +26,6 @@ export default ({ config }: ConfigContext): ExpoConfig => {
     );
   }
 
-  // 2. Validate production update channel
   const buildProfile = process.env.EAS_BUILD_PROFILE?.trim();
   const configuredChannel = process.env.EXPO_UPDATE_CHANNEL?.trim();
 
@@ -43,7 +39,8 @@ export default ({ config }: ConfigContext): ExpoConfig => {
     );
   }
 
-  // 3. Existing Google Maps configuration
+  // Keep Google Maps configured temporarily because the current dashboard
+  // still renders react-native-maps. It will be removed during map cutover.
   const googleMapsApiKey =
     process.env.GOOGLE_MAPS_API_KEY?.trim();
 
@@ -57,7 +54,6 @@ export default ({ config }: ConfigContext): ExpoConfig => {
     );
   }
 
-  // 4. Preserve existing plugins and prevent duplicate maps
   const plugins: NonNullable<ExpoConfig["plugins"]> = (
     config.plugins ?? []
   ).filter((plugin) => {
@@ -68,12 +64,10 @@ export default ({ config }: ConfigContext): ExpoConfig => {
     return plugin[0] !== "react-native-maps";
   });
 
-  // Register SaMi's native Mapbox Android repository integration
-  if (!plugins.includes("./plugins/withSamiMapboxAndroid")) {
-    plugins.push("./plugins/withSamiMapboxAndroid");
+  if (!plugins.includes("./plugins/withSamiMapboxNative")) {
+    plugins.push("./plugins/withSamiMapboxNative");
   }
 
-  // Configure Google Maps only when the key is available
   if (googleMapsApiKey) {
     plugins.push([
       "react-native-maps",
@@ -83,10 +77,14 @@ export default ({ config }: ConfigContext): ExpoConfig => {
     ]);
   }
 
-  // 5. Protect Android keyboard and status-bar configuration
   const android = {
     ...config.android,
     softwareKeyboardLayoutMode: "resize" as const,
+  };
+
+  const ios = {
+    ...config.ios,
+    deploymentTarget: config.ios?.deploymentTarget ?? "16.4",
   };
 
   const androidStatusBar = {
@@ -99,30 +97,24 @@ export default ({ config }: ConfigContext): ExpoConfig => {
     translucent: false,
   };
 
-  // 6. Prevent a hardcoded production channel header
   const requestHeaders = {
     ...config.updates?.requestHeaders,
   };
 
   delete requestHeaders["expo-channel-name"];
 
-  // 7. Final Expo configuration
   return {
     ...config,
-
     name: "SaMi Runner",
     slug: "sami-runner",
     owner: config.owner ?? "sami-assist",
-
     plugins,
-
     android,
+    ios,
     androidStatusBar,
-
     runtimeVersion: {
       policy: "fingerprint",
     },
-
     updates: {
       ...config.updates,
       url: `https://u.expo.dev/${RUNNER_EAS_PROJECT_ID}`,
@@ -131,7 +123,6 @@ export default ({ config }: ConfigContext): ExpoConfig => {
       fallbackToCacheTimeout: 0,
       requestHeaders,
     },
-
     extra: {
       ...config.extra,
       eas: {
