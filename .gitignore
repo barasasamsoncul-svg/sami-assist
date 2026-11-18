@@ -7,3 +7,5 @@ out
 .vercel
 coverage
 *.log
+/apps/runner/credentials.json
+/apps/runner/credentials/
