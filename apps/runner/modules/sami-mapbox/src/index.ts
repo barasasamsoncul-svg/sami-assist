@@ -1,4 +1,3 @@
-
 export { default as SaMiMapboxView } from "./SaMiMapboxView";
 
 export type {
@@ -7,5 +6,8 @@ export type {
   SaMiMapErrorEvent,
   SaMiCameraEvent,
   SaMiMapTapEvent,
+  SaMiMapLocationEvent,
+  SaMiNavigationStatusEvent,
+  SaMiMapCameraMode,
+  SaMiPuckBearing,
 } from "./SaMiMapbox.types";
-

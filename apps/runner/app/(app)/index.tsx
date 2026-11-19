@@ -1,21 +1,18 @@
-
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   ActivityIndicator,
   Alert,
-  Animated,
-  Easing,
   Pressable,
+  RefreshControl,
   ScrollView,
   StatusBar,
   StyleSheet,
   Text,
   View,
 } from "react-native";
-import { useFocusEffect, router } from "expo-router";
+import { router, useFocusEffect } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import * as Location from "expo-location";
-import MapView, { Marker, type Region } from "react-native-maps";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import {
@@ -29,33 +26,33 @@ import {
   type RunnerJob,
   type RunnerMe,
 } from "@/api";
+
 import { useRunnerTheme } from "@/theme";
+
+import { SaMiMapboxView } from "../../modules/sami-mapbox/src";
 
 type JobsState = {
   offers: RunnerJob[];
   active: RunnerJob[];
 };
 
-type LatLng = {
+type Coordinates = {
   latitude: number;
   longitude: number;
 };
 
-type DashboardState =
-  | "loading"
-  | "error"
-  | "unverified"
-  | "restricted"
-  | "active"
-  | "completion"
-  | "offers"
-  | "idle";
+type MapLocation = Coordinates & {
+  bearing: number | null;
+  speedMetersPerSecond: number | null;
+  horizontalAccuracyMeters: number | null;
+  enhanced: boolean;
+};
 
-const DEFAULT_REGION: Region = {
+type NavigationMode = "idle" | "free_drive" | "active_guidance";
+
+const DEFAULT_COORDINATES: Coordinates = {
   latitude: -1.2921,
   longitude: 36.8219,
-  latitudeDelta: 0.012,
-  longitudeDelta: 0.012,
 };
 
 const ACTIVE_STATUSES = [
@@ -69,12 +66,22 @@ const TRACKING_STATUSES = [
   "in_progress",
 ];
 
-function money(value: number | null, currency = "KES") {
-  if (value === null || !Number.isFinite(value)) return "TBC";
+const MAPBOX_DAY_STYLE =
+  "mapbox://styles/mapbox/navigation-day-v1";
+
+const MAPBOX_NIGHT_STYLE =
+  "mapbox://styles/mapbox/navigation-night-v1";
+
+function money(
+  value: number | null,
+  currency = "KES",
+): string {
+  if (value === null || !Number.isFinite(value)) {
+    return "Awaiting payout";
+  }
 
   return (
-    currency +
-    " " +
+    `${currency} ` +
     value.toLocaleString("en-KE", {
       minimumFractionDigits: 0,
       maximumFractionDigits: 2,
@@ -82,37 +89,254 @@ function money(value: number | null, currency = "KES") {
   );
 }
 
-function activeStatusLabel(status: RunnerJob["status"]) {
+function titleCase(value: string): string {
+  return value
+    .replaceAll("_", " ")
+    .replace(/\b\w/g, (letter) => letter.toUpperCase());
+}
+
+function activeStatusLabel(status: string): string {
   const labels: Record<string, string> = {
-    accepted: "Accepted",
-    in_progress: "In progress",
-    completion_submitted: "Awaiting confirmation",
+    accepted: "Errand accepted",
+    in_progress: "Errand in progress",
+    completion_submitted: "Awaiting customer confirmation",
     completed: "Completed",
   };
 
-  return (
-    labels[status] ??
-    String(status).replaceAll("_", " ").replace(/\b\w/g, (letter) =>
-      letter.toUpperCase(),
-    )
-  );
+  return labels[status] ?? titleCase(status);
 }
 
-function isRestrictedAccount(status?: string) {
+function isRestrictedAccount(status?: string): boolean {
   return status === "suspended" || status === "closed";
 }
 
-function isSessionError(message: string) {
+function isSessionError(message: string): boolean {
   return /HTTP 401|session has expired|no valid runner session|sign in again|unauthorized/i.test(
     message,
   );
 }
 
+function distanceBetweenMeters(
+  first: Coordinates,
+  second: Coordinates,
+): number {
+  const earthRadius = 6371000;
+  const radians = (value: number) => (value * Math.PI) / 180;
+
+  const latitudeDifference = radians(
+    second.latitude - first.latitude,
+  );
+
+  const longitudeDifference = radians(
+    second.longitude - first.longitude,
+  );
+
+  const a =
+    Math.sin(latitudeDifference / 2) ** 2 +
+    Math.cos(radians(first.latitude)) *
+      Math.cos(radians(second.latitude)) *
+      Math.sin(longitudeDifference / 2) ** 2;
+
+  return (
+    earthRadius *
+    2 *
+    Math.atan2(Math.sqrt(a), Math.sqrt(1 - a))
+  );
+}
+
+function IconButton({
+  icon,
+  label,
+  onPress,
+  disabled = false,
+  busy = false,
+  color,
+  backgroundColor,
+  borderColor,
+}: {
+  icon: keyof typeof Ionicons.glyphMap;
+  label: string;
+  onPress: () => void;
+  disabled?: boolean;
+  busy?: boolean;
+  color: string;
+  backgroundColor: string;
+  borderColor: string;
+}) {
+  return (
+    <Pressable
+      accessibilityRole="button"
+      accessibilityLabel={label}
+      disabled={disabled || busy}
+      onPress={onPress}
+      style={({ pressed }) => [
+        styles.iconButton,
+        {
+          backgroundColor,
+          borderColor,
+          opacity: disabled || busy ? 0.5 : pressed ? 0.7 : 1,
+        },
+      ]}
+    >
+      {busy ? (
+        <ActivityIndicator size="small" color={color} />
+      ) : (
+        <Ionicons name={icon} size={20} color={color} />
+      )}
+    </Pressable>
+  );
+}
+
+function PrimaryButton({
+  label,
+  icon,
+  onPress,
+  disabled = false,
+  loading = false,
+  backgroundColor,
+  textColor = "#FFFFFF",
+}: {
+  label: string;
+  icon?: keyof typeof Ionicons.glyphMap;
+  onPress: () => void;
+  disabled?: boolean;
+  loading?: boolean;
+  backgroundColor: string;
+  textColor?: string;
+}) {
+  return (
+    <Pressable
+      accessibilityRole="button"
+      disabled={disabled || loading}
+      onPress={onPress}
+      style={({ pressed }) => [
+        styles.primaryButton,
+        {
+          backgroundColor,
+          opacity: disabled || loading ? 0.5 : pressed ? 0.82 : 1,
+        },
+      ]}
+    >
+      {loading ? (
+        <ActivityIndicator size="small" color={textColor} />
+      ) : icon ? (
+        <Ionicons name={icon} size={19} color={textColor} />
+      ) : null}
+
+      <Text style={[styles.primaryButtonText, { color: textColor }]}>
+        {label}
+      </Text>
+    </Pressable>
+  );
+}
+
+function SectionHeading({
+  eyebrow,
+  title,
+  subtitle,
+  colors,
+}: {
+  eyebrow?: string;
+  title: string;
+  subtitle?: string;
+  colors: ReturnType<typeof useRunnerTheme>["colors"];
+}) {
+  return (
+    <View style={styles.sectionHeading}>
+      {eyebrow ? (
+        <Text
+          style={[
+            styles.eyebrow,
+            { color: colors.textMuted },
+          ]}
+        >
+          {eyebrow.toUpperCase()}
+        </Text>
+      ) : null}
+
+      <Text style={[styles.sectionTitle, { color: colors.text }]}>
+        {title}
+      </Text>
+
+      {subtitle ? (
+        <Text
+          style={[
+            styles.sectionSubtitle,
+            { color: colors.textMuted },
+          ]}
+        >
+          {subtitle}
+        </Text>
+      ) : null}
+    </View>
+  );
+}
+
+function RoutePoint({
+  icon,
+  label,
+  value,
+  colors,
+  last = false,
+}: {
+  icon: keyof typeof Ionicons.glyphMap;
+  label: string;
+  value: string;
+  colors: ReturnType<typeof useRunnerTheme>["colors"];
+  last?: boolean;
+}) {
+  return (
+    <View style={styles.routePoint}>
+      <View style={styles.routePointIconColumn}>
+        <View
+          style={[
+            styles.routePointIcon,
+            { backgroundColor: colors.blueSoft },
+          ]}
+        >
+          <Ionicons name={icon} size={15} color={colors.blue} />
+        </View>
+
+        {!last ? (
+          <View
+            style={[
+              styles.routeConnector,
+              { backgroundColor: colors.border },
+            ]}
+          />
+        ) : null}
+      </View>
+
+      <View style={styles.routePointCopy}>
+        <Text
+          style={[
+            styles.routePointLabel,
+            { color: colors.textMuted },
+          ]}
+        >
+          {label}
+        </Text>
+
+        <Text
+          style={[
+            styles.routePointValue,
+            { color: colors.text },
+          ]}
+          numberOfLines={2}
+        >
+          {value || "Address not provided"}
+        </Text>
+      </View>
+    </View>
+  );
+}
+
 export default function RunnerDashboardScreen() {
-  const { colors } = useRunnerTheme();
+  const { colors, mode } = useRunnerTheme();
   const insets = useSafeAreaInsets();
 
   const [runner, setRunner] = useState<RunnerMe | null>(null);
+
   const [jobs, setJobs] = useState<JobsState>({
     offers: [],
     active: [],
@@ -124,41 +348,37 @@ export default function RunnerDashboardScreen() {
   const [jobBusyId, setJobBusyId] = useState("");
   const [locationBusy, setLocationBusy] = useState(false);
   const [signingOut, setSigningOut] = useState(false);
+
   const [error, setError] = useState("");
+  const [mapError, setMapError] = useState("");
+  const [mapReady, setMapReady] = useState(false);
 
-  const [userCoords, setUserCoords] = useState<LatLng | null>(null);
-
-  const mapRef = useRef<MapView | null>(null);
-  const locationSubscription =
-    useRef<Location.LocationSubscription | null>(null);
+  const [cameraFollowing, setCameraFollowing] = useState(false);
+  const [location, setLocation] = useState<MapLocation | null>(null);
+  const [navigationMode, setNavigationMode] =
+    useState<NavigationMode>("idle");
 
   const mountedRef = useRef(true);
   const loadInFlightRef = useRef(false);
   const logoutInFlightRef = useRef(false);
-  const hasLoadedOnceRef = useRef(false);
-
-  const sheetY = useRef(new Animated.Value(1000)).current;
-  const pulseScale = useRef(new Animated.Value(1)).current;
-  const pulseOpacity = useRef(new Animated.Value(0.55)).current;
-  const contentFade = useRef(new Animated.Value(1)).current;
-  const contentY = useRef(new Animated.Value(0)).current;
+  const lastPublishedAtRef = useRef(0);
+  const lastPublishedCoordinatesRef = useRef<Coordinates | null>(null);
 
   const activeJob = useMemo(
     () =>
       jobs.active.find((job) =>
         ACTIVE_STATUSES.includes(String(job.status)),
-      ),
+      ) ?? null,
     [jobs.active],
   );
 
-  const activeJobId = activeJob?.id ?? "";
   const activeJobIsTrackable =
     Boolean(activeJob) &&
     TRACKING_STATUSES.includes(String(activeJob?.status));
 
   const approved = runner?.verificationStatus === "approved";
-  const isOnline = runner?.availability.isOnline === true;
   const restricted = isRestrictedAccount(runner?.accountStatus);
+  const isOnline = runner?.availability.isOnline === true;
 
   const authorized =
     Boolean(runner) &&
@@ -166,24 +386,11 @@ export default function RunnerDashboardScreen() {
     runner?.accountStatus === "active" &&
     runner?.profileComplete === true;
 
-  const isDarkPaper = colors.paper === "#080F1D";
+  const navigationActive =
+    authorized && (isOnline || activeJobIsTrackable);
 
-  const sheetState: DashboardState =
-    loading && !runner
-      ? "loading"
-      : !runner
-        ? "error"
-        : restricted
-          ? "restricted"
-          : !authorized
-            ? "unverified"
-            : activeJob?.status === "completion_submitted"
-              ? "completion"
-              : activeJob
-                ? "active"
-                : jobs.offers.length > 0
-                  ? "offers"
-                  : "idle";
+  const displayCoordinates =
+    location ?? DEFAULT_COORDINATES;
 
   const onlineLabel = !authorized
     ? restricted
@@ -193,12 +400,24 @@ export default function RunnerDashboardScreen() {
       ? "ONLINE"
       : "OFFLINE";
 
-  /* ---------------------------------------------------------------------- */
-  /* NAVIGATION                                                             */
-  /* ---------------------------------------------------------------------- */
+  const canChangeAvailability =
+    Boolean(authorized) &&
+    !availabilityBusy &&
+    !signingOut &&
+    (!activeJob || activeJob.status === "completion_submitted");
+
+  const mapStyleURL =
+    mode === "dark"
+      ? MAPBOX_NIGHT_STYLE
+      : MAPBOX_DAY_STYLE;
+
+  /* ------------------------------------------------------------------ */
+  /* NAVIGATION                                                          */
+  /* ------------------------------------------------------------------ */
 
   const goToSignedOut = useCallback(() => {
     router.dismissAll();
+
     router.replace({
       pathname: "/",
       params: { signedOut: "1" },
@@ -213,88 +432,95 @@ export default function RunnerDashboardScreen() {
     router.push("/(app)/profile-setup?mode=status");
   }, []);
 
-  /* ---------------------------------------------------------------------- */
-  /* DASHBOARD DATA                                                         */
-  /* ---------------------------------------------------------------------- */
+  /* ------------------------------------------------------------------ */
+  /* DASHBOARD DATA                                                      */
+  /* ------------------------------------------------------------------ */
 
-  const loadDashboard = useCallback(async (refresh = false) => {
-    if (loadInFlightRef.current || logoutInFlightRef.current) return;
-
-    loadInFlightRef.current = true;
-
-    if (refresh) {
-      setRefreshing(true);
-    } else if (!hasLoadedOnceRef.current) {
-      setLoading(true);
-    }
-
-    setError("");
-
-    try {
-      const [meResult, jobsResult] = await Promise.all([
-        getRunnerMe(),
-        getRunnerJobs(),
-      ]);
-
-      if (!mountedRef.current) return;
-
-      const nextJobs: JobsState = {
-        offers: Array.isArray(jobsResult.offers)
-          ? jobsResult.offers
-          : [],
-        active: Array.isArray(jobsResult.active)
-          ? jobsResult.active
-          : [],
-      };
-
-      setRunner(meResult.runner);
-      setJobs(nextJobs);
-      hasLoadedOnceRef.current = true;
-
-      if (!meResult.runner.profileComplete) {
-        router.replace("/(app)/profile-setup");
-        return;
-      }
-
+  const loadDashboard = useCallback(
+    async (refresh = false) => {
       if (
-        meResult.runner.verificationStatus !== "approved" &&
-        meResult.runner.availability.isOnline
+        loadInFlightRef.current ||
+        logoutInFlightRef.current
       ) {
-        setRunner((current) =>
-          current
-            ? {
-                ...current,
-                availability: {
-                  ...current.availability,
-                  isOnline: false,
-                },
-              }
-            : current,
-        );
-      }
-    } catch (cause) {
-      if (!mountedRef.current) return;
-
-      const message =
-        cause instanceof Error
-          ? cause.message
-          : "Your Runner dashboard could not be loaded.";
-
-      if (isSessionError(message)) {
-        goToSignedOut();
         return;
       }
 
-      setError(message);
-    } finally {
-      loadInFlightRef.current = false;
+      loadInFlightRef.current = true;
 
-      if (mountedRef.current) {
-        setLoading(false);
-        setRefreshing(false);
+      if (refresh) {
+        setRefreshing(true);
+      } else {
+        setLoading(true);
       }
-    }
-  }, [goToSignedOut]);
+
+      setError("");
+
+      try {
+        const [meResult, jobsResult] = await Promise.all([
+          getRunnerMe(),
+          getRunnerJobs(),
+        ]);
+
+        if (!mountedRef.current) return;
+
+        const nextJobs: JobsState = {
+          offers: Array.isArray(jobsResult.offers)
+            ? jobsResult.offers
+            : [],
+          active: Array.isArray(jobsResult.active)
+            ? jobsResult.active
+            : [],
+        };
+
+        setRunner(meResult.runner);
+        setJobs(nextJobs);
+
+        if (!meResult.runner.profileComplete) {
+          router.replace("/(app)/profile-setup");
+          return;
+        }
+
+        if (
+          meResult.runner.verificationStatus !== "approved" &&
+          meResult.runner.availability.isOnline
+        ) {
+          setRunner((current) =>
+            current
+              ? {
+                  ...current,
+                  availability: {
+                    ...current.availability,
+                    isOnline: false,
+                  },
+                }
+              : current,
+          );
+        }
+      } catch (cause) {
+        if (!mountedRef.current) return;
+
+        const message =
+          cause instanceof Error
+            ? cause.message
+            : "Your Runner dashboard could not be loaded.";
+
+        if (isSessionError(message)) {
+          goToSignedOut();
+          return;
+        }
+
+        setError(message);
+      } finally {
+        loadInFlightRef.current = false;
+
+        if (mountedRef.current) {
+          setLoading(false);
+          setRefreshing(false);
+        }
+      }
+    },
+    [goToSignedOut],
+  );
 
   useFocusEffect(
     useCallback(() => {
@@ -302,25 +528,20 @@ export default function RunnerDashboardScreen() {
       void loadDashboard();
 
       return () => {
-        locationSubscription.current?.remove();
-        locationSubscription.current = null;
+        mountedRef.current = false;
       };
     }, [loadDashboard]),
   );
 
   useEffect(() => {
-    mountedRef.current = true;
-
     return () => {
       mountedRef.current = false;
-      locationSubscription.current?.remove();
-      locationSubscription.current = null;
     };
   }, []);
 
-  /* ---------------------------------------------------------------------- */
-  /* LOCATION                                                               */
-  /* ---------------------------------------------------------------------- */
+  /* ------------------------------------------------------------------ */
+  /* LOCATION                                                            */
+  /* ------------------------------------------------------------------ */
 
   const requestCurrentLocation = useCallback(async () => {
     const permission =
@@ -333,25 +554,24 @@ export default function RunnerDashboardScreen() {
     }
 
     const position = await Location.getCurrentPositionAsync({
-      accuracy: Location.Accuracy.Balanced,
+      accuracy: Location.Accuracy.BestForNavigation,
     });
 
-    const coords: LatLng = {
+    const coords: Coordinates = {
       latitude: position.coords.latitude,
       longitude: position.coords.longitude,
     };
 
     if (mountedRef.current) {
-      setUserCoords(coords);
+      setLocation({
+        ...coords,
+        bearing: position.coords.heading,
+        speedMetersPerSecond: position.coords.speed,
+        horizontalAccuracyMeters: position.coords.accuracy,
+        enhanced: false,
+      });
 
-      mapRef.current?.animateToRegion(
-        {
-          ...coords,
-          latitudeDelta: DEFAULT_REGION.latitudeDelta,
-          longitudeDelta: DEFAULT_REGION.longitudeDelta,
-        },
-        700,
-      );
+      setCameraFollowing(true);
     }
 
     return {
@@ -367,7 +587,15 @@ export default function RunnerDashboardScreen() {
     setError("");
 
     try {
-      await requestCurrentLocation();
+      const result = await requestCurrentLocation();
+
+      await publishRunnerLocation({
+        latitude: result.coords.latitude,
+        longitude: result.coords.longitude,
+        accuracy: result.position.coords.accuracy,
+        heading: result.position.coords.heading,
+        speed: result.position.coords.speed,
+      });
     } catch (cause) {
       if (mountedRef.current) {
         setError(
@@ -381,159 +609,116 @@ export default function RunnerDashboardScreen() {
         setLocationBusy(false);
       }
     }
-  }, [locationBusy, requestCurrentLocation, signingOut]);
+  }, [
+    locationBusy,
+    signingOut,
+    requestCurrentLocation,
+  ]);
 
-  // Keep the Runner's location updated while online or completing an errand.
-  useEffect(() => {
-    let cancelled = false;
-
-    async function startLocationSharing() {
-      locationSubscription.current?.remove();
-      locationSubscription.current = null;
+  /**
+   * The Mapbox native module supplies location updates.
+   *
+   * While the Runner is online or completing an errand,
+   * the Navigation SDK can provide enhanced, map-matched
+   * locations. Updates are throttled before publishing to
+   * the backend to avoid sending redundant GPS events.
+   */
+  const handleMapLocation = useCallback(
+    (event: {
+      nativeEvent: {
+        latitude: number;
+        longitude: number;
+        bearing: number | null;
+        speedMetersPerSecond: number | null;
+        horizontalAccuracyMeters: number | null;
+        timestamp: number;
+        enhanced: boolean;
+      };
+    }) => {
+      const next = event.nativeEvent;
 
       if (
-        !authorized ||
-        (!isOnline && !activeJobIsTrackable)
+        !Number.isFinite(next.latitude) ||
+        !Number.isFinite(next.longitude)
       ) {
         return;
       }
 
-      try {
-        const permission =
-          await Location.requestForegroundPermissionsAsync();
+      const nextLocation: MapLocation = {
+        latitude: next.latitude,
+        longitude: next.longitude,
+        bearing: next.bearing,
+        speedMetersPerSecond: next.speedMetersPerSecond,
+        horizontalAccuracyMeters:
+          next.horizontalAccuracyMeters,
+        enhanced: next.enhanced,
+      };
 
-        if (!permission.granted || cancelled) return;
-
-        const subscription = await Location.watchPositionAsync(
-          {
-            accuracy: Location.Accuracy.Balanced,
-            timeInterval: 15000,
-            distanceInterval: 25,
-          },
-          (position) => {
-            const coords: LatLng = {
-              latitude: position.coords.latitude,
-              longitude: position.coords.longitude,
-            };
-
-            if (mountedRef.current) {
-              setUserCoords(coords);
-            }
-
-            void publishRunnerLocation({
-              latitude: position.coords.latitude,
-              longitude: position.coords.longitude,
-              accuracy: position.coords.accuracy,
-              heading: position.coords.heading,
-              speed: position.coords.speed,
-            }).catch(() => undefined);
-          },
-        );
-
-        if (cancelled) {
-          subscription.remove();
-          return;
-        }
-
-        locationSubscription.current = subscription;
-      } catch {
-        // The dashboard remains usable when location is unavailable.
+      if (mountedRef.current) {
+        setLocation(nextLocation);
       }
-    }
 
-    void startLocationSharing();
+      if (
+        !authorized ||
+        (!isOnline && !activeJobIsTrackable) ||
+        signingOut
+      ) {
+        return;
+      }
 
-    return () => {
-      cancelled = true;
-      locationSubscription.current?.remove();
-      locationSubscription.current = null;
-    };
-  }, [activeJobIsTrackable, authorized, isOnline, activeJobId]);
+      const now = Date.now();
+      const previous = lastPublishedCoordinatesRef.current;
 
-  /* ---------------------------------------------------------------------- */
-  /* ANIMATIONS                                                             */
-  /* ---------------------------------------------------------------------- */
+      const elapsed = now - lastPublishedAtRef.current;
 
-  useEffect(() => {
-    Animated.timing(sheetY, {
-      toValue: 0,
-      duration: 460,
-      easing: Easing.out(Easing.cubic),
-      useNativeDriver: true,
-    }).start();
+      const movedMeters = previous
+        ? distanceBetweenMeters(previous, nextLocation)
+        : Number.POSITIVE_INFINITY;
 
-    return () => {
-      sheetY.stopAnimation();
-    };
-  }, [sheetY]);
+      if (elapsed < 5000 && movedMeters < 10) {
+        return;
+      }
 
-  useEffect(() => {
-    if (!isOnline || !authorized) {
-      pulseScale.setValue(1);
-      pulseOpacity.setValue(0.45);
+      lastPublishedAtRef.current = now;
+      lastPublishedCoordinatesRef.current = {
+        latitude: nextLocation.latitude,
+        longitude: nextLocation.longitude,
+      };
+
+      void publishRunnerLocation({
+        latitude: nextLocation.latitude,
+        longitude: nextLocation.longitude,
+        accuracy: nextLocation.horizontalAccuracyMeters,
+        heading: nextLocation.bearing,
+        speed: nextLocation.speedMetersPerSecond,
+      }).catch(() => undefined);
+    },
+    [
+      authorized,
+      isOnline,
+      activeJobIsTrackable,
+      signingOut,
+    ],
+  );
+
+  /* ------------------------------------------------------------------ */
+  /* AVAILABILITY                                                        */
+  /* ------------------------------------------------------------------ */
+
+  const toggleAvailability = useCallback(async () => {
+    if (
+      !runner ||
+      availabilityBusy ||
+      !authorized ||
+      signingOut
+    ) {
       return;
     }
 
-    const loop = Animated.loop(
-      Animated.parallel([
-        Animated.timing(pulseScale, {
-          toValue: 2.4,
-          duration: 2200,
-          easing: Easing.out(Easing.ease),
-          useNativeDriver: true,
-        }),
-        Animated.timing(pulseOpacity, {
-          toValue: 0,
-          duration: 2200,
-          easing: Easing.out(Easing.ease),
-          useNativeDriver: true,
-        }),
-      ]),
-      { iterations: -1, resetBeforeIteration: true },
-    );
-
-    loop.start();
-
-    return () => {
-      loop.stop();
-      pulseScale.setValue(1);
-      pulseOpacity.setValue(0.45);
-    };
-  }, [isOnline, authorized, pulseScale, pulseOpacity]);
-
-  useEffect(() => {
-    contentFade.setValue(0);
-    contentY.setValue(8);
-
-    Animated.parallel([
-      Animated.timing(contentFade, {
-        toValue: 1,
-        duration: 260,
-        easing: Easing.out(Easing.cubic),
-        useNativeDriver: true,
-      }),
-      Animated.timing(contentY, {
-        toValue: 0,
-        duration: 260,
-        easing: Easing.out(Easing.cubic),
-        useNativeDriver: true,
-      }),
-    ]).start();
-  }, [sheetState, contentFade, contentY]);
-
-  /* ---------------------------------------------------------------------- */
-  /* ACTIONS                                                                */
-  /* ---------------------------------------------------------------------- */
-
-  async function refresh() {
-    if (refreshing || signingOut) return;
-    await loadDashboard(true);
-  }
-
-  async function toggleAvailability() {
-    if (!runner || availabilityBusy || !authorized || signingOut) return;
-
-    if (activeJob && activeJob.status !== "completion_submitted") {
+    if (
+      activeJob &&
+      activeJob.status !== "completion_submitted"
+    ) {
       setError(
         "Complete your active errand before changing availability.",
       );
@@ -545,11 +730,14 @@ export default function RunnerDashboardScreen() {
 
     try {
       if (!isOnline) {
-        const { coords } = await requestCurrentLocation();
+        const result = await requestCurrentLocation();
 
         await publishRunnerLocation({
-          latitude: coords.latitude,
-          longitude: coords.longitude,
+          latitude: result.coords.latitude,
+          longitude: result.coords.longitude,
+          accuracy: result.position.coords.accuracy,
+          heading: result.position.coords.heading,
+          speed: result.position.coords.speed,
         });
       }
 
@@ -565,6 +753,8 @@ export default function RunnerDashboardScreen() {
             }
           : current,
       );
+
+      setCameraFollowing(!isOnline);
     } catch (cause) {
       if (!mountedRef.current) return;
 
@@ -584,84 +774,126 @@ export default function RunnerDashboardScreen() {
         setAvailabilityBusy(false);
       }
     }
-  }
+  }, [
+    runner,
+    availabilityBusy,
+    authorized,
+    signingOut,
+    activeJob,
+    isOnline,
+    requestCurrentLocation,
+    goToSignedOut,
+  ]);
 
-  async function accept(job: RunnerJob) {
-    if (!authorized || !isOnline || jobBusyId || signingOut) return;
+  /* ------------------------------------------------------------------ */
+  /* ERRAND ACTIONS                                                      */
+  /* ------------------------------------------------------------------ */
 
-    setJobBusyId(job.id);
-    setError("");
-
-    try {
-      await acceptRunnerJob(job.id);
-
-      if (!mountedRef.current) return;
-
-      await loadDashboard(true);
-    } catch (cause) {
-      if (!mountedRef.current) return;
-
-      const message =
-        cause instanceof Error
-          ? cause.message
-          : "This errand could not be accepted.";
-
-      if (isSessionError(message)) {
-        goToSignedOut();
+  const acceptJob = useCallback(
+    async (job: RunnerJob) => {
+      if (
+        !authorized ||
+        !isOnline ||
+        jobBusyId ||
+        signingOut
+      ) {
         return;
       }
 
-      setError(message);
-    } finally {
-      if (mountedRef.current) {
-        setJobBusyId("");
+      setJobBusyId(job.id);
+      setError("");
+
+      try {
+        await acceptRunnerJob(job.id);
+
+        if (!mountedRef.current) return;
+
+        await loadDashboard(true);
+      } catch (cause) {
+        if (!mountedRef.current) return;
+
+        const message =
+          cause instanceof Error
+            ? cause.message
+            : "This errand could not be accepted.";
+
+        if (isSessionError(message)) {
+          goToSignedOut();
+          return;
+        }
+
+        setError(message);
+      } finally {
+        if (mountedRef.current) {
+          setJobBusyId("");
+        }
       }
-    }
-  }
+    },
+    [
+      authorized,
+      isOnline,
+      jobBusyId,
+      signingOut,
+      loadDashboard,
+      goToSignedOut,
+    ],
+  );
 
-  async function advance(job: RunnerJob) {
-    if (jobBusyId || signingOut) return;
+  const advanceJob = useCallback(
+    async (job: RunnerJob) => {
+      if (jobBusyId || signingOut) return;
 
-    const action =
-      job.status === "accepted"
-        ? "start"
-        : job.status === "in_progress"
-          ? "submit_completion"
-          : null;
+      const action =
+        job.status === "accepted"
+          ? "start"
+          : job.status === "in_progress"
+            ? "submit_completion"
+            : null;
 
-    if (!action) return;
+      if (!action) return;
 
-    setJobBusyId(job.id);
-    setError("");
+      setJobBusyId(job.id);
+      setError("");
 
-    try {
-      await updateRunnerJobStatus(job.id, action);
+      try {
+        await updateRunnerJobStatus(job.id, action);
 
-      if (!mountedRef.current) return;
+        if (!mountedRef.current) return;
 
-      await loadDashboard(true);
-    } catch (cause) {
-      if (!mountedRef.current) return;
+        await loadDashboard(true);
+      } catch (cause) {
+        if (!mountedRef.current) return;
 
-      const message =
-        cause instanceof Error
-          ? cause.message
-          : "The errand status could not be updated.";
+        const message =
+          cause instanceof Error
+            ? cause.message
+            : "The errand status could not be updated.";
 
-      if (isSessionError(message)) {
-        goToSignedOut();
-        return;
+        if (isSessionError(message)) {
+          goToSignedOut();
+          return;
+        }
+
+        setError(message);
+      } finally {
+        if (mountedRef.current) {
+          setJobBusyId("");
+        }
       }
+    },
+    [
+      jobBusyId,
+      signingOut,
+      loadDashboard,
+      goToSignedOut,
+    ],
+  );
 
-      setError(message);
-    } finally {
-      if (mountedRef.current) {
-        setJobBusyId("");
-      }
-    }
-  }
+  /* ------------------------------------------------------------------ */
+  /* SIGN OUT                                                            */
+  /* ------------------------------------------------------------------ */
 
-  function signOut() {
+  const signOut = useCallback(() => {
     if (signingOut || logoutInFlightRef.current) return;
 
     Alert.alert(
@@ -681,16 +913,12 @@ export default function RunnerDashboardScreen() {
             logoutInFlightRef.current = true;
             setSigningOut(true);
 
-            locationSubscription.current?.remove();
-            locationSubscription.current = null;
-
             try {
               await clearRunnerSession();
             } finally {
               if (mountedRef.current) {
-                // Same completed navigation pattern used by the
-                // Runner application-status screen.
                 router.dismissAll();
+
                 router.replace({
                   pathname: "/",
                   params: { signedOut: "1" },
@@ -701,1683 +929,1330 @@ export default function RunnerDashboardScreen() {
         },
       ],
     );
-  }
+  }, [signingOut]);
 
-  /* ---------------------------------------------------------------------- */
-  /* MAP AND DASHBOARD                                                      */
-  /* ---------------------------------------------------------------------- */
+  /* ------------------------------------------------------------------ */
+  /* DERIVED DASHBOARD STATE                                             */
+  /* ------------------------------------------------------------------ */
 
-  const initialRegion: Region = userCoords
-    ? {
-        ...userCoords,
-        latitudeDelta: DEFAULT_REGION.latitudeDelta,
-        longitudeDelta: DEFAULT_REGION.longitudeDelta,
-      }
-    : DEFAULT_REGION;
+  const dashboardState = !runner
+    ? loading
+      ? "loading"
+      : "error"
+    : restricted
+      ? "restricted"
+      : !authorized
+        ? "unverified"
+        : activeJob?.status === "completion_submitted"
+          ? "completion"
+          : activeJob
+            ? "active"
+            : jobs.offers.length > 0
+              ? "offers"
+              : isOnline
+                ? "searching"
+                : "offline";
 
-  const showMapDim = (!isOnline || !authorized) && Boolean(runner);
+  const greetingName =
+    runner?.fullName?.trim().split(/\s+/)[0] || "Runner";
 
-  const canChangeAvailability =
-    authorized &&
-    !availabilityBusy &&
-    !signingOut &&
-    (!activeJob || activeJob.status === "completion_submitted");
+  const locationAccuracyLabel =
+    location?.horizontalAccuracyMeters != null
+      ? `Â±${Math.round(location.horizontalAccuracyMeters)} m`
+      : "Waiting for GPS";
 
-  const isDark = colors.paper === "#080F1D";
+  const locationQualityLabel = location?.enhanced
+    ? "Map matched"
+    : location
+      ? "GPS location"
+      : "Locating";
+
+  const canAcceptOffers =
+    authorized && isOnline && !jobBusyId && !signingOut;
+
+  /* ------------------------------------------------------------------ */
+  /* UI                                                                  */
+  /* ------------------------------------------------------------------ */
 
   return (
     <View style={styles.root}>
-      <StatusBar barStyle={isDark ? "light-content" : "dark-content"} />
+      <StatusBar barStyle={mode === "dark" ? "light-content" : "dark-content"} />
 
-      {/* MAP */}
-      <MapView
-        ref={mapRef}
-        style={StyleSheet.absoluteFill}
-        initialRegion={initialRegion}
-        showsUserLocation={false}
-        showsMyLocationButton={false}
-        showsCompass={false}
-        showsPointsOfInterests={false}
-        showsBuildings={false}
-        toolbarEnabled={false}
-        rotateEnabled={false}
-        pitchEnabled={false}
-        moveOnMarkerPress={false}
-        loadingEnabled
-      >
-        {userCoords ? (
-          <Marker
-            coordinate={userCoords}
-            anchor={{ x: 0.5, y: 0.5 }}
-            tracksViewChanges
-          >
-            <View style={styles.markerWrap}>
-              {isOnline && authorized ? (
-                <Animated.View
-                  pointerEvents="none"
-                  style={[
-                    styles.pulseRing,
-                    {
-                      borderColor: colors.success,
-                      opacity: pulseOpacity,
-                      transform: [{ scale: pulseScale }],
-                    },
-                  ]}
-                />
-              ) : null}
+      {/* MAPBOX CANVAS */}
 
-              <View
-                style={[
-                  styles.centerDot,
-                  {
-                    backgroundColor:
-                      isOnline && authorized
-                        ? colors.success
-                        : colors.textMuted,
-                    borderColor: "#FFFFFF",
-                  },
-                ]}
-              >
-                <View style={styles.centerDotInner} />
-              </View>
-            </View>
-          </Marker>
-        ) : null}
-      </MapView>
-
-      {showMapDim ? (
-        <View
-          pointerEvents="none"
-          style={[StyleSheet.absoluteFill, styles.dimLayer]}
+      <View style={StyleSheet.absoluteFill}>
+        <SaMiMapboxView
+          style={StyleSheet.absoluteFill}
+          accessToken={
+            process.env.EXPO_PUBLIC_MAPBOX_ACCESS_TOKEN ?? ""
+          }
+          mapStyleURL={mapStyleURL}
+          initialLatitude={displayCoordinates.latitude}
+          initialLongitude={displayCoordinates.longitude}
+          initialZoom={15.5}
+          initialBearing={0}
+          initialPitch={0}
+          showUserLocation
+          showCompass
+          showScaleBar={false}
+          navigationActive={Boolean(navigationActive)}
+          cameraMode={cameraFollowing ? "follow" : "free"}
+          puckBearing="course"
+          locationPulsingEnabled={Boolean(isOnline && authorized)}
+          onMapReady={() => {
+            setMapReady(true);
+            setMapError("");
+          }}
+          onMapError={(event) => {
+            setMapError(event.nativeEvent.message);
+          }}
+          onLocationChanged={handleMapLocation}
+          onNavigationStatusChanged={(event) => {
+            setNavigationMode(
+              event.nativeEvent.mode as NavigationMode,
+            );
+          }}
         />
-      ) : null}
-
-      {/* MAP STATUS */}
-      {userCoords ? (
-        <View pointerEvents="none" style={styles.centerLabelWrap}>
-          <View
-            style={[
-              styles.centerLabel,
-              {
-                backgroundColor: colors.surface,
-                borderColor: colors.border,
-              },
-            ]}
-          >
-            <View
-              style={[
-                styles.centerLabelDot,
-                {
-                  backgroundColor:
-                    authorized && isOnline
-                      ? colors.success
-                      : colors.textMuted,
-                },
-              ]}
-            />
-            <Text
-              style={[
-                styles.centerLabelText,
-                { color: colors.text },
-              ]}
-            >
-              {authorized && isOnline ? "You're live" : "You're offline"}
-            </Text>
-          </View>
-        </View>
-      ) : null}
-
-      {/* TOP BAR */}
-      <View
-        style={[
-          styles.topBar,
-          {
-            paddingTop: insets.top + 10,
-            paddingHorizontal: 18,
-          },
-        ]}
-      >
-        <View style={styles.topBarLeft}>
-          <View
-            style={[
-              styles.brandChip,
-              {
-                backgroundColor: colors.surface,
-                borderColor: colors.border,
-              },
-            ]}
-          >
-            <View style={styles.brandCopy}>
-              <Text style={[styles.brand, { color: colors.navy }]}>
-                SaMi <Text style={{ color: colors.blue }}>Runner</Text>
-              </Text>
-              <Text style={[styles.brandMini, { color: colors.textMuted }]}>
-                CONSIDER IT DONE
-              </Text>
-            </View>
-
-            {runner ? (
-              <View
-                style={[
-                  styles.statusChip,
-                  {
-                    backgroundColor: !authorized
-                      ? restricted
-                        ? colors.dangerSoft
-                        : colors.warningSoft
-                      : isOnline
-                        ? colors.successSoft
-                        : colors.blueSoft,
-                  },
-                ]}
-              >
-                <View
-                  style={[
-                    styles.statusChipDot,
-                    {
-                      backgroundColor: !authorized
-                        ? restricted
-                          ? colors.red
-                          : colors.warning
-                        : isOnline
-                          ? colors.success
-                          : colors.blue,
-                    },
-                  ]}
-                />
-                <Text
-                  style={[
-                    styles.statusChipText,
-                    {
-                      color: !authorized
-                        ? restricted
-                          ? colors.red
-                          : colors.warning
-                        : isOnline
-                          ? colors.success
-                          : colors.blue,
-                    },
-                  ]}
-                >
-                  {onlineLabel}
-                </Text>
-              </View>
-            ) : null}
-          </View>
-        </View>
-
-        <View style={styles.topBarActions}>
-          <Pressable
-            accessibilityRole="button"
-            accessibilityLabel="Refresh dashboard"
-            disabled={refreshing || signingOut}
-            onPress={refresh}
-            hitSlop={6}
-            style={({ pressed }) => [
-              styles.iconButton,
-              {
-                backgroundColor: colors.surface,
-                borderColor: colors.border,
-                opacity:
-                  pressed || refreshing || signingOut ? 0.55 : 1,
-              },
-            ]}
-          >
-            {refreshing ? (
-              <ActivityIndicator size="small" color={colors.blue} />
-            ) : (
-              <Ionicons
-                name="refresh-outline"
-                size={20}
-                color={colors.text}
-              />
-            )}
-          </Pressable>
-
-          <Pressable
-            accessibilityRole="button"
-            accessibilityLabel="Open Runner profile"
-            disabled={signingOut}
-            onPress={goToProfile}
-            hitSlop={6}
-            style={({ pressed }) => [
-              styles.iconButton,
-              {
-                backgroundColor: colors.surface,
-                borderColor: colors.border,
-                opacity: pressed || signingOut ? 0.55 : 1,
-              },
-            ]}
-          >
-            <Ionicons
-              name="person-outline"
-              size={20}
-              color={colors.text}
-            />
-          </Pressable>
-        </View>
       </View>
 
-      {/* MAP CONTROLS */}
+      {/* MAP HEADER */}
+
       <View
         style={[
-          styles.mapControls,
-          { top: insets.top + 76 },
-        ]}
-      >
-        <Pressable
-          accessibilityRole="button"
-          accessibilityLabel="Find my current location"
-          disabled={locationBusy || signingOut}
-          onPress={() => void locateMe()}
-          style={({ pressed }) => [
-            styles.mapControl,
-            {
-              backgroundColor: colors.surface,
-              borderColor: colors.border,
-              opacity: pressed || locationBusy ? 0.55 : 1,
-            },
-          ]}
-        >
-          {locationBusy ? (
-            <ActivityIndicator color={colors.blue} size="small" />
-          ) : (
-            <Ionicons
-              name="locate-outline"
-              size={21}
-              color={colors.blue}
-            />
-          )}
-        </Pressable>
-      </View>
-
-      {/* BOTTOM SHEET */}
-      <Animated.View
-        style={[
-          styles.sheetWrap,
+          styles.header,
           {
-            transform: [{ translateY: sheetY }],
+            paddingTop: insets.top + 9,
+            paddingHorizontal: 16,
           },
         ]}
       >
         <View
           style={[
-            styles.sheet,
+            styles.brandCard,
             {
-              backgroundColor: colors.paper,
-              paddingBottom: insets.bottom + 12,
+              backgroundColor: colors.surface,
+              borderColor: colors.border,
             },
           ]}
         >
+          <View style={styles.brandCopy}>
+            <Text
+              style={[
+                styles.brandTitle,
+                { color: colors.navy },
+              ]}
+            >
+              SaMi
+              <Text style={{ color: colors.blue }}>
+                {" "}Runner
+              </Text>
+            </Text>
+
+            <Text
+              style={[
+                styles.brandTagline,
+                { color: colors.textMuted },
+              ]}
+            >
+              CONSIDER IT DONE
+            </Text>
+          </View>
+
           <View
             style={[
-              styles.handle,
-              { backgroundColor: colors.border },
+              styles.statusPill,
+              {
+                backgroundColor: !authorized
+                  ? restricted
+                    ? colors.dangerSoft
+                    : colors.warningSoft
+                  : isOnline
+                    ? colors.successSoft
+                    : colors.blueSoft,
+              },
             ]}
+          >
+            <View
+              style={[
+                styles.statusDot,
+                {
+                  backgroundColor: !authorized
+                    ? restricted
+                      ? colors.red
+                      : colors.warning
+                    : isOnline
+                      ? colors.success
+                      : colors.blue,
+                },
+              ]}
+            />
+
+            <Text
+              style={[
+                styles.statusPillText,
+                {
+                  color: !authorized
+                    ? restricted
+                      ? colors.red
+                      : colors.warning
+                    : isOnline
+                      ? colors.success
+                      : colors.blue,
+                },
+              ]}
+            >
+              {onlineLabel}
+            </Text>
+          </View>
+        </View>
+
+        <View style={styles.headerActions}>
+          <IconButton
+            icon="refresh-outline"
+            label="Refresh dashboard"
+            onPress={() => void loadDashboard(true)}
+            busy={refreshing}
+            color={colors.text}
+            backgroundColor={colors.surface}
+            borderColor={colors.border}
           />
 
-          <ScrollView
-            contentContainerStyle={styles.sheetScroll}
-            showsVerticalScrollIndicator={false}
-            keyboardShouldPersistTaps="handled"
+          <IconButton
+            icon="person-outline"
+            label="Runner profile"
+            onPress={goToProfile}
+            disabled={signingOut}
+            color={colors.text}
+            backgroundColor={colors.surface}
+            borderColor={colors.border}
+          />
+        </View>
+      </View>
+
+      {/* MAP CONTROLS */}
+
+      <View
+        style={[
+          styles.mapControls,
+          { right: 16, bottom: insets.bottom + 300 },
+        ]}
+      >
+        <IconButton
+          icon="locate"
+          label="Center map on my location"
+          onPress={() => {
+            setCameraFollowing(true);
+            void locateMe();
+          }}
+          busy={locationBusy}
+          color={colors.navy}
+          backgroundColor={colors.surface}
+          borderColor={colors.border}
+        />
+      </View>
+
+      {/* LOCATION QUALITY */}
+
+      <View
+        style={[
+          styles.locationIndicator,
+          {
+            top: insets.top + 72,
+            backgroundColor: colors.surface,
+            borderColor: colors.border,
+          },
+        ]}
+      >
+        <View
+          style={[
+            styles.locationIndicatorDot,
+            {
+              backgroundColor: location?.enhanced
+                ? colors.success
+                : location
+                  ? colors.blue
+                  : colors.warning,
+            },
+          ]}
+        />
+
+        <View style={styles.locationIndicatorCopy}>
+          <Text
+            style={[
+              styles.locationIndicatorTitle,
+              { color: colors.text },
+            ]}
           >
-            {error ? (
-              <View
-                accessibilityRole="alert"
-                accessibilityLiveRegion="polite"
+            {locationQualityLabel}
+          </Text>
+
+          <Text
+            style={[
+              styles.locationIndicatorSubtitle,
+              { color: colors.textMuted },
+            ]}
+          >
+            {locationAccuracyLabel}
+          </Text>
+        </View>
+      </View>
+
+      {/* BOTTOM WORKSPACE */}
+
+      <View
+        style={[
+          styles.bottomWorkspace,
+          {
+            backgroundColor: colors.surface,
+            borderColor: colors.border,
+            paddingBottom: Math.max(insets.bottom, 14),
+            maxHeight: "67%",
+          },
+        ]}
+      >
+        <View
+          style={[
+            styles.sheetHandle,
+            { backgroundColor: colors.borderStrong },
+          ]}
+        />
+
+        <ScrollView
+          showsVerticalScrollIndicator={false}
+          contentContainerStyle={styles.sheetContent}
+          refreshControl={
+            <RefreshControl
+              refreshing={refreshing}
+              onRefresh={() => void loadDashboard(true)}
+              tintColor={colors.blue}
+            />
+          }
+        >
+          {/* ACCOUNT HEADER */}
+
+          <View style={styles.workspaceHeader}>
+            <View style={styles.workspaceGreeting}>
+              <Text
                 style={[
-                  styles.errorCard,
+                  styles.workspaceEyebrow,
+                  { color: colors.textMuted },
+                ]}
+              >
+                {runner?.serviceArea
+                  ? runner.serviceArea.toUpperCase()
+                  : "RUNNER WORKSPACE"}
+              </Text>
+
+              <Text
+                style={[
+                  styles.workspaceTitle,
+                  { color: colors.text },
+                ]}
+              >
+                Hello, {greetingName}
+              </Text>
+
+              <Text
+                style={[
+                  styles.workspaceSubtitle,
+                  { color: colors.textMuted },
+                ]}
+              >
+                {dashboardState === "searching"
+                  ? "You're online. Waiting for an errand."
+                  : dashboardState === "active"
+                    ? "Your active errand is ready."
+                    : dashboardState === "completion"
+                      ? "Your submitted errand is awaiting confirmation."
+                      : dashboardState === "offers"
+                        ? "New errands are available."
+                        : dashboardState === "offline"
+                          ? "Go online when you're ready to work."
+                          : "Your Runner workspace."}
+              </Text>
+            </View>
+
+            <View
+              style={[
+                styles.mapReadyBadge,
+                { backgroundColor: colors.blueSoft },
+              ]}
+            >
+              <Ionicons
+                name="navigate"
+                size={17}
+                color={colors.blue}
+              />
+            </View>
+          </View>
+
+          {/* LOADING */}
+
+          {dashboardState === "loading" ? (
+            <View
+              style={[
+                styles.stateCard,
+                { borderColor: colors.border },
+              ]}
+            >
+              <ActivityIndicator
+                size="large"
+                color={colors.blue}
+              />
+
+              <Text
+                style={[
+                  styles.stateTitle,
+                  { color: colors.text },
+                ]}
+              >
+                Preparing your workspace
+              </Text>
+
+              <Text
+                style={[
+                  styles.stateDescription,
+                  { color: colors.textMuted },
+                ]}
+              >
+                Checking your account and assigned errands.
+              </Text>
+            </View>
+          ) : null}
+
+          {/* DASHBOARD ERROR */}
+
+          {dashboardState === "error" ? (
+            <View
+              style={[
+                styles.stateCard,
+                { borderColor: colors.border },
+              ]}
+            >
+              <View
+                style={[
+                  styles.stateIcon,
                   { backgroundColor: colors.dangerSoft },
                 ]}
               >
                 <Ionicons
-                  name="alert-circle-outline"
-                  size={18}
+                  name="cloud-offline-outline"
+                  size={23}
                   color={colors.red}
                 />
-                <Text
-                  style={[styles.errorText, { color: colors.red }]}
-                >
-                  {error}
-                </Text>
-                <Pressable
-                  accessibilityRole="button"
-                  accessibilityLabel="Dismiss error"
-                  onPress={() => setError("")}
-                  hitSlop={8}
-                >
-                  <Ionicons
-                    name="close"
-                    size={18}
-                    color={colors.red}
-                  />
-                </Pressable>
               </View>
-            ) : null}
 
-            <Animated.View
-              style={{
-                opacity: contentFade,
-                transform: [{ translateY: contentY }],
-                gap: 14,
-              }}
+              <Text
+                style={[
+                  styles.stateTitle,
+                  { color: colors.text },
+                ]}
+              >
+                Dashboard unavailable
+              </Text>
+
+              <Text
+                style={[
+                  styles.stateDescription,
+                  { color: colors.textMuted },
+                ]}
+              >
+                {error || "Your Runner account could not be loaded."}
+              </Text>
+
+              <PrimaryButton
+                label="Try again"
+                icon="refresh"
+                onPress={() => void loadDashboard(true)}
+                backgroundColor={colors.blueAction}
+              />
+            </View>
+          ) : null}
+
+          {/* RESTRICTED */}
+
+          {dashboardState === "restricted" ? (
+            <View
+              style={[
+                styles.noticeCard,
+                {
+                  backgroundColor: colors.dangerSoft,
+                  borderColor: colors.red,
+                },
+              ]}
             >
-              {/* LOADING */}
-              {sheetState === "loading" ? (
-                <View style={styles.centerPad}>
-                  <ActivityIndicator size="large" color={colors.blue} />
+              <Ionicons
+                name="shield-checkmark-outline"
+                size={24}
+                color={colors.red}
+              />
+
+              <View style={styles.noticeCopy}>
+                <Text
+                  style={[
+                    styles.noticeTitle,
+                    { color: colors.red },
+                  ]}
+                >
+                  Account restricted
+                </Text>
+
+                <Text
+                  style={[
+                    styles.noticeDescription,
+                    { color: colors.text },
+                  ]}
+                >
+                  Your Runner account is not currently allowed to
+                  accept errands. Contact SaMi support for assistance.
+                </Text>
+              </View>
+            </View>
+          ) : null}
+
+          {/* VERIFICATION GATE */}
+
+          {dashboardState === "unverified" ? (
+            <View
+              style={[
+                styles.stateCard,
+                { borderColor: colors.border },
+              ]}
+            >
+              <View
+                style={[
+                  styles.stateIcon,
+                  { backgroundColor: colors.warningSoft },
+                ]}
+              >
+                <Ionicons
+                  name="time-outline"
+                  size={24}
+                  color={colors.warning}
+                />
+              </View>
+
+              <SectionHeading
+                eyebrow="Account verification"
+                title="You're not approved yet"
+                subtitle="Your account must be approved before you can go online and receive errands."
+                colors={colors}
+              />
+
+              <PrimaryButton
+                label="View application status"
+                icon="document-text-outline"
+                onPress={goToApplicationStatus}
+                backgroundColor={colors.blueAction}
+              />
+            </View>
+          ) : null}
+
+          {/* ACTIVE ERRAND */}
+
+          {dashboardState === "active" && activeJob ? (
+            <View
+              style={[
+                styles.jobCard,
+                { borderColor: colors.border },
+              ]}
+            >
+              <View style={styles.jobCardHeader}>
+                <View style={styles.jobTypeCopy}>
                   <Text
                     style={[
-                      styles.centerText,
+                      styles.eyebrow,
                       { color: colors.textMuted },
                     ]}
                   >
-                    Preparing your Runner workspace…
-                  </Text>
-                </View>
-              ) : null}
-
-              {/* ERROR */}
-              {sheetState === "error" ? (
-                <View style={styles.stateSection}>
-                  <View
-                    style={[
-                      styles.sheetIconChip,
-                      { backgroundColor: colors.dangerSoft },
-                    ]}
-                  >
-                    <Ionicons
-                      name="cloud-offline-outline"
-                      size={21}
-                      color={colors.red}
-                    />
-                  </View>
-
-                  <Text
-                    style={[styles.sheetTitle, { color: colors.text }]}
-                  >
-                    Dashboard unavailable
+                    ACTIVE ERRAND
                   </Text>
 
                   <Text
                     style={[
-                      styles.sheetSubtitle,
-                      { color: colors.textMuted },
-                    ]}
-                  >
-                    {error || "Your Runner workspace could not be loaded."}
-                  </Text>
-
-                  <Pressable
-                    accessibilityRole="button"
-                    accessibilityLabel="Try again"
-                    onPress={refresh}
-                    disabled={refreshing || signingOut}
-                    style={({ pressed }) => [
-                      styles.primaryAction,
-                      { backgroundColor: colors.blue },
-                      (refreshing || signingOut) && styles.disabled,
-                      pressed && styles.pressed,
-                    ]}
-                  >
-                    {refreshing ? (
-                      <ActivityIndicator color="#FFFFFF" size="small" />
-                    ) : (
-                      <>
-                        <Text style={styles.primaryActionText}>
-                          Try again
-                        </Text>
-                        <Ionicons
-                          name="refresh-outline"
-                          size={18}
-                          color="#FFFFFF"
-                        />
-                      </>
-                    )}
-                  </Pressable>
-                </View>
-              ) : null}
-
-              {/* RESTRICTED */}
-              {sheetState === "restricted" ? (
-                <View style={styles.stateSection}>
-                  <View
-                    style={[
-                      styles.sheetIconChip,
-                      { backgroundColor: colors.dangerSoft },
-                    ]}
-                  >
-                    <Ionicons
-                      name="lock-closed-outline"
-                      size={21}
-                      color={colors.red}
-                    />
-                  </View>
-
-                  <Text
-                    style={[styles.sheetTitle, { color: colors.text }]}
-                  >
-                    Account access restricted
-                  </Text>
-
-                  <Text
-                    style={[
-                      styles.sheetSubtitle,
-                      { color: colors.textMuted },
-                    ]}
-                  >
-                    Your Runner account is currently unavailable.
-                    Contact SaMi Operations for assistance.
-                  </Text>
-
-                  <Pressable
-                    accessibilityRole="button"
-                    onPress={goToApplicationStatus}
-                    style={({ pressed }) => [
-                      styles.primaryAction,
-                      { backgroundColor: colors.blue },
-                      pressed && styles.pressed,
-                    ]}
-                  >
-                    <Text style={styles.primaryActionText}>
-                      View account status
-                    </Text>
-                    <Ionicons
-                      name="arrow-forward"
-                      size={18}
-                      color="#FFFFFF"
-                    />
-                  </Pressable>
-                </View>
-              ) : null}
-
-              {/* UNVERIFIED */}
-              {sheetState === "unverified" ? (
-                <View style={styles.stateSection}>
-                  <View style={styles.sheetHeadingRow}>
-                    <View
-                      style={[
-                        styles.sheetIconChip,
-                        { backgroundColor: colors.warningSoft },
-                      ]}
-                    >
-                      <Ionicons
-                        name="time-outline"
-                        size={21}
-                        color={colors.warning}
-                      />
-                    </View>
-
-                    <View style={{ flex: 1 }}>
-                      <Text
-                        style={[
-                          styles.sheetEyebrow,
-                          { color: colors.warning },
-                        ]}
-                      >
-                        ACCOUNT VERIFICATION
-                      </Text>
-                      <Text
-                        style={[
-                          styles.sheetTitle,
-                          { color: colors.text },
-                        ]}
-                      >
-                        Your journey starts here
-                      </Text>
-                    </View>
-                  </View>
-
-                  <Text
-                    style={[
-                      styles.sheetSubtitle,
-                      { color: colors.textMuted },
-                    ]}
-                  >
-                    Your profile is saved. SaMi Operations is reviewing
-                    your Runner application. You will be able to go online
-                    and receive eligible errands after approval.
-                  </Text>
-
-                  <Pressable
-                    accessibilityRole="button"
-                    onPress={goToApplicationStatus}
-                    style={({ pressed }) => [
-                      styles.primaryAction,
-                      { backgroundColor: colors.blue },
-                      pressed && styles.pressed,
-                    ]}
-                  >
-                    <Text style={styles.primaryActionText}>
-                      View application status
-                    </Text>
-                    <Ionicons
-                      name="arrow-forward"
-                      size={18}
-                      color="#FFFFFF"
-                    />
-                  </Pressable>
-
-                  <Pressable
-                    accessibilityRole="button"
-                    onPress={refresh}
-                    disabled={refreshing || signingOut}
-                    style={({ pressed }) => [
-                      styles.secondaryAction,
-                      {
-                        backgroundColor: colors.surface,
-                        borderColor: colors.border,
-                      },
-                      (refreshing || signingOut) && styles.disabled,
-                      pressed && styles.pressed,
-                    ]}
-                  >
-                    {refreshing ? (
-                      <ActivityIndicator
-                        size="small"
-                        color={colors.blue}
-                      />
-                    ) : (
-                      <>
-                        <Ionicons
-                          name="refresh-outline"
-                          size={17}
-                          color={colors.blue}
-                        />
-                        <Text
-                          style={[
-                            styles.secondaryActionText,
-                            { color: colors.blue },
-                          ]}
-                        >
-                          Refresh verification
-                        </Text>
-                      </>
-                    )}
-                  </Pressable>
-                </View>
-              ) : null}
-
-              {/* ACTIVE ERRAND */}
-              {sheetState === "active" && activeJob ? (
-                <View style={styles.section}>
-                  <View style={styles.sheetHeadingRow}>
-                    <View
-                      style={[
-                        styles.sheetIconChip,
-                        { backgroundColor: colors.blueSoft },
-                      ]}
-                    >
-                      <Ionicons
-                        name="navigate"
-                        size={20}
-                        color={colors.blue}
-                      />
-                    </View>
-
-                    <View style={{ flex: 1 }}>
-                      <Text
-                        style={[
-                          styles.sheetEyebrow,
-                          { color: colors.blue },
-                        ]}
-                      >
-                        ACTIVE ERRAND · {activeJob.publicCode}
-                      </Text>
-                      <Text
-                        style={[
-                          styles.sheetTitle,
-                          { color: colors.text },
-                        ]}
-                        numberOfLines={2}
-                      >
-                        {activeJob.title}
-                      </Text>
-                    </View>
-
-                    <View
-                      style={[
-                        styles.jobStatusPill,
-                        { backgroundColor: colors.blueSoft },
-                      ]}
-                    >
-                      <Text
-                        style={[
-                          styles.jobStatusText,
-                          { color: colors.blue },
-                        ]}
-                      >
-                        {activeStatusLabel(activeJob.status)}
-                      </Text>
-                    </View>
-                  </View>
-
-                  {activeJob.description ? (
-                    <Text
-                      style={[
-                        styles.sheetSubtitle,
-                        { color: colors.textMuted },
-                      ]}
-                      numberOfLines={3}
-                    >
-                      {activeJob.description}
-                    </Text>
-                  ) : null}
-
-                  <View
-                    style={[
-                      styles.routeBlock,
-                      {
-                        backgroundColor: colors.surface,
-                        borderColor: colors.border,
-                      },
-                    ]}
-                  >
-                    <View style={styles.routeRow}>
-                      <View
-                        style={[
-                          styles.routeIconWrap,
-                          { backgroundColor: colors.blueSoft },
-                        ]}
-                      >
-                        <Ionicons
-                          name="ellipse"
-                          size={10}
-                          color={colors.blue}
-                        />
-                      </View>
-
-                      <View style={{ flex: 1 }}>
-                        <Text
-                          style={[
-                            styles.routeLabel,
-                            { color: colors.textMuted },
-                          ]}
-                        >
-                          PICKUP
-                        </Text>
-                        <Text
-                          style={[
-                            styles.routeValue,
-                            { color: colors.text },
-                          ]}
-                          numberOfLines={2}
-                        >
-                          {activeJob.pickupLabel}
-                        </Text>
-                      </View>
-                    </View>
-
-                    <View
-                      style={[
-                        styles.routeConnector,
-                        { backgroundColor: colors.border },
-                      ]}
-                    />
-
-                    <View style={styles.routeRow}>
-                      <View
-                        style={[
-                          styles.routeIconWrap,
-                          { backgroundColor: colors.successSoft },
-                        ]}
-                      >
-                        <Ionicons
-                          name="flag"
-                          size={12}
-                          color={colors.success}
-                        />
-                      </View>
-
-                      <View style={{ flex: 1 }}>
-                        <Text
-                          style={[
-                            styles.routeLabel,
-                            { color: colors.textMuted },
-                          ]}
-                        >
-                          DROP-OFF
-                        </Text>
-                        <Text
-                          style={[
-                            styles.routeValue,
-                            { color: colors.text },
-                          ]}
-                          numberOfLines={2}
-                        >
-                          {activeJob.destinationLabel}
-                        </Text>
-                      </View>
-                    </View>
-                  </View>
-
-                  <View
-                    style={[
-                      styles.payoutRow,
-                      { borderTopColor: colors.border },
-                    ]}
-                  >
-                    <View>
-                      <Text
-                        style={[
-                          styles.payoutLabel,
-                          { color: colors.textMuted },
-                        ]}
-                      >
-                        YOUR PAYOUT
-                      </Text>
-                      <Text
-                        style={[
-                          styles.payoutValue,
-                          { color: colors.text },
-                        ]}
-                      >
-                        {money(
-                          activeJob.runnerPayoutAmount,
-                          activeJob.currency,
-                        )}
-                      </Text>
-                    </View>
-
-                    {activeJob.distanceKm !== null ? (
-                      <View style={styles.distanceChip}>
-                        <Ionicons
-                          name="navigate-outline"
-                          size={14}
-                          color={colors.blue}
-                        />
-                        <Text
-                          style={[
-                            styles.distanceText,
-                            { color: colors.textMuted },
-                          ]}
-                        >
-                          {activeJob.distanceKm} km
-                        </Text>
-                      </View>
-                    ) : null}
-                  </View>
-
-                  <Pressable
-                    accessibilityRole="button"
-                    accessibilityLabel={
-                      activeJob.status === "accepted"
-                        ? "Start errand"
-                        : "Submit errand completion"
-                    }
-                    accessibilityState={{
-                      busy: jobBusyId === activeJob.id,
-                      disabled: jobBusyId !== "",
-                    }}
-                    disabled={
-                      jobBusyId !== "" ||
-                      !["accepted", "in_progress"].includes(
-                        String(activeJob.status),
-                      )
-                    }
-                    onPress={() => void advance(activeJob)}
-                    style={({ pressed }) => [
-                      styles.primaryAction,
-                      { backgroundColor: colors.blue },
-                      jobBusyId !== "" && styles.disabled,
-                      pressed && styles.pressed,
-                    ]}
-                  >
-                    {jobBusyId === activeJob.id ? (
-                      <ActivityIndicator
-                        color="#FFFFFF"
-                        size="small"
-                      />
-                    ) : (
-                      <>
-                        <Text style={styles.primaryActionText}>
-                          {activeJob.status === "accepted"
-                            ? "Start errand"
-                            : "Submit completion"}
-                        </Text>
-                        <Ionicons
-                          name="arrow-forward"
-                          size={18}
-                          color="#FFFFFF"
-                        />
-                      </>
-                    )}
-                  </Pressable>
-                </View>
-              ) : null}
-
-              {/* COMPLETION WAITING */}
-              {sheetState === "completion" && activeJob ? (
-                <View style={styles.stateSection}>
-                  <View
-                    style={[
-                      styles.sheetIconChip,
-                      { backgroundColor: colors.warningSoft },
-                    ]}
-                  >
-                    <Ionicons
-                      name="hourglass-outline"
-                      size={21}
-                      color={colors.warning}
-                    />
-                  </View>
-
-                  <Text
-                    style={[
-                      styles.sheetTitle,
+                      styles.jobCode,
                       { color: colors.text },
                     ]}
                   >
-                    Completion submitted
+                    {activeJob.publicCode}
+                  </Text>
+                </View>
+
+                <View
+                  style={[
+                    styles.jobStatus,
+                    { backgroundColor: colors.blueSoft },
+                  ]}
+                >
+                  <Text
+                    style={[
+                      styles.jobStatusText,
+                      { color: colors.blue },
+                    ]}
+                  >
+                    {activeStatusLabel(activeJob.status)}
+                  </Text>
+                </View>
+              </View>
+
+              <Text
+                style={[
+                  styles.jobTitle,
+                  { color: colors.text },
+                ]}
+              >
+                {activeJob.title}
+              </Text>
+
+              <Text
+                style={[
+                  styles.jobDescription,
+                  { color: colors.textMuted },
+                ]}
+              >
+                {activeJob.description}
+              </Text>
+
+              <View
+                style={[
+                  styles.routeCard,
+                  {
+                    backgroundColor: colors.paper,
+                    borderColor: colors.border,
+                  },
+                ]}
+              >
+                <RoutePoint
+                  icon="radio-button-on"
+                  label="PICKUP"
+                  value={activeJob.pickupLabel}
+                  colors={colors}
+                />
+
+                <RoutePoint
+                  icon="location"
+                  label="DELIVERY"
+                  value={activeJob.destinationLabel}
+                  colors={colors}
+                  last
+                />
+              </View>
+
+              <View style={styles.jobMetrics}>
+                <View style={styles.jobMetric}>
+                  <Text
+                    style={[
+                      styles.jobMetricLabel,
+                      { color: colors.textMuted },
+                    ]}
+                  >
+                    YOUR PAYOUT
                   </Text>
 
                   <Text
                     style={[
-                      styles.sheetSubtitle,
+                      styles.jobPayout,
+                      { color: colors.success },
+                    ]}
+                  >
+                    {money(
+                      activeJob.runnerPayoutAmount,
+                      activeJob.currency,
+                    )}
+                  </Text>
+                </View>
+
+                <View style={styles.jobMetricRight}>
+                  <Text
+                    style={[
+                      styles.jobMetricLabel,
                       { color: colors.textMuted },
                     ]}
                   >
-                    Your completion for {activeJob.publicCode} has been
-                    submitted. You are waiting for customer confirmation.
+                    DISTANCE
                   </Text>
 
-                  <View
+                  <Text
                     style={[
-                      styles.routeBlock,
-                      {
-                        backgroundColor: colors.surface,
-                        borderColor: colors.border,
-                      },
+                      styles.jobDistance,
+                      { color: colors.text },
                     ]}
                   >
-                    <Text
-                      style={[
-                        styles.routeLabel,
-                        { color: colors.textMuted },
-                      ]}
-                    >
-                      ERRAND
-                    </Text>
-                    <Text
-                      style={[
-                        styles.routeValue,
-                        { color: colors.text },
-                      ]}
-                    >
-                      {activeJob.title}
-                    </Text>
+                    {activeJob.distanceKm == null
+                      ? "Not available"
+                      : `${activeJob.distanceKm.toFixed(1)} km`}
+                  </Text>
+                </View>
+              </View>
 
-                    <View
-                      style={[
-                        styles.payoutRow,
-                        { borderTopColor: colors.border },
-                      ]}
-                    >
+              {activeJob.status === "accepted" ? (
+                <PrimaryButton
+                  label="Start errand"
+                  icon="play"
+                  loading={jobBusyId === activeJob.id}
+                  disabled={Boolean(jobBusyId)}
+                  onPress={() => void advanceJob(activeJob)}
+                  backgroundColor={colors.blueAction}
+                />
+              ) : null}
+
+              {activeJob.status === "in_progress" ? (
+                <PrimaryButton
+                  label="Submit completion"
+                  icon="checkmark-circle-outline"
+                  loading={jobBusyId === activeJob.id}
+                  disabled={Boolean(jobBusyId)}
+                  onPress={() => void advanceJob(activeJob)}
+                  backgroundColor={colors.success}
+                />
+              ) : null}
+            </View>
+          ) : null}
+
+          {/* WAITING FOR CUSTOMER */}
+
+          {dashboardState === "completion" && activeJob ? (
+            <View
+              style={[
+                styles.stateCard,
+                { borderColor: colors.border },
+              ]}
+            >
+              <View
+                style={[
+                  styles.stateIcon,
+                  { backgroundColor: colors.successSoft },
+                ]}
+              >
+                <Ionicons
+                  name="checkmark-done-circle-outline"
+                  size={26}
+                  color={colors.success}
+                />
+              </View>
+
+              <SectionHeading
+                eyebrow="Completion submitted"
+                title="Waiting for confirmation"
+                subtitle="Your completion has been submitted. The customer must confirm before this errand is fully closed."
+                colors={colors}
+              />
+
+              <Text
+                style={[
+                  styles.completionCode,
+                  { color: colors.text },
+                ]}
+              >
+                {activeJob.publicCode}
+              </Text>
+
+              <PrimaryButton
+                label="Refresh status"
+                icon="refresh"
+                onPress={() => void loadDashboard(true)}
+                loading={refreshing}
+                backgroundColor={colors.blueAction}
+              />
+            </View>
+          ) : null}
+
+          {/* ERRAND OFFERS */}
+
+          {dashboardState === "offers" ? (
+            <View style={styles.offerSection}>
+              <SectionHeading
+                eyebrow="Available work"
+                title={`${jobs.offers.length} available ${
+                  jobs.offers.length === 1 ? "errand" : "errands"
+                }`}
+                subtitle="Review the details before accepting an errand."
+                colors={colors}
+              />
+
+              {jobs.offers.map((job) => (
+                <View
+                  key={job.id}
+                  style={[
+                    styles.offerCard,
+                    {
+                      borderColor: colors.border,
+                      backgroundColor: colors.surface,
+                    },
+                  ]}
+                >
+                  <View style={styles.offerHeader}>
+                    <View style={styles.offerCodeCopy}>
                       <Text
                         style={[
-                          styles.payoutLabel,
+                          styles.eyebrow,
                           { color: colors.textMuted },
                         ]}
                       >
-                        Your payout
+                        {job.publicCode}
                       </Text>
-                      <Text
-                        style={[
-                          styles.payoutValue,
-                          { color: colors.text },
-                        ]}
-                      >
-                        {money(
-                          activeJob.runnerPayoutAmount,
-                          activeJob.currency,
-                        )}
-                      </Text>
-                    </View>
-                  </View>
-
-                  <Pressable
-                    accessibilityRole="button"
-                    onPress={refresh}
-                    disabled={refreshing}
-                    style={({ pressed }) => [
-                      styles.secondaryAction,
-                      {
-                        backgroundColor: colors.surface,
-                        borderColor: colors.border,
-                      },
-                      refreshing && styles.disabled,
-                      pressed && styles.pressed,
-                    ]}
-                  >
-                    <Ionicons
-                      name="refresh-outline"
-                      size={17}
-                      color={colors.blue}
-                    />
-                    <Text
-                      style={[
-                        styles.secondaryActionText,
-                        { color: colors.blue },
-                      ]}
-                    >
-                      Refresh confirmation status
-                    </Text>
-                  </Pressable>
-                </View>
-              ) : null}
-
-              {/* NEW OFFERS */}
-              {sheetState === "offers" ? (
-                <View style={styles.section}>
-                  <View style={styles.sheetHeadingRow}>
-                    <View
-                      style={[
-                        styles.sheetIconChip,
-                        { backgroundColor: colors.successSoft },
-                      ]}
-                    >
-                      <Ionicons
-                        name="notifications-outline"
-                        size={20}
-                        color={colors.success}
-                      />
-                    </View>
-
-                    <View style={{ flex: 1 }}>
-                      <Text
-                        style={[
-                          styles.sheetEyebrow,
-                          { color: colors.success },
-                        ]}
-                      >
-                        {jobs.offers.length === 1
-                          ? "NEW OFFER"
-                          : `${jobs.offers.length} NEW OFFERS`}
-                      </Text>
-                      <Text
-                        style={[
-                          styles.sheetTitle,
-                          { color: colors.text },
-                        ]}
-                      >
-                        Errands waiting for you
-                      </Text>
-                    </View>
-
-                    <View
-                      style={[
-                        styles.countBadge,
-                        { backgroundColor: colors.successSoft },
-                      ]}
-                    >
-                      <Text
-                        style={[
-                          styles.countBadgeText,
-                          { color: colors.success },
-                        ]}
-                      >
-                        {jobs.offers.length}
-                      </Text>
-                    </View>
-                  </View>
-
-                  {!isOnline ? (
-                    <View
-                      style={[
-                        styles.inlineNotice,
-                        { backgroundColor: colors.warningSoft },
-                      ]}
-                    >
-                      <Ionicons
-                        name="information-circle-outline"
-                        size={18}
-                        color={colors.warning}
-                      />
-                      <Text
-                        style={[
-                          styles.inlineNoticeText,
-                          { color: colors.text },
-                        ]}
-                      >
-                        Go online to accept available errands.
-                      </Text>
-                    </View>
-                  ) : null}
-
-                  {jobs.offers.map((offer) => (
-                    <View
-                      key={offer.id}
-                      style={[
-                        styles.offerCard,
-                        {
-                          backgroundColor: colors.surface,
-                          borderColor: colors.border,
-                        },
-                      ]}
-                    >
-                      <View style={styles.offerTop}>
-                        <Text
-                          style={[
-                            styles.offerCode,
-                            { color: colors.blue },
-                          ]}
-                        >
-                          {offer.publicCode}
-                        </Text>
-                        <Text
-                          style={[
-                            styles.offerPayout,
-                            { color: colors.text },
-                          ]}
-                        >
-                          {money(
-                            offer.runnerPayoutAmount,
-                            offer.currency,
-                          )}
-                        </Text>
-                      </View>
 
                       <Text
                         style={[
                           styles.offerTitle,
                           { color: colors.text },
                         ]}
-                        numberOfLines={2}
                       >
-                        {offer.title}
+                        {job.title}
                       </Text>
-
-                      <View style={styles.offerRoute}>
-                        <Ionicons
-                          name="location-outline"
-                          size={15}
-                          color={colors.blue}
-                        />
-                        <Text
-                          style={[
-                            styles.offerRouteText,
-                            { color: colors.textMuted },
-                          ]}
-                          numberOfLines={2}
-                        >
-                          {offer.pickupLabel}
-                        </Text>
-                      </View>
-
-                      <View style={styles.offerRoute}>
-                        <Ionicons
-                          name="flag-outline"
-                          size={15}
-                          color={colors.success}
-                        />
-                        <Text
-                          style={[
-                            styles.offerRouteText,
-                            { color: colors.textMuted },
-                          ]}
-                          numberOfLines={2}
-                        >
-                          {offer.destinationLabel}
-                        </Text>
-                      </View>
-
-                      {offer.distanceKm !== null ? (
-                        <View style={styles.offerDistance}>
-                          <Ionicons
-                            name="navigate-outline"
-                            size={13}
-                            color={colors.textMuted}
-                          />
-                          <Text
-                            style={[
-                              styles.offerDistanceText,
-                              { color: colors.textMuted },
-                            ]}
-                          >
-                            {offer.distanceKm} km
-                          </Text>
-                        </View>
-                      ) : null}
-
-                      <Pressable
-                        accessibilityRole="button"
-                        accessibilityLabel={`Accept errand ${offer.publicCode}`}
-                        accessibilityState={{
-                          busy: jobBusyId === offer.id,
-                          disabled:
-                            !isOnline ||
-                            jobBusyId !== "" ||
-                            signingOut,
-                        }}
-                        disabled={
-                          !isOnline ||
-                          jobBusyId !== "" ||
-                          signingOut
-                        }
-                        onPress={() => void accept(offer)}
-                        style={({ pressed }) => [
-                          styles.offerAcceptButton,
-                          { backgroundColor: colors.blue },
-                          (!isOnline || jobBusyId !== "") &&
-                            styles.disabled,
-                          pressed && styles.pressed,
-                        ]}
-                      >
-                        {jobBusyId === offer.id ? (
-                          <ActivityIndicator
-                            color="#FFFFFF"
-                            size="small"
-                          />
-                        ) : (
-                          <>
-                            <Text style={styles.offerAcceptText}>
-                              {isOnline
-                                ? "Accept errand"
-                                : "Go online to accept"}
-                            </Text>
-                            <Ionicons
-                              name="arrow-forward"
-                              size={17}
-                              color="#FFFFFF"
-                            />
-                          </>
-                        )}
-                      </Pressable>
                     </View>
-                  ))}
-                </View>
-              ) : null}
 
-              {/* IDLE / READY TO EARN */}
-              {sheetState === "idle" ? (
-                <View style={styles.section}>
-                  <View style={styles.sheetHeadingRow}>
-                    <View
+                    <Text
                       style={[
-                        styles.sheetIconChip,
-                        {
-                          backgroundColor: isOnline
-                            ? colors.successSoft
-                            : colors.blueSoft,
-                        },
+                        styles.offerPayout,
+                        { color: colors.success },
                       ]}
                     >
-                      <Ionicons
-                        name={isOnline ? "radio" : "radio-outline"}
-                        size={20}
-                        color={isOnline ? colors.success : colors.blue}
-                      />
-                    </View>
-
-                    <View style={{ flex: 1 }}>
-                      <Text
-                        style={[
-                          styles.sheetEyebrow,
-                          {
-                            color: isOnline
-                              ? colors.success
-                              : colors.blue,
-                          },
-                        ]}
-                      >
-                        {isOnline
-                          ? "ONLINE · WAITING FOR OFFERS"
-                          : "OFFLINE · NOT RECEIVING OFFERS"}
-                      </Text>
-                      <Text
-                        style={[
-                          styles.sheetTitle,
-                          { color: colors.text },
-                        ]}
-                      >
-                        {isOnline
-                          ? "You're live on the map"
-                          : "Ready to earn?"}
-                      </Text>
-                    </View>
+                      {money(
+                        job.runnerPayoutAmount,
+                        job.currency,
+                      )}
+                    </Text>
                   </View>
 
                   <Text
                     style={[
-                      styles.sheetSubtitle,
+                      styles.offerDescription,
                       { color: colors.textMuted },
                     ]}
+                    numberOfLines={3}
                   >
-                    {isOnline
-                      ? "Stay online to receive eligible errand offers near your service area."
-                      : "Go online when you're ready to receive errands near " +
-                        (runner?.serviceArea || "your service area") +
-                        "."}
+                    {job.description}
                   </Text>
 
-                  <View style={styles.statRow}>
-                    <View
-                      style={[
-                        styles.statCard,
-                        {
-                          backgroundColor: colors.surface,
-                          borderColor: colors.border,
-                        },
-                      ]}
-                    >
-                      <View
-                        style={[
-                          styles.statIcon,
-                          { backgroundColor: colors.blueSoft },
-                        ]}
-                      >
-                        <Ionicons
-                          name="briefcase-outline"
-                          size={17}
-                          color={colors.blue}
-                        />
-                      </View>
-                      <Text
-                        style={[
-                          styles.statValue,
-                          { color: colors.text },
-                        ]}
-                      >
-                        {jobs.active.length}
-                      </Text>
-                      <Text
-                        style={[
-                          styles.statLabel,
-                          { color: colors.textMuted },
-                        ]}
-                      >
-                        Active errands
-                      </Text>
-                    </View>
-
-                    <View
-                      style={[
-                        styles.statCard,
-                        {
-                          backgroundColor: colors.surface,
-                          borderColor: colors.border,
-                        },
-                      ]}
-                    >
-                      <View
-                        style={[
-                          styles.statIcon,
-                          { backgroundColor: colors.successSoft },
-                        ]}
-                      >
-                        <Ionicons
-                          name="notifications-outline"
-                          size={17}
-                          color={colors.success}
-                        />
-                      </View>
-                      <Text
-                        style={[
-                          styles.statValue,
-                          { color: colors.text },
-                        ]}
-                      >
-                        {jobs.offers.length}
-                      </Text>
-                      <Text
-                        style={[
-                          styles.statLabel,
-                          { color: colors.textMuted },
-                        ]}
-                      >
-                        Available offers
-                      </Text>
-                    </View>
-                  </View>
-
-                  <Pressable
-                    accessibilityRole="switch"
-                    accessibilityLabel={
-                      isOnline ? "Go offline" : "Go online"
-                    }
-                    accessibilityState={{
-                      checked: isOnline,
-                      disabled: !canChangeAvailability,
-                    }}
-                    disabled={!canChangeAvailability}
-                    onPress={() => void toggleAvailability()}
-                    style={({ pressed }) => [
-                      styles.availabilityToggle,
+                  <View
+                    style={[
+                      styles.routeCard,
                       {
-                        backgroundColor: isOnline
-                          ? colors.surface
-                          : colors.blue,
-                        borderColor: isOnline
-                          ? colors.border
-                          : colors.blue,
-                        borderWidth: isOnline ? 1 : 0,
-                        opacity:
-                          availabilityBusy || signingOut
-                            ? 0.55
-                            : pressed
-                              ? 0.85
-                              : 1,
+                        backgroundColor: colors.paper,
+                        borderColor: colors.border,
                       },
                     ]}
                   >
-                    {availabilityBusy ? (
-                      <ActivityIndicator
-                        size="small"
-                        color={isOnline ? colors.blue : "#FFFFFF"}
-                      />
-                    ) : (
-                      <>
-                        <Ionicons
-                          name={isOnline ? "pause" : "play"}
-                          size={18}
-                          color={isOnline ? colors.blue : "#FFFFFF"}
-                        />
-                        <Text
-                          style={[
-                            styles.availabilityToggleText,
-                            {
-                              color: isOnline
-                                ? colors.blue
-                                : "#FFFFFF",
-                            },
-                          ]}
-                        >
-                          {isOnline ? "GO OFFLINE" : "GO ONLINE"}
-                        </Text>
-                      </>
-                    )}
-                  </Pressable>
+                    <RoutePoint
+                      icon="radio-button-on"
+                      label="PICKUP"
+                      value={job.pickupLabel}
+                      colors={colors}
+                    />
 
-                  {jobs.offers.length === 0 ? (
-                    <View
-                      style={[
-                        styles.emptyState,
-                        {
-                          backgroundColor: colors.surface,
-                          borderColor: colors.border,
-                        },
-                      ]}
-                    >
-                      <Ionicons
-                        name="compass-outline"
-                        size={25}
-                        color={colors.textMuted}
-                      />
-                      <Text
-                        style={[
-                          styles.emptyTitle,
-                          { color: colors.text },
-                        ]}
-                      >
-                        {isOnline
-                          ? "Waiting for your next errand"
-                          : "Your next errand starts here"}
-                      </Text>
-                      <Text
-                        style={[
-                          styles.emptyText,
-                          { color: colors.textMuted },
-                        ]}
-                      >
-                        {isOnline
-                          ? "New offers will appear here when they become available."
-                          : "Your dashboard is ready. Go online when you want to start receiving offers."}
-                      </Text>
-                    </View>
-                  ) : null}
-                </View>
-              ) : null}
-
-              {/* PROFILE ACCESS */}
-              {runner && authorized ? (
-                <Pressable
-                  accessibilityRole="button"
-                  accessibilityLabel="Open profile and account details"
-                  disabled={signingOut}
-                  onPress={goToProfile}
-                  style={({ pressed }) => [
-                    styles.profileLink,
-                    {
-                      borderColor: colors.border,
-                      backgroundColor: colors.surface,
-                      opacity: pressed ? 0.7 : 1,
-                    },
-                  ]}
-                >
-                  <View
-                    style={[
-                      styles.profileLinkIcon,
-                      { backgroundColor: colors.blueSoft },
-                    ]}
-                  >
-                    <Ionicons
-                      name="person-outline"
-                      size={17}
-                      color={colors.blue}
+                    <RoutePoint
+                      icon="location"
+                      label="DELIVERY"
+                      value={job.destinationLabel}
+                      colors={colors}
+                      last
                     />
                   </View>
 
-                  <View style={{ flex: 1 }}>
+                  <View style={styles.offerFooter}>
+                    <View style={styles.distanceChip}>
+                      <Ionicons
+                        name="navigate-outline"
+                        size={15}
+                        color={colors.textMuted}
+                      />
+
+                      <Text
+                        style={[
+                          styles.distanceText,
+                          { color: colors.textMuted },
+                        ]}
+                      >
+                        {job.distanceKm == null
+                          ? "Distance unavailable"
+                          : `${job.distanceKm.toFixed(1)} km`}
+                      </Text>
+                    </View>
+
                     <Text
                       style={[
-                        styles.profileLinkTitle,
-                        { color: colors.text },
-                      ]}
-                    >
-                      Your Runner profile
-                    </Text>
-                    <Text
-                      style={[
-                        styles.profileLinkSubtitle,
+                        styles.categoryText,
                         { color: colors.textMuted },
                       ]}
                     >
-                      Account and application details
+                      {job.category}
                     </Text>
                   </View>
 
-                  <Ionicons
-                    name="chevron-forward"
-                    size={18}
-                    color={colors.textMuted}
+                  <PrimaryButton
+                    label="Accept errand"
+                    icon="checkmark-circle-outline"
+                    loading={jobBusyId === job.id}
+                    disabled={!canAcceptOffers || Boolean(jobBusyId)}
+                    onPress={() => void acceptJob(job)}
+                    backgroundColor={colors.blueAction}
                   />
-                </Pressable>
-              ) : null}
+                </View>
+              ))}
+            </View>
+          ) : null}
 
-              {/* SIGN OUT */}
+          {/* ONLINE SEARCHING */}
+
+          {dashboardState === "searching" ? (
+            <View
+              style={[
+                styles.stateCard,
+                { borderColor: colors.border },
+              ]}
+            >
+              <View
+                style={[
+                  styles.searchingIcon,
+                  { backgroundColor: colors.successSoft },
+                ]}
+              >
+                <Ionicons
+                  name="radio"
+                  size={24}
+                  color={colors.success}
+                />
+              </View>
+
+              <SectionHeading
+                eyebrow="Runner active"
+                title="Looking for errands"
+                subtitle="You're available. SaMi will show eligible errands here when they are assigned to you."
+                colors={colors}
+              />
+
+              <View
+                style={[
+                  styles.searchingStatus,
+                  { backgroundColor: colors.successSoft },
+                ]}
+              >
+                <View
+                  style={[
+                    styles.statusDot,
+                    { backgroundColor: colors.success },
+                  ]}
+                />
+
+                <Text
+                  style={[
+                    styles.searchingStatusText,
+                    { color: colors.success },
+                  ]}
+                >
+                  YOU ARE ONLINE
+                </Text>
+              </View>
+            </View>
+          ) : null}
+
+          {/* OFFLINE */}
+
+          {dashboardState === "offline" ? (
+            <View
+              style={[
+                styles.stateCard,
+                { borderColor: colors.border },
+              ]}
+            >
+              <View
+                style={[
+                  styles.stateIcon,
+                  { backgroundColor: colors.blueSoft },
+                ]}
+              >
+                <Ionicons
+                  name="power-outline"
+                  size={25}
+                  color={colors.blue}
+                />
+              </View>
+
+              <SectionHeading
+                eyebrow="Availability"
+                title="Ready to start working?"
+                subtitle="Go online to make yourself available for eligible errands."
+                colors={colors}
+              />
+
+              <PrimaryButton
+                label="Go online"
+                icon="radio"
+                loading={availabilityBusy}
+                disabled={!canChangeAvailability}
+                onPress={() => void toggleAvailability()}
+                backgroundColor={colors.success}
+              />
+            </View>
+          ) : null}
+
+          {/* ERROR NOTICES */}
+
+          {error ? (
+            <View
+              style={[
+                styles.errorNotice,
+                { backgroundColor: colors.dangerSoft },
+              ]}
+            >
+              <Ionicons
+                name="alert-circle-outline"
+                size={19}
+                color={colors.red}
+              />
+
+              <Text
+                style={[
+                  styles.errorNoticeText,
+                  { color: colors.red },
+                ]}
+              >
+                {error}
+              </Text>
+
               <Pressable
                 accessibilityRole="button"
-                accessibilityLabel="Sign out of SaMi Runner"
-                disabled={signingOut || jobBusyId !== ""}
-                onPress={signOut}
+                accessibilityLabel="Dismiss error"
+                onPress={() => setError("")}
                 hitSlop={8}
-                style={({ pressed }) => [
-                  styles.signOutRow,
+              >
+                <Ionicons
+                  name="close"
+                  size={19}
+                  color={colors.red}
+                />
+              </Pressable>
+            </View>
+          ) : null}
+
+          {/* MAP ERROR */}
+
+          {mapError ? (
+            <View
+              style={[
+                styles.errorNotice,
+                { backgroundColor: colors.dangerSoft },
+              ]}
+            >
+              <Ionicons
+                name="map-outline"
+                size={19}
+                color={colors.red}
+              />
+
+              <Text
+                style={[
+                  styles.errorNoticeText,
+                  { color: colors.red },
+                ]}
+              >
+                Mapbox: {mapError}
+              </Text>
+
+              <Pressable
+                accessibilityRole="button"
+                accessibilityLabel="Dismiss map error"
+                onPress={() => setMapError("")}
+                hitSlop={8}
+              >
+                <Ionicons
+                  name="close"
+                  size={19}
+                  color={colors.red}
+                />
+              </Pressable>
+            </View>
+          ) : null}
+
+          {/* MAP / LOCATION STATUS */}
+
+          <View
+            style={[
+              styles.mapInformation,
+              { borderColor: colors.border },
+            ]}
+          >
+            <View style={styles.mapInformationRow}>
+              <Ionicons
+                name="map-outline"
+                size={17}
+                color={colors.blue}
+              />
+
+              <Text
+                style={[
+                  styles.mapInformationTitle,
+                  { color: colors.text },
+                ]}
+              >
+                SaMi Mapbox
+              </Text>
+
+              <View style={{ flex: 1 }} />
+
+              <View
+                style={[
+                  styles.mapReadyStatus,
                   {
-                    borderColor: colors.border,
-                    opacity:
-                      pressed || signingOut || jobBusyId !== ""
-                        ? 0.55
-                        : 1,
+                    backgroundColor: mapReady
+                      ? colors.successSoft
+                      : colors.warningSoft,
                   },
                 ]}
               >
-                {signingOut ? (
-                  <ActivityIndicator
-                    size="small"
-                    color={colors.textMuted}
-                  />
-                ) : (
-                  <Ionicons
-                    name="log-out-outline"
-                    size={17}
-                    color={colors.textMuted}
-                  />
-                )}
+                <View
+                  style={[
+                    styles.statusDot,
+                    {
+                      backgroundColor: mapReady
+                        ? colors.success
+                        : colors.warning,
+                    },
+                  ]}
+                />
+
                 <Text
                   style={[
-                    styles.signOutText,
+                    styles.mapReadyStatusText,
+                    {
+                      color: mapReady
+                        ? colors.success
+                        : colors.warning,
+                    },
+                  ]}
+                >
+                  {mapReady ? "READY" : "CONNECTING"}
+                </Text>
+              </View>
+            </View>
+
+            <Text
+              style={[
+                styles.mapInformationDescription,
+                { color: colors.textMuted },
+              ]}
+            >
+              {navigationMode === "free_drive"
+                ? "Enhanced location matching is active."
+                : location?.enhanced
+                  ? "Your latest position is map matched."
+                  : "Live positioning quality depends on GPS signal and device conditions."}
+            </Text>
+          </View>
+
+          {/* AVAILABILITY CONTROL */}
+
+          {authorized &&
+          dashboardState !== "completion" &&
+          dashboardState !== "active" ? (
+            <View
+              style={[
+                styles.availabilityFooter,
+                { borderColor: colors.border },
+              ]}
+            >
+              <View style={styles.availabilityCopy}>
+                <Text
+                  style={[
+                    styles.availabilityTitle,
+                    { color: colors.text },
+                  ]}
+                >
+                  {isOnline ? "You're online" : "You're offline"}
+                </Text>
+
+                <Text
+                  style={[
+                    styles.availabilitySubtitle,
                     { color: colors.textMuted },
                   ]}
                 >
-                  {signingOut ? "Signing out…" : "Sign out"}
+                  {isOnline
+                    ? "You can receive eligible errands."
+                    : "You won't receive errand offers while offline."}
                 </Text>
+              </View>
+
+              <Pressable
+                accessibilityRole="switch"
+                accessibilityState={{ checked: isOnline }}
+                accessibilityLabel="Runner availability"
+                disabled={!canChangeAvailability}
+                onPress={() => void toggleAvailability()}
+                style={({ pressed }) => [
+                  styles.availabilitySwitch,
+                  {
+                    backgroundColor: isOnline
+                      ? colors.success
+                      : colors.borderStrong,
+                    opacity: canChangeAvailability
+                      ? pressed
+                        ? 0.75
+                        : 1
+                      : 0.5,
+                  },
+                ]}
+              >
+                {availabilityBusy ? (
+                  <ActivityIndicator color="#FFFFFF" size="small" />
+                ) : (
+                  <View
+                    style={[
+                      styles.availabilitySwitchKnob,
+                      {
+                        alignSelf: isOnline
+                          ? "flex-end"
+                          : "flex-start",
+                      },
+                    ]}
+                  />
+                )}
               </Pressable>
-            </Animated.View>
-          </ScrollView>
-        </View>
-      </Animated.View>
+            </View>
+          ) : null}
+
+          {/* PROFILE AND SIGN OUT */}
+
+          <View style={styles.accountFooter}>
+            <Pressable
+              accessibilityRole="button"
+              onPress={goToProfile}
+              style={[
+                styles.accountAction,
+                { borderColor: colors.border },
+              ]}
+            >
+              <Ionicons
+                name="person-circle-outline"
+                size={20}
+                color={colors.textMuted}
+              />
+
+              <Text
+                style={[
+                  styles.accountActionText,
+                  { color: colors.text },
+                ]}
+              >
+                Runner profile
+              </Text>
+
+              <Ionicons
+                name="chevron-forward"
+                size={17}
+                color={colors.textMuted}
+              />
+            </Pressable>
+
+            <Pressable
+              accessibilityRole="button"
+              disabled={signingOut}
+              onPress={signOut}
+              style={styles.signOutAction}
+            >
+              {signingOut ? (
+                <ActivityIndicator
+                  size="small"
+                  color={colors.red}
+                />
+              ) : (
+                <Ionicons
+                  name="log-out-outline"
+                  size={18}
+                  color={colors.red}
+                />
+              )}
+
+              <Text
+                style={[
+                  styles.signOutText,
+                  { color: colors.red },
+                ]}
+              >
+                Sign out
+              </Text>
+            </Pressable>
+          </View>
+        </ScrollView>
+      </View>
     </View>
   );
 }
 
-/* -------------------------------------------------------------------------- */
-/* STYLES                                                                     */
-/* -------------------------------------------------------------------------- */
-
 const styles = StyleSheet.create({
   root: {
     flex: 1,
-    backgroundColor: "#E9EEF5",
+    backgroundColor: "#F3F6FA",
   },
 
-  dimLayer: {
-    backgroundColor: "rgba(0,5,53,0.24)",
-  },
-
-  markerWrap: {
-    width: 60,
-    height: 60,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-
-  pulseRing: {
-    position: "absolute",
-    width: 60,
-    height: 60,
-    borderRadius: 30,
-    borderWidth: 2,
-  },
-
-  centerDot: {
-    width: 32,
-    height: 32,
-    borderRadius: 16,
-    borderWidth: 3,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-
-  centerDotInner: {
-    width: 10,
-    height: 10,
-    borderRadius: 5,
-    backgroundColor: "#FFFFFF",
-  },
-
-  centerLabelWrap: {
-    position: "absolute",
-    top: "34%",
-    left: 0,
-    right: 0,
-    alignItems: "center",
-    marginTop: 44,
-  },
-
-  centerLabel: {
-    paddingHorizontal: 12,
-    paddingVertical: 7,
-    borderRadius: 22,
-    borderWidth: 1,
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 7,
-  },
-
-  centerLabelDot: {
-    width: 7,
-    height: 7,
-    borderRadius: 4,
-  },
-
-  centerLabelText: {
-    fontSize: 11,
-    fontWeight: "800",
-    letterSpacing: 0.2,
-  },
-
-  topBar: {
+  header: {
     position: "absolute",
     top: 0,
     left: 0,
     right: 0,
+    zIndex: 10,
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
-    zIndex: 10,
+    gap: 10,
   },
 
-  topBarLeft: {
-    flexShrink: 1,
-    minWidth: 0,
-  },
-
-  brandChip: {
-    alignSelf: "flex-start",
+  brandCard: {
+    minHeight: 55,
     flexDirection: "row",
     alignItems: "center",
-    gap: 11,
-    paddingHorizontal: 12,
-    paddingVertical: 9,
-    borderRadius: 16,
+    gap: 13,
+    paddingHorizontal: 13,
+    paddingVertical: 8,
+    borderRadius: 17,
     borderWidth: 1,
-    shadowColor: "#000000",
-    shadowOpacity: 0.07,
-    shadowRadius: 8,
+    elevation: 5,
+    shadowColor: "#000",
     shadowOffset: { width: 0, height: 3 },
-    elevation: 2,
+    shadowOpacity: 0.12,
+    shadowRadius: 8,
   },
 
   brandCopy: {
     gap: 2,
   },
 
-  brand: {
+  brandTitle: {
     fontSize: 17,
     fontWeight: "900",
     fontStyle: "italic",
-    letterSpacing: -0.5,
+    letterSpacing: -0.45,
   },
 
-  brandMini: {
+  brandTagline: {
     fontSize: 7,
     fontWeight: "900",
-    letterSpacing: 1.8,
+    letterSpacing: 1.45,
   },
 
-  statusChip: {
+  statusPill: {
     flexDirection: "row",
     alignItems: "center",
-    gap: 5,
+    gap: 6,
+    paddingHorizontal: 9,
+    paddingVertical: 7,
     borderRadius: 20,
-    paddingHorizontal: 8,
-    paddingVertical: 5,
   },
 
-  statusChipDot: {
-    width: 6,
-    height: 6,
-    borderRadius: 3,
+  statusDot: {
+    width: 7,
+    height: 7,
+    borderRadius: 4,
   },
 
-  statusChipText: {
+  statusPillText: {
     fontSize: 9,
     fontWeight: "900",
-    letterSpacing: 0.4,
+    letterSpacing: 0.5,
   },
 
-  topBarActions: {
+  headerActions: {
     flexDirection: "row",
     gap: 8,
   },
@@ -2389,198 +2264,280 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     alignItems: "center",
     justifyContent: "center",
-    shadowColor: "#000000",
-    shadowOpacity: 0.06,
-    shadowRadius: 7,
+    elevation: 4,
+    shadowColor: "#000",
     shadowOffset: { width: 0, height: 2 },
-    elevation: 2,
+    shadowOpacity: 0.1,
+    shadowRadius: 6,
   },
 
   mapControls: {
     position: "absolute",
-    right: 18,
-    zIndex: 5,
+    zIndex: 8,
   },
 
-  mapControl: {
-    width: 44,
-    height: 44,
+  locationIndicator: {
+    position: "absolute",
+    left: 16,
+    zIndex: 7,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+    paddingHorizontal: 11,
+    paddingVertical: 9,
     borderRadius: 14,
     borderWidth: 1,
-    alignItems: "center",
-    justifyContent: "center",
-    shadowColor: "#000000",
-    shadowOpacity: 0.07,
-    shadowRadius: 8,
+    elevation: 3,
+    shadowColor: "#000",
     shadowOffset: { width: 0, height: 2 },
-    elevation: 2,
+    shadowOpacity: 0.1,
+    shadowRadius: 5,
   },
 
-  sheetWrap: {
+  locationIndicatorDot: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+  },
+
+  locationIndicatorCopy: {
+    gap: 1,
+  },
+
+  locationIndicatorTitle: {
+    fontSize: 10,
+    fontWeight: "900",
+  },
+
+  locationIndicatorSubtitle: {
+    fontSize: 9,
+    fontWeight: "700",
+  },
+
+  bottomWorkspace: {
     position: "absolute",
     left: 0,
     right: 0,
     bottom: 0,
-  },
-
-  sheet: {
-    borderTopLeftRadius: 30,
-    borderTopRightRadius: 30,
-    paddingTop: 9,
-    maxHeight: "79%",
+    borderTopLeftRadius: 27,
+    borderTopRightRadius: 27,
+    borderWidth: 1,
+    borderBottomWidth: 0,
     overflow: "hidden",
-    shadowColor: "#000000",
-    shadowOpacity: 0.16,
-    shadowRadius: 20,
+    elevation: 16,
+    shadowColor: "#000",
     shadowOffset: { width: 0, height: -5 },
-    elevation: 12,
+    shadowOpacity: 0.15,
+    shadowRadius: 16,
   },
 
-  handle: {
-    width: 40,
+  sheetHandle: {
+    width: 42,
     height: 4,
-    borderRadius: 3,
+    borderRadius: 5,
     alignSelf: "center",
-    marginBottom: 11,
+    marginTop: 9,
+    marginBottom: 3,
   },
 
-  sheetScroll: {
-    paddingHorizontal: 18,
-    paddingTop: 5,
-    paddingBottom: 12,
-    gap: 14,
+  sheetContent: {
+    paddingHorizontal: 17,
+    paddingTop: 13,
+    paddingBottom: 16,
+    gap: 15,
   },
 
-  section: {
-    gap: 13,
-  },
-
-  stateSection: {
-    gap: 13,
-    paddingTop: 5,
-  },
-
-  centerPad: {
-    paddingVertical: 32,
+  workspaceHeader: {
+    flexDirection: "row",
     alignItems: "center",
-    justifyContent: "center",
+    justifyContent: "space-between",
     gap: 12,
   },
 
-  centerText: {
-    fontSize: 13,
-    lineHeight: 20,
-    fontWeight: "600",
+  workspaceGreeting: {
+    flex: 1,
+    gap: 3,
   },
 
-  sheetHeadingRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 11,
+  workspaceEyebrow: {
+    fontSize: 9,
+    fontWeight: "900",
+    letterSpacing: 1.2,
   },
 
-  sheetIconChip: {
-    width: 42,
-    height: 42,
+  workspaceTitle: {
+    fontSize: 22,
+    lineHeight: 27,
+    fontWeight: "900",
+    letterSpacing: -0.65,
+  },
+
+  workspaceSubtitle: {
+    fontSize: 12,
+    lineHeight: 18,
+    fontWeight: "500",
+  },
+
+  mapReadyBadge: {
+    width: 43,
+    height: 43,
     borderRadius: 14,
     alignItems: "center",
     justifyContent: "center",
   },
 
-  sheetEyebrow: {
-    fontSize: 9.5,
+  sectionHeading: {
+    gap: 4,
+  },
+
+  eyebrow: {
+    fontSize: 9,
     fontWeight: "900",
-    letterSpacing: 1.1,
-    marginBottom: 3,
+    letterSpacing: 1.05,
   },
 
-  sheetTitle: {
-    fontSize: 20,
-    lineHeight: 26,
+  sectionTitle: {
+    fontSize: 18,
+    lineHeight: 23,
     fontWeight: "900",
-    letterSpacing: -0.5,
+    letterSpacing: -0.35,
   },
 
-  sheetSubtitle: {
-    fontSize: 13,
-    lineHeight: 20,
+  sectionSubtitle: {
+    fontSize: 12,
+    lineHeight: 18,
   },
 
-  statRow: {
-    flexDirection: "row",
-    gap: 10,
-  },
-
-  statCard: {
-    flex: 1,
+  stateCard: {
     borderWidth: 1,
-    borderRadius: 16,
-    padding: 12,
-    gap: 6,
+    borderRadius: 19,
+    padding: 16,
+    gap: 14,
   },
 
-  statIcon: {
-    width: 31,
-    height: 31,
-    borderRadius: 10,
+  stateIcon: {
+    width: 46,
+    height: 46,
+    borderRadius: 15,
     alignItems: "center",
     justifyContent: "center",
   },
 
-  statValue: {
-    fontSize: 22,
-    fontWeight: "900",
-    letterSpacing: -0.5,
-  },
-
-  statLabel: {
-    fontSize: 10.5,
-    fontWeight: "700",
-  },
-
-  countBadge: {
-    minWidth: 31,
-    height: 31,
-    borderRadius: 11,
-    alignItems: "center",
-    justifyContent: "center",
-    paddingHorizontal: 8,
-  },
-
-  countBadgeText: {
-    fontSize: 13,
+  stateTitle: {
+    fontSize: 17,
     fontWeight: "900",
   },
 
-  availabilityToggle: {
-    minHeight: 56,
-    borderRadius: 16,
+  stateDescription: {
+    fontSize: 12,
+    lineHeight: 19,
+  },
+
+  primaryButton: {
+    minHeight: 51,
+    borderRadius: 14,
+    paddingHorizontal: 16,
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "center",
     gap: 9,
   },
 
-  availabilityToggleText: {
-    fontSize: 14,
+  primaryButtonText: {
+    fontSize: 13,
     fontWeight: "900",
-    letterSpacing: 0.7,
+    letterSpacing: 0.05,
   },
 
-  routeBlock: {
-    borderWidth: 1,
-    borderRadius: 15,
-    padding: 13,
-    gap: 0,
-  },
-
-  routeRow: {
+  noticeCard: {
     flexDirection: "row",
     alignItems: "flex-start",
+    gap: 11,
+    padding: 15,
+    borderRadius: 16,
+    borderWidth: 1,
+  },
+
+  noticeCopy: {
+    flex: 1,
+    gap: 4,
+  },
+
+  noticeTitle: {
+    fontSize: 14,
+    fontWeight: "900",
+  },
+
+  noticeDescription: {
+    fontSize: 12,
+    lineHeight: 18,
+  },
+
+  jobCard: {
+    borderWidth: 1,
+    borderRadius: 19,
+    padding: 15,
+    gap: 13,
+  },
+
+  jobCardHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
     gap: 10,
   },
 
-  routeIconWrap: {
+  jobTypeCopy: {
+    gap: 3,
+  },
+
+  jobCode: {
+    fontSize: 12,
+    fontWeight: "900",
+    letterSpacing: 0.5,
+  },
+
+  jobStatus: {
+    borderRadius: 10,
+    paddingHorizontal: 9,
+    paddingVertical: 7,
+  },
+
+  jobStatusText: {
+    fontSize: 9,
+    fontWeight: "900",
+  },
+
+  jobTitle: {
+    fontSize: 19,
+    lineHeight: 25,
+    fontWeight: "900",
+  },
+
+  jobDescription: {
+    fontSize: 12,
+    lineHeight: 18,
+  },
+
+  routeCard: {
+    borderWidth: 1,
+    borderRadius: 15,
+    padding: 12,
+    gap: 0,
+  },
+
+  routePoint: {
+    flexDirection: "row",
+    alignItems: "stretch",
+    gap: 10,
+  },
+
+  routePointIconColumn: {
+    width: 29,
+    alignItems: "center",
+  },
+
+  routePointIcon: {
     width: 29,
     height: 29,
     borderRadius: 10,
@@ -2588,46 +2545,114 @@ const styles = StyleSheet.create({
     justifyContent: "center",
   },
 
-  routeLabel: {
-    fontSize: 9.5,
-    fontWeight: "900",
-    letterSpacing: 0.8,
-    marginBottom: 3,
+  routeConnector: {
+    width: 1,
+    height: 22,
+    marginVertical: 3,
   },
 
-  routeValue: {
-    fontSize: 13,
-    lineHeight: 19,
+  routePointCopy: {
+    flex: 1,
+    paddingTop: 2,
+    paddingBottom: 11,
+    gap: 3,
+  },
+
+  routePointLabel: {
+    fontSize: 8,
+    fontWeight: "900",
+    letterSpacing: 0.9,
+  },
+
+  routePointValue: {
+    fontSize: 12,
+    lineHeight: 17,
     fontWeight: "700",
   },
 
-  routeConnector: {
-    width: 1,
-    height: 17,
-    marginLeft: 14,
-    marginVertical: 2,
-  },
-
-  payoutRow: {
+  jobMetrics: {
     flexDirection: "row",
-    alignItems: "center",
     justifyContent: "space-between",
-    paddingTop: 12,
-    marginTop: 12,
+    gap: 12,
     borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopColor: "#00000020",
+    paddingTop: 12,
   },
 
-  payoutLabel: {
-    fontSize: 10,
-    fontWeight: "800",
+  jobMetric: {
+    flex: 1,
+    gap: 4,
+  },
+
+  jobMetricRight: {
+    alignItems: "flex-end",
+    gap: 4,
+  },
+
+  jobMetricLabel: {
+    fontSize: 9,
+    fontWeight: "900",
     letterSpacing: 0.6,
   },
 
-  payoutValue: {
-    fontSize: 19,
+  jobPayout: {
+    fontSize: 18,
     fontWeight: "900",
-    letterSpacing: -0.3,
-    marginTop: 2,
+  },
+
+  jobDistance: {
+    fontSize: 15,
+    fontWeight: "900",
+  },
+
+  completionCode: {
+    fontSize: 13,
+    fontWeight: "900",
+  },
+
+  offerSection: {
+    gap: 12,
+  },
+
+  offerCard: {
+    borderWidth: 1,
+    borderRadius: 18,
+    padding: 14,
+    gap: 11,
+  },
+
+  offerHeader: {
+    flexDirection: "row",
+    alignItems: "flex-start",
+    justifyContent: "space-between",
+    gap: 10,
+  },
+
+  offerCodeCopy: {
+    flex: 1,
+    gap: 4,
+  },
+
+  offerTitle: {
+    fontSize: 16,
+    lineHeight: 21,
+    fontWeight: "900",
+  },
+
+  offerPayout: {
+    fontSize: 14,
+    fontWeight: "900",
+  },
+
+  offerDescription: {
+    fontSize: 12,
+    lineHeight: 18,
+  },
+
+  offerFooter: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
   },
 
   distanceChip: {
@@ -2637,196 +2662,155 @@ const styles = StyleSheet.create({
   },
 
   distanceText: {
-    fontSize: 11,
+    fontSize: 10,
     fontWeight: "700",
   },
 
-  offerCard: {
-    borderWidth: 1,
-    borderRadius: 17,
-    padding: 14,
-    gap: 9,
+  categoryText: {
+    fontSize: 10,
+    fontWeight: "800",
   },
 
-  offerTop: {
+  searchingIcon: {
+    width: 46,
+    height: 46,
+    borderRadius: 15,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+
+  searchingStatus: {
+    alignSelf: "flex-start",
     flexDirection: "row",
     alignItems: "center",
-    justifyContent: "space-between",
-    gap: 8,
+    gap: 7,
+    borderRadius: 20,
+    paddingHorizontal: 11,
+    paddingVertical: 8,
   },
 
-  offerCode: {
-    fontSize: 10,
+  searchingStatusText: {
+    fontSize: 9,
     fontWeight: "900",
-    letterSpacing: 0.8,
+    letterSpacing: 0.7,
   },
 
-  offerPayout: {
-    fontSize: 16,
-    fontWeight: "900",
-  },
-
-  offerTitle: {
-    fontSize: 15,
-    lineHeight: 20,
-    fontWeight: "900",
-  },
-
-  offerRoute: {
+  errorNotice: {
     flexDirection: "row",
     alignItems: "flex-start",
     gap: 8,
-  },
-
-  offerRouteText: {
-    flex: 1,
-    fontSize: 12,
-    lineHeight: 18,
-    fontWeight: "600",
-  },
-
-  offerDistance: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 5,
-    marginTop: 2,
-  },
-
-  offerDistanceText: {
-    fontSize: 11,
-    fontWeight: "700",
-  },
-
-  offerAcceptButton: {
-    marginTop: 4,
-    minHeight: 47,
-    borderRadius: 12,
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "center",
-    gap: 8,
-  },
-
-  offerAcceptText: {
-    color: "#FFFFFF",
-    fontSize: 13.5,
-    fontWeight: "900",
-    letterSpacing: -0.1,
-  },
-
-  jobStatusPill: {
-    paddingHorizontal: 9,
-    paddingVertical: 5,
-    borderRadius: 10,
-    maxWidth: 115,
-  },
-
-  jobStatusText: {
-    fontSize: 9.5,
-    fontWeight: "900",
-    textAlign: "center",
-  },
-
-  emptyState: {
-    borderWidth: 1,
-    borderRadius: 16,
-    padding: 18,
-    alignItems: "center",
-    gap: 8,
-  },
-
-  emptyTitle: {
-    fontSize: 14,
-    fontWeight: "900",
-    textAlign: "center",
-  },
-
-  emptyText: {
-    fontSize: 12,
-    lineHeight: 18,
-    textAlign: "center",
-  },
-
-  inlineNotice: {
     padding: 12,
-    borderRadius: 12,
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 8,
+    borderRadius: 13,
   },
 
-  inlineNoticeText: {
+  errorNoticeText: {
     flex: 1,
-    fontSize: 11.5,
+    fontSize: 11,
     lineHeight: 17,
     fontWeight: "700",
   },
 
-  primaryAction: {
-    minHeight: 54,
-    borderRadius: 15,
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "center",
-    gap: 9,
-    paddingHorizontal: 16,
-  },
-
-  primaryActionText: {
-    color: "#FFFFFF",
-    fontSize: 14,
-    fontWeight: "900",
-    letterSpacing: -0.2,
-  },
-
-  secondaryAction: {
-    minHeight: 48,
-    borderRadius: 13,
+  mapInformation: {
     borderWidth: 1,
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "center",
-    gap: 8,
-    paddingHorizontal: 14,
-  },
-
-  secondaryActionText: {
-    fontSize: 12.5,
-    fontWeight: "900",
-  },
-
-  profileLink: {
-    borderWidth: 1,
-    borderRadius: 15,
+    borderRadius: 14,
     padding: 12,
+    gap: 8,
+  },
+
+  mapInformationRow: {
     flexDirection: "row",
     alignItems: "center",
-    gap: 10,
+    gap: 7,
   },
 
-  profileLinkIcon: {
-    width: 34,
-    height: 34,
-    borderRadius: 11,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-
-  profileLinkTitle: {
-    fontSize: 12.5,
+  mapInformationTitle: {
+    fontSize: 11,
     fontWeight: "900",
   },
 
-  profileLinkSubtitle: {
-    fontSize: 10.5,
-    marginTop: 3,
+  mapInformationDescription: {
+    fontSize: 10,
+    lineHeight: 16,
   },
 
-  signOutRow: {
-    minHeight: 46,
+  mapReadyStatus: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 5,
+    borderRadius: 10,
+    paddingHorizontal: 8,
+    paddingVertical: 5,
+  },
+
+  mapReadyStatusText: {
+    fontSize: 8,
+    fontWeight: "900",
+    letterSpacing: 0.4,
+  },
+
+  availabilityFooter: {
     borderTopWidth: StyleSheet.hairlineWidth,
-    paddingTop: 11,
-    marginTop: 1,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    paddingVertical: 13,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: 12,
+  },
+
+  availabilityCopy: {
+    flex: 1,
+    gap: 3,
+  },
+
+  availabilityTitle: {
+    fontSize: 13,
+    fontWeight: "900",
+  },
+
+  availabilitySubtitle: {
+    fontSize: 10,
+    lineHeight: 15,
+  },
+
+  availabilitySwitch: {
+    width: 53,
+    height: 31,
+    borderRadius: 20,
+    padding: 4,
+    justifyContent: "center",
+  },
+
+  availabilitySwitchKnob: {
+    width: 23,
+    height: 23,
+    borderRadius: 12,
+    backgroundColor: "#FFFFFF",
+    elevation: 2,
+  },
+
+  accountFooter: {
+    gap: 8,
+  },
+
+  accountAction: {
+    minHeight: 45,
+    borderWidth: 1,
+    borderRadius: 13,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 9,
+    paddingHorizontal: 12,
+  },
+
+  accountActionText: {
+    flex: 1,
+    fontSize: 11,
+    fontWeight: "800",
+  },
+
+  signOutAction: {
+    minHeight: 42,
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "center",
@@ -2834,31 +2818,7 @@ const styles = StyleSheet.create({
   },
 
   signOutText: {
-    fontSize: 12,
-    fontWeight: "800",
-  },
-
-  errorCard: {
-    flexDirection: "row",
-    alignItems: "flex-start",
-    borderRadius: 13,
-    padding: 12,
-    gap: 9,
-  },
-
-  errorText: {
-    flex: 1,
-    fontSize: 12,
-    lineHeight: 18,
-    fontWeight: "600",
-  },
-
-  disabled: {
-    opacity: 0.45,
-  },
-
-  pressed: {
-    opacity: 0.85,
-    transform: [{ scale: 0.985 }],
+    fontSize: 11,
+    fontWeight: "900",
   },
 });

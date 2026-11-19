@@ -1,5 +1,13 @@
-
 import type { StyleProp, ViewStyle } from "react-native";
+
+export type SaMiMapCameraMode =
+  | "free"
+  | "follow"
+  | "navigation";
+
+export type SaMiPuckBearing =
+  | "course"
+  | "heading";
 
 export type SaMiMapReadyEvent = {
   ready: boolean;
@@ -22,6 +30,21 @@ export type SaMiMapTapEvent = {
   longitude: number;
 };
 
+export type SaMiMapLocationEvent = {
+  latitude: number;
+  longitude: number;
+  bearing: number | null;
+  speedMetersPerSecond: number | null;
+  horizontalAccuracyMeters: number | null;
+  timestamp: number;
+  enhanced: boolean;
+};
+
+export type SaMiNavigationStatusEvent = {
+  active: boolean;
+  mode: "free_drive" | "active_guidance" | "idle";
+};
+
 export type SaMiMapboxViewProps = {
   style?: StyleProp<ViewStyle>;
 
@@ -38,6 +61,11 @@ export type SaMiMapboxViewProps = {
   showCompass?: boolean;
   showScaleBar?: boolean;
 
+  navigationActive?: boolean;
+  cameraMode?: SaMiMapCameraMode;
+  puckBearing?: SaMiPuckBearing;
+  locationPulsingEnabled?: boolean;
+
   onMapReady?: (event: {
     nativeEvent: SaMiMapReadyEvent;
   }) => void;
@@ -52,5 +80,13 @@ export type SaMiMapboxViewProps = {
 
   onMapTap?: (event: {
     nativeEvent: SaMiMapTapEvent;
+  }) => void;
+
+  onLocationChanged?: (event: {
+    nativeEvent: SaMiMapLocationEvent;
+  }) => void;
+
+  onNavigationStatusChanged?: (event: {
+    nativeEvent: SaMiNavigationStatusEvent;
   }) => void;
 };

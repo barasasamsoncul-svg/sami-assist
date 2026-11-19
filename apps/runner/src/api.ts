@@ -71,14 +71,29 @@ export type RunnerMe = RunnerProfile & {
   };
 };
 
+/**
+ * Geographic coordinates returned by the Runner jobs API.
+ * Coordinates remain nullable because older or incomplete
+ * errand records may not have a verified location.
+ */
+export type RunnerCoordinates = {
+  latitude: number | null;
+  longitude: number | null;
+};
+
 export type RunnerJob = {
   id: string;
   publicCode: string;
   title: string;
   category: string;
   description: string;
+
   pickupLabel: string;
+  pickupCoordinates: RunnerCoordinates;
+
   destinationLabel: string;
+  destinationCoordinates: RunnerCoordinates;
+
   distanceKm: number | null;
   runnerPayoutAmount: number | null;
   currency: string;
