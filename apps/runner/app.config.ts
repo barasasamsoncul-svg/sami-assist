@@ -39,42 +39,14 @@ export default ({ config }: ConfigContext): ExpoConfig => {
     );
   }
 
-  // Keep Google Maps configured temporarily because the current dashboard
-  // still renders react-native-maps. It will be removed during map cutover.
-  const googleMapsApiKey =
-    process.env.GOOGLE_MAPS_API_KEY?.trim();
+  const plugins: NonNullable<ExpoConfig["plugins"]> = [
+    ...(config.plugins ?? []),
+  ];
 
-  const isAndroidEasBuild =
-    process.env.EAS_BUILD === "true" &&
-    process.env.EAS_BUILD_PLATFORM === "android";
+  const mapboxPlugin = "./plugins/withSamiMapboxNative";
 
-  if (isAndroidEasBuild && !googleMapsApiKey) {
-    throw new Error(
-      "GOOGLE_MAPS_API_KEY is missing from the SaMi Runner Android EAS build environment."
-    );
-  }
-
-  const plugins: NonNullable<ExpoConfig["plugins"]> = (
-    config.plugins ?? []
-  ).filter((plugin) => {
-    if (typeof plugin === "string") {
-      return plugin !== "react-native-maps";
-    }
-
-    return plugin[0] !== "react-native-maps";
-  });
-
-  if (!plugins.includes("./plugins/withSamiMapboxNative")) {
-    plugins.push("./plugins/withSamiMapboxNative");
-  }
-
-  if (googleMapsApiKey) {
-    plugins.push([
-      "react-native-maps",
-      {
-        androidGoogleMapsApiKey: googleMapsApiKey,
-      },
-    ]);
+  if (!plugins.includes(mapboxPlugin)) {
+    plugins.push(mapboxPlugin);
   }
 
   const android = {

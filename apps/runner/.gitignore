@@ -5,3 +5,7 @@
 
 # Ignore generated Android build output inside the custom Mapbox module.
 /modules/sami-mapbox/android/build/
+
+# Ignore Expo local state and generated JavaScript exports.
+/.expo/
+/dist/
