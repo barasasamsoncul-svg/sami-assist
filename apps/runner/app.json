@@ -1,3 +1,4 @@
+
 {
   "expo": {
     "name": "SaMi Runner",
@@ -5,7 +6,10 @@
     "scheme": "samirunner",
     "version": "1.0.0",
     "orientation": "portrait",
-    "platforms": ["android", "ios"],
+    "platforms": [
+      "android",
+      "ios"
+    ],
     "userInterfaceStyle": "light",
     "icon": "./assets/icon.png",
     "plugins": [
@@ -60,11 +64,17 @@
       "supportsTablet": false,
       "bundleIdentifier": "com.sami.runner",
       "backgroundColor": "#000535",
-      "deploymentTarget": "16.4"
+      "deploymentTarget": "16.4",
+      "infoPlist": {
+        "UIBackgroundModes": [
+          "audio",
+          "location"
+        ]
+      }
     },
     "android": {
       "package": "com.sami.runner",
-       "versionCode": 20,
+      "versionCode": 20,
       "permissions": [
         "ACCESS_COARSE_LOCATION",
         "ACCESS_FINE_LOCATION"

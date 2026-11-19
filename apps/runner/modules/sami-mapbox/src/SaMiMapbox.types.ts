@@ -9,6 +9,17 @@ export type SaMiPuckBearing =
   | "course"
   | "heading";
 
+export type SaMiRouteProfile =
+  | "driving-traffic"
+  | "cycling";
+
+export type SaMiRouteStatus =
+  | "idle"
+  | "waiting_for_location"
+  | "requesting"
+  | "active"
+  | "error";
+
 export type SaMiMapReadyEvent = {
   ready: boolean;
 };
@@ -45,6 +56,39 @@ export type SaMiNavigationStatusEvent = {
   mode: "free_drive" | "active_guidance" | "idle";
 };
 
+/**
+ * Progress and current maneuver information emitted by
+ * SaMiRouteGuidanceController through the native onRouteChanged event.
+ */
+export type SaMiRouteChangedEvent = {
+  status: SaMiRouteStatus;
+  destinationLabel?: string;
+  message?: string | null;
+
+  distanceRemainingMeters?: number;
+  durationRemainingSeconds?: number;
+  fractionTraveled?: number;
+
+  nextInstruction?: string | null;
+  secondaryInstruction?: string | null;
+  stepDistanceRemainingMeters?: number | null;
+  stepDurationRemainingSeconds?: number | null;
+  stepFractionTraveled?: number | null;
+
+  routeProgressState?: string | null;
+};
+
+/**
+ * Spoken maneuver text emitted by SaMiVoiceGuidanceController.
+ * ssmlAnnouncement may be null when Mapbox provides no SSML version.
+ */
+export type SaMiVoiceInstructionChangedEvent = {
+  instruction: string;
+  ssmlAnnouncement?: string | null;
+  muted: boolean;
+  timestamp: number;
+};
+
 export type SaMiMapboxViewProps = {
   style?: StyleProp<ViewStyle>;
 
@@ -65,6 +109,15 @@ export type SaMiMapboxViewProps = {
   cameraMode?: SaMiMapCameraMode;
   puckBearing?: SaMiPuckBearing;
   locationPulsingEnabled?: boolean;
+
+  hasRouteDestination?: boolean;
+  routeDestinationLatitude?: number;
+  routeDestinationLongitude?: number;
+  routeDestinationLabel?: string;
+  routeProfile?: SaMiRouteProfile;
+
+  /** True mutes speech while preserving visual maneuver instructions. */
+  voiceGuidanceMuted?: boolean;
 
   onMapReady?: (event: {
     nativeEvent: SaMiMapReadyEvent;
@@ -88,5 +141,13 @@ export type SaMiMapboxViewProps = {
 
   onNavigationStatusChanged?: (event: {
     nativeEvent: SaMiNavigationStatusEvent;
+  }) => void;
+
+  onRouteChanged?: (event: {
+    nativeEvent: SaMiRouteChangedEvent;
+  }) => void;
+
+  onVoiceInstructionChanged?: (event: {
+    nativeEvent: SaMiVoiceInstructionChangedEvent;
   }) => void;
 };

@@ -1,3 +1,4 @@
+
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   ActivityIndicator,
@@ -29,7 +30,12 @@ import {
 
 import { useRunnerTheme } from "@/theme";
 
-import { SaMiMapboxView } from "../../modules/sami-mapbox/src";
+import {
+  SaMiMapboxView,
+  type SaMiRouteChangedEvent,
+  type SaMiRouteProfile,
+  type SaMiVoiceInstructionChangedEvent,
+} from "../../modules/sami-mapbox/src";
 
 type JobsState = {
   offers: RunnerJob[];
@@ -39,6 +45,11 @@ type JobsState = {
 type Coordinates = {
   latitude: number;
   longitude: number;
+};
+
+type ActiveRouteTarget = Coordinates & {
+  label: string;
+  stage: "pickup" | "delivery";
 };
 
 type MapLocation = Coordinates & {
@@ -142,6 +153,55 @@ function distanceBetweenMeters(
     2 *
     Math.atan2(Math.sqrt(a), Math.sqrt(1 - a))
   );
+}
+
+function formatRouteDistance(
+  distanceMeters?: number | null,
+): string | null {
+  if (
+    distanceMeters == null ||
+    !Number.isFinite(distanceMeters) ||
+    distanceMeters < 0
+  ) {
+    return null;
+  }
+
+  if (distanceMeters < 1000) {
+    return `${Math.round(distanceMeters)} m`;
+  }
+
+  return `${(distanceMeters / 1000).toFixed(
+    distanceMeters < 10000 ? 1 : 0,
+  )} km`;
+}
+
+function formatRouteDuration(
+  durationSeconds?: number | null,
+): string | null {
+  if (
+    durationSeconds == null ||
+    !Number.isFinite(durationSeconds) ||
+    durationSeconds < 0
+  ) {
+    return null;
+  }
+
+  const totalMinutes = Math.ceil(durationSeconds / 60);
+
+  if (totalMinutes < 1) {
+    return "Less than 1 min";
+  }
+
+  if (totalMinutes < 60) {
+    return `${totalMinutes} min`;
+  }
+
+  const hours = Math.floor(totalMinutes / 60);
+  const remainingMinutes = totalMinutes % 60;
+
+  return remainingMinutes > 0
+    ? `${hours} hr ${remainingMinutes} min`
+    : `${hours} hr`;
 }
 
 function IconButton({
@@ -358,6 +418,17 @@ export default function RunnerDashboardScreen() {
   const [navigationMode, setNavigationMode] =
     useState<NavigationMode>("idle");
 
+  const [routeState, setRouteState] =
+    useState<SaMiRouteChangedEvent>({
+      status: "idle",
+    });
+
+  const [voiceInstruction, setVoiceInstruction] =
+    useState<SaMiVoiceInstructionChangedEvent | null>(null);
+
+  const [voiceGuidanceMuted, setVoiceGuidanceMuted] =
+    useState(false);
+
   const mountedRef = useRef(true);
   const loadInFlightRef = useRef(false);
   const logoutInFlightRef = useRef(false);
@@ -410,6 +481,103 @@ export default function RunnerDashboardScreen() {
     mode === "dark"
       ? MAPBOX_NIGHT_STYLE
       : MAPBOX_DAY_STYLE;
+
+  /*
+   * An accepted errand routes the Runner to pickup.
+   * Once started, the route target changes to delivery.
+   * Completion-submitted errands do not keep an active route.
+   */
+  const activeRouteTarget = useMemo<ActiveRouteTarget | null>(() => {
+    if (!activeJob) return null;
+
+    const isPickupStage = activeJob.status === "accepted";
+    const isDeliveryStage = activeJob.status === "in_progress";
+
+    if (!isPickupStage && !isDeliveryStage) {
+      return null;
+    }
+
+    const coordinates = isPickupStage
+      ? activeJob.pickupCoordinates
+      : activeJob.destinationCoordinates;
+
+    const latitude = coordinates?.latitude;
+    const longitude = coordinates?.longitude;
+
+    if (
+      typeof latitude !== "number" ||
+      typeof longitude !== "number" ||
+      !Number.isFinite(latitude) ||
+      !Number.isFinite(longitude) ||
+      latitude < -90 ||
+      latitude > 90 ||
+      longitude < -180 ||
+      longitude > 180
+    ) {
+      return null;
+    }
+
+    return {
+      latitude,
+      longitude,
+      label: isPickupStage
+        ? activeJob.pickupLabel
+        : activeJob.destinationLabel,
+      stage: isPickupStage ? "pickup" : "delivery",
+    };
+  }, [activeJob]);
+
+  const activeJobNeedsRoute =
+    activeJob?.status === "accepted" ||
+    activeJob?.status === "in_progress";
+
+  const routeCoordinatesMissing =
+    Boolean(activeJobNeedsRoute && !activeRouteTarget);
+
+  const routeProfile: SaMiRouteProfile =
+    runner?.vehicleType === "bike" ||
+    runner?.vehicleType === "bicycle"
+      ? "cycling"
+      : "driving-traffic";
+
+  const routeInstruction =
+    routeState.nextInstruction?.trim() ||
+    voiceInstruction?.instruction?.trim() ||
+    "Follow the highlighted route";
+
+  const routeSecondaryInstruction =
+    routeState.secondaryInstruction?.trim() || "";
+
+  const nextManeuverDistance =
+    formatRouteDistance(routeState.stepDistanceRemainingMeters);
+
+  const routeRemainingDistance =
+    formatRouteDistance(routeState.distanceRemainingMeters);
+
+  const routeRemainingTime =
+    formatRouteDuration(routeState.durationRemainingSeconds);
+
+  const routePanelStatusText =
+    routeState.status === "requesting"
+      ? "Calculating route"
+      : routeState.status === "waiting_for_location"
+        ? "Waiting for GPS"
+        : routeState.status === "error"
+          ? "Route unavailable"
+          : routeState.status === "active"
+            ? activeRouteTarget?.stage === "pickup"
+              ? "NAVIGATING TO PICKUP"
+              : "NAVIGATING TO DELIVERY"
+            : "Preparing navigation";
+
+  /*
+   * Clear old maneuver information when a new errand starts
+   * or when the active errand advances from pickup to delivery.
+   */
+  useEffect(() => {
+    setRouteState({ status: "idle" });
+    setVoiceInstruction(null);
+  }, [activeJob?.id, activeJob?.status]);
 
   /* ------------------------------------------------------------------ */
   /* NAVIGATION                                                          */
@@ -958,7 +1126,7 @@ export default function RunnerDashboardScreen() {
 
   const locationAccuracyLabel =
     location?.horizontalAccuracyMeters != null
-      ? `Â±${Math.round(location.horizontalAccuracyMeters)} m`
+      ? `±${Math.round(location.horizontalAccuracyMeters)} m`
       : "Waiting for GPS";
 
   const locationQualityLabel = location?.enhanced
@@ -996,9 +1164,29 @@ export default function RunnerDashboardScreen() {
           showCompass
           showScaleBar={false}
           navigationActive={Boolean(navigationActive)}
-          cameraMode={cameraFollowing ? "follow" : "free"}
+          cameraMode={
+            activeRouteTarget
+              ? "navigation"
+              : cameraFollowing
+                ? "follow"
+                : "free"
+          }
           puckBearing="course"
           locationPulsingEnabled={Boolean(isOnline && authorized)}
+          hasRouteDestination={Boolean(
+            authorized && activeRouteTarget,
+          )}
+          routeDestinationLatitude={
+            activeRouteTarget?.latitude ?? 0
+          }
+          routeDestinationLongitude={
+            activeRouteTarget?.longitude ?? 0
+          }
+          routeDestinationLabel={
+            activeRouteTarget?.label ?? ""
+          }
+          routeProfile={routeProfile}
+          voiceGuidanceMuted={voiceGuidanceMuted}
           onMapReady={() => {
             setMapReady(true);
             setMapError("");
@@ -1011,6 +1199,12 @@ export default function RunnerDashboardScreen() {
             setNavigationMode(
               event.nativeEvent.mode as NavigationMode,
             );
+          }}
+          onRouteChanged={(event) => {
+            setRouteState(event.nativeEvent);
+          }}
+          onVoiceInstructionChanged={(event) => {
+            setVoiceInstruction(event.nativeEvent);
           }}
         />
       </View>
@@ -1129,6 +1323,198 @@ export default function RunnerDashboardScreen() {
         </View>
       </View>
 
+      {/* TURN-BY-TURN MANEUVER CARD */}
+
+      {authorized && activeRouteTarget ? (
+        <View
+          style={[
+            styles.maneuverCard,
+            {
+              top: insets.top + 77,
+              backgroundColor: colors.surface,
+              borderColor: colors.border,
+            },
+          ]}
+        >
+          <View style={styles.maneuverMainRow}>
+            <View
+              style={[
+                styles.maneuverIcon,
+                { backgroundColor: colors.blueSoft },
+              ]}
+            >
+              <Ionicons
+                name="navigate"
+                size={25}
+                color={colors.blue}
+              />
+            </View>
+
+            <View style={styles.maneuverCopy}>
+              <Text
+                style={[
+                  styles.maneuverEyebrow,
+                  { color: colors.textMuted },
+                ]}
+              >
+                {routePanelStatusText}
+              </Text>
+
+              <Text
+                style={[
+                  styles.maneuverInstruction,
+                  { color: colors.text },
+                ]}
+                numberOfLines={2}
+              >
+                {routeState.status === "active"
+                  ? routeInstruction
+                  : routeState.status === "error"
+                    ? routeState.message ||
+                      "Route could not be calculated"
+                    : routeState.status === "requesting"
+                      ? "Finding the best route..."
+                      : "Waiting for your GPS position..."}
+              </Text>
+
+              {routeState.status === "active" &&
+              routeSecondaryInstruction ? (
+                <Text
+                  style={[
+                    styles.maneuverSecondary,
+                    { color: colors.textMuted },
+                  ]}
+                  numberOfLines={1}
+                >
+                  {routeSecondaryInstruction}
+                </Text>
+              ) : null}
+            </View>
+
+            <Pressable
+              accessibilityRole="switch"
+              accessibilityState={{
+                checked: !voiceGuidanceMuted,
+              }}
+              accessibilityLabel={
+                voiceGuidanceMuted
+                  ? "Unmute voice navigation"
+                  : "Mute voice navigation"
+              }
+              onPress={() => {
+                setVoiceGuidanceMuted((current) => !current);
+              }}
+              style={({ pressed }) => [
+                styles.voiceToggle,
+                {
+                  backgroundColor: voiceGuidanceMuted
+                    ? colors.paper
+                    : colors.blueSoft,
+                  borderColor: colors.border,
+                  opacity: pressed ? 0.7 : 1,
+                },
+              ]}
+            >
+              <Ionicons
+                name={
+                  voiceGuidanceMuted
+                    ? "volume-mute-outline"
+                    : "volume-high-outline"
+                }
+                size={21}
+                color={
+                  voiceGuidanceMuted
+                    ? colors.textMuted
+                    : colors.blue
+                }
+              />
+            </Pressable>
+          </View>
+
+          {routeState.status === "active" ? (
+            <View
+              style={[
+                styles.maneuverMetrics,
+                { borderTopColor: colors.border },
+              ]}
+            >
+              <View style={styles.maneuverMetric}>
+                <Text
+                  style={[
+                    styles.maneuverMetricLabel,
+                    { color: colors.textMuted },
+                  ]}
+                >
+                  NEXT TURN
+                </Text>
+
+                <Text
+                  style={[
+                    styles.maneuverMetricValue,
+                    { color: colors.text },
+                  ]}
+                >
+                  {nextManeuverDistance
+                    ? `In ${nextManeuverDistance}`
+                    : "Following route"}
+                </Text>
+              </View>
+
+              <View style={styles.maneuverMetric}>
+                <Text
+                  style={[
+                    styles.maneuverMetricLabel,
+                    { color: colors.textMuted },
+                  ]}
+                >
+                  REMAINING
+                </Text>
+
+                <Text
+                  style={[
+                    styles.maneuverMetricValue,
+                    { color: colors.text },
+                  ]}
+                >
+                  {routeRemainingDistance ?? "Calculating"}
+                </Text>
+              </View>
+
+              <View style={styles.maneuverMetric}>
+                <Text
+                  style={[
+                    styles.maneuverMetricLabel,
+                    { color: colors.textMuted },
+                  ]}
+                >
+                  ETA
+                </Text>
+
+                <Text
+                  style={[
+                    styles.maneuverMetricValue,
+                    { color: colors.text },
+                  ]}
+                >
+                  {routeRemainingTime ?? "Calculating"}
+                </Text>
+              </View>
+            </View>
+          ) : null}
+
+          {voiceGuidanceMuted ? (
+            <Text
+              style={[
+                styles.mutedGuidanceText,
+                { color: colors.textMuted },
+              ]}
+            >
+              Voice guidance is muted. Visual directions remain active.
+            </Text>
+          ) : null}
+        </View>
+      ) : null}
+
       {/* MAP CONTROLS */}
 
       <View
@@ -1157,7 +1543,7 @@ export default function RunnerDashboardScreen() {
         style={[
           styles.locationIndicator,
           {
-            top: insets.top + 72,
+            top: insets.top + (activeRouteTarget ? 218 : 72),
             backgroundColor: colors.surface,
             borderColor: colors.border,
           },
@@ -1537,6 +1923,34 @@ export default function RunnerDashboardScreen() {
                   last
                 />
               </View>
+
+              {routeCoordinatesMissing ? (
+                <View
+                  style={[
+                    styles.routeWarning,
+                    {
+                      backgroundColor: colors.warningSoft,
+                      borderColor: colors.border,
+                    },
+                  ]}
+                >
+                  <Ionicons
+                    name="alert-circle-outline"
+                    size={17}
+                    color={colors.warning}
+                  />
+
+                  <Text
+                    style={[
+                      styles.routeWarningText,
+                      { color: colors.text },
+                    ]}
+                  >
+                    Route guidance is unavailable because the active
+                    errand does not have valid coordinates for this stage.
+                  </Text>
+                </View>
+              ) : null}
 
               <View style={styles.jobMetrics}>
                 <View style={styles.jobMetric}>
@@ -2033,11 +2447,35 @@ export default function RunnerDashboardScreen() {
                 { color: colors.textMuted },
               ]}
             >
-              {navigationMode === "free_drive"
-                ? "Enhanced location matching is active."
-                : location?.enhanced
-                  ? "Your latest position is map matched."
-                  : "Live positioning quality depends on GPS signal and device conditions."}
+              {routeCoordinatesMissing
+                ? "Route guidance is unavailable because the active errand's current destination has no valid coordinates."
+                : activeRouteTarget && routeState.status === "active"
+                  ? `Navigating to ${
+                      activeRouteTarget.stage === "pickup"
+                        ? "pickup"
+                        : "delivery"
+                    }${routeRemainingDistance
+                      ? ` • ${routeRemainingDistance} remaining`
+                      : ""}${
+                      routeRemainingTime
+                        ? ` • ${routeRemainingTime} ETA`
+                        : ""
+                    }.`
+                  : activeRouteTarget &&
+                      routeState.status === "requesting"
+                    ? "Calculating your route to the active errand."
+                    : activeRouteTarget &&
+                        routeState.status === "waiting_for_location"
+                      ? "Waiting for an accurate GPS position before calculating your route."
+                      : activeRouteTarget &&
+                          routeState.status === "error"
+                        ? routeState.message ||
+                          "Mapbox could not calculate the active route."
+                        : navigationMode === "free_drive"
+                          ? "Enhanced location matching is active."
+                          : location?.enhanced
+                            ? "Your latest position is map matched."
+                            : "Live positioning quality depends on GPS signal and device conditions."}
             </Text>
           </View>
 
@@ -2269,6 +2707,99 @@ const styles = StyleSheet.create({
     shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.1,
     shadowRadius: 6,
+  },
+
+  maneuverCard: {
+    position: "absolute",
+    left: 14,
+    right: 14,
+    zIndex: 9,
+    borderRadius: 17,
+    borderWidth: 1,
+    padding: 12,
+    gap: 10,
+    elevation: 8,
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 3 },
+    shadowOpacity: 0.16,
+    shadowRadius: 8,
+  },
+
+  maneuverMainRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 10,
+  },
+
+  maneuverIcon: {
+    width: 43,
+    height: 43,
+    borderRadius: 13,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+
+  maneuverCopy: {
+    flex: 1,
+    gap: 3,
+  },
+
+  maneuverEyebrow: {
+    fontSize: 8,
+    fontWeight: "900",
+    letterSpacing: 0.9,
+    textTransform: "uppercase",
+  },
+
+  maneuverInstruction: {
+    fontSize: 15,
+    lineHeight: 19,
+    fontWeight: "900",
+  },
+
+  maneuverSecondary: {
+    fontSize: 10,
+    lineHeight: 14,
+    fontWeight: "600",
+  },
+
+  voiceToggle: {
+    width: 39,
+    height: 39,
+    borderRadius: 12,
+    borderWidth: 1,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+
+  maneuverMetrics: {
+    borderTopWidth: StyleSheet.hairlineWidth,
+    paddingTop: 9,
+    flexDirection: "row",
+    justifyContent: "space-between",
+    gap: 8,
+  },
+
+  maneuverMetric: {
+    flex: 1,
+    gap: 3,
+  },
+
+  maneuverMetricLabel: {
+    fontSize: 8,
+    fontWeight: "900",
+    letterSpacing: 0.6,
+  },
+
+  maneuverMetricValue: {
+    fontSize: 11,
+    fontWeight: "900",
+  },
+
+  mutedGuidanceText: {
+    fontSize: 9,
+    lineHeight: 13,
+    fontWeight: "600",
   },
 
   mapControls: {
@@ -2524,6 +3055,22 @@ const styles = StyleSheet.create({
     borderRadius: 15,
     padding: 12,
     gap: 0,
+  },
+
+  routeWarning: {
+    flexDirection: "row",
+    alignItems: "flex-start",
+    gap: 8,
+    borderWidth: 1,
+    borderRadius: 12,
+    padding: 10,
+  },
+
+  routeWarningText: {
+    flex: 1,
+    fontSize: 10,
+    lineHeight: 15,
+    fontWeight: "600",
   },
 
   routePoint: {

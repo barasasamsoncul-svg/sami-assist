@@ -15,6 +15,8 @@ public final class SaMiMapboxView: ExpoView {
     let onMapTap = EventDispatcher()
     let onLocationChanged = EventDispatcher()
     let onNavigationStatusChanged = EventDispatcher()
+    let onRouteChanged = EventDispatcher()
+    let onVoiceInstructionChanged = EventDispatcher()
 
     // MARK: - Map state
 
@@ -37,6 +39,27 @@ public final class SaMiMapboxView: ExpoView {
     var cameraMode = "free"
     var puckBearing = "course"
     var locationPulsingEnabled = false
+
+    // MARK: - Route guidance props
+
+    var hasRouteDestination = false
+    var routeDestinationLatitude = 0.0
+    var routeDestinationLongitude = 0.0
+    var routeDestinationLabel = ""
+    var routeProfile = "driving-traffic"
+    var voiceGuidanceMuted = false
+
+    private var routeGuidanceController: SaMiRouteGuidanceController?
+    private var routeGuidanceActive = false
+
+    // These values let the view distinguish a genuinely new destination
+    // from routine React prop updates. A changed target requires free drive
+    // to resume before the next route is activated.
+    private var lastAppliedHasRouteDestination: Bool?
+    private var lastAppliedRouteLatitude: Double?
+    private var lastAppliedRouteLongitude: Double?
+    private var lastAppliedRouteProfile: String?
+    private var lastAppliedVoiceGuidanceMuted: Bool?
 
     private var lastAppliedStyleURL = ""
     private var mapIsReady = false
@@ -75,7 +98,6 @@ public final class SaMiMapboxView: ExpoView {
         }
 
         createMapIfNeeded()
-
         mapView?.frame = bounds
     }
 
@@ -143,11 +165,25 @@ public final class SaMiMapboxView: ExpoView {
 
             lastAppliedStyleURL = mapStyleURL
 
+            // The route controller uses the same Navigation provider and
+            // native map view as free drive. The view remains the owner of
+            // location permissions and trip-session lifecycle.
+            routeGuidanceController = SaMiRouteGuidanceController(
+                navigationProvider: navigationProvider,
+                mapView: nativeMap,
+                onRouteEvent: { [weak self] event in
+                    self?.handleRouteEvent(event)
+                },
+                onVoiceInstructionEvent: { [weak self] event in
+                    self?.onVoiceInstructionChanged(event)
+                }
+            )
+
             configureLocationProvider()
             configureMapEvents()
             configureMapControls()
 
-            if navigationActive {
+            if navigationActive || hasRouteDestination {
                 startFreeDrive()
             }
 
@@ -389,8 +425,8 @@ public final class SaMiMapboxView: ExpoView {
         }
     }
 
-    private func stopFreeDrive() {
-        guard navigationSessionRunning else {
+    private func stopFreeDrive(force: Bool = false) {
+        guard navigationSessionRunning || force else {
             return
         }
 
@@ -400,6 +436,8 @@ public final class SaMiMapboxView: ExpoView {
         navigationProvider.tripSession().setToIdle()
 
         navigationSessionRunning = false
+        routeGuidanceActive = false
+        routeGuidanceController?.clearOrigin()
 
         configureLocationProvider()
         emitNavigationStatus()
@@ -421,6 +459,10 @@ public final class SaMiMapboxView: ExpoView {
         matchedLocationSubject.send(
             matchedLocation
         )
+
+        // Route requests and progress are driven by enhanced GPS fixes,
+        // not by the raw location provider.
+        routeGuidanceController?.updateOrigin(location)
 
         let bearing: Any =
             location.course >= 0
@@ -463,12 +505,29 @@ public final class SaMiMapboxView: ExpoView {
         ])
     }
 
+    // MARK: - Route events and navigation status
+
+    private func handleRouteEvent(_ event: [String: Any]) {
+        let status = event["status"] as? String
+        routeGuidanceActive = status == "active"
+
+        onRouteChanged(event)
+        emitNavigationStatus()
+    }
+
     private func emitNavigationStatus() {
+        let mode: String
+        if routeGuidanceActive {
+            mode = "active_guidance"
+        } else if navigationSessionRunning {
+            mode = "free_drive"
+        } else {
+            mode = "idle"
+        }
+
         onNavigationStatusChanged([
             "active": navigationSessionRunning,
-            "mode": navigationSessionRunning
-                ? "free_drive"
-                : "idle"
+            "mode": mode
         ])
     }
 
@@ -535,10 +594,74 @@ public final class SaMiMapboxView: ExpoView {
         configureMapControls()
         configureLocationProvider()
 
-        if navigationActive {
-            startFreeDrive()
+        let previousHasRouteDestination =
+            lastAppliedHasRouteDestination ?? false
+
+        let destinationChanged: Bool
+        if let previousHasDestination = lastAppliedHasRouteDestination {
+            destinationChanged =
+                previousHasDestination != hasRouteDestination ||
+                (hasRouteDestination && (
+                    lastAppliedRouteLatitude != routeDestinationLatitude ||
+                    lastAppliedRouteLongitude != routeDestinationLongitude ||
+                    lastAppliedRouteProfile != routeProfile
+                ))
         } else {
-            stopFreeDrive()
+            destinationChanged = true
+        }
+
+        let shouldRunNavigation = navigationActive || hasRouteDestination
+
+        if shouldRunNavigation {
+            // A changed pickup/delivery target must move the trip session
+            // back to free drive before requesting its replacement route.
+            if destinationChanged && navigationSessionRunning {
+                navigationProvider.tripSession().startFreeDrive()
+            }
+
+            // This checks location authorization and establishes the native
+            // enhanced-location subscription before a route can be requested.
+            startFreeDrive()
+        }
+
+        if let routeGuidanceController {
+            if hasRouteDestination {
+                routeGuidanceController.setDestination(
+                    latitude: routeDestinationLatitude,
+                    longitude: routeDestinationLongitude,
+                    label: routeDestinationLabel,
+                    profile: routeProfile
+                )
+            } else {
+                routeGuidanceController.setDestination(
+                    latitude: nil,
+                    longitude: nil,
+                    label: "",
+                    profile: routeProfile
+                )
+            }
+
+            if lastAppliedVoiceGuidanceMuted != voiceGuidanceMuted {
+                routeGuidanceController.setVoiceMuted(
+                    voiceGuidanceMuted
+                )
+                lastAppliedVoiceGuidanceMuted = voiceGuidanceMuted
+            }
+        }
+
+        lastAppliedHasRouteDestination = hasRouteDestination
+        lastAppliedRouteLatitude = hasRouteDestination
+            ? routeDestinationLatitude
+            : nil
+        lastAppliedRouteLongitude = hasRouteDestination
+            ? routeDestinationLongitude
+            : nil
+        lastAppliedRouteProfile = routeProfile
+
+        if !shouldRunNavigation {
+            stopFreeDrive(
+                force: previousHasRouteDestination
+            )
         }
 
         applyCameraMode()
@@ -555,6 +678,7 @@ public final class SaMiMapboxView: ExpoView {
     // MARK: - Cleanup
 
     deinit {
+        routeGuidanceController?.dispose()
         navigationLocationSubscription?.cancel()
 
         if navigationSessionRunning {
@@ -583,7 +707,9 @@ public final class SaMiMapboxModule: Module {
                 "onCameraChanged",
                 "onMapTap",
                 "onLocationChanged",
-                "onNavigationStatusChanged"
+                "onNavigationStatusChanged",
+                "onRouteChanged",
+                "onVoiceInstructionChanged"
             )
 
             Prop("accessToken", "") {
@@ -656,6 +782,42 @@ public final class SaMiMapboxModule: Module {
                 (view: SaMiMapboxView, value: Bool) in
 
                 view.navigationActive = value
+            }
+
+            Prop("hasRouteDestination", false) {
+                (view: SaMiMapboxView, value: Bool) in
+
+                view.hasRouteDestination = value
+            }
+
+            Prop("routeDestinationLatitude", 0.0) {
+                (view: SaMiMapboxView, value: Double) in
+
+                view.routeDestinationLatitude = value
+            }
+
+            Prop("routeDestinationLongitude", 0.0) {
+                (view: SaMiMapboxView, value: Double) in
+
+                view.routeDestinationLongitude = value
+            }
+
+            Prop("routeDestinationLabel", "") {
+                (view: SaMiMapboxView, value: String) in
+
+                view.routeDestinationLabel = value
+            }
+
+            Prop("routeProfile", "driving-traffic") {
+                (view: SaMiMapboxView, value: String) in
+
+                view.routeProfile = value
+            }
+
+            Prop("voiceGuidanceMuted", false) {
+                (view: SaMiMapboxView, value: Bool) in
+
+                view.voiceGuidanceMuted = value
             }
 
             Prop("cameraMode", "free") {

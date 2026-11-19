@@ -8,6 +8,10 @@ export type {
   SaMiMapTapEvent,
   SaMiMapLocationEvent,
   SaMiNavigationStatusEvent,
+  SaMiRouteChangedEvent,
+  SaMiVoiceInstructionChangedEvent,
+  SaMiRouteStatus,
+  SaMiRouteProfile,
   SaMiMapCameraMode,
   SaMiPuckBearing,
 } from "./SaMiMapbox.types";

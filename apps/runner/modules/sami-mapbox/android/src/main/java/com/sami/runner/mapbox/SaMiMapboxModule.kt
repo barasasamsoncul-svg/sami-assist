@@ -1,3 +1,4 @@
+
 package com.sami.runner.mapbox
 
 import android.Manifest
@@ -57,8 +58,20 @@ class SaMiMapboxView(
     val onMapTap by EventDispatcher()
     val onLocationChanged by EventDispatcher()
     val onNavigationStatusChanged by EventDispatcher()
+    val onRouteChanged by EventDispatcher()
+    val onVoiceInstructionChanged by EventDispatcher()
 
     private var mapView: MapView? = null
+    private var routeGuidanceController: SaMiRouteGuidanceController? = null
+    private var voiceGuidanceController: SaMiVoiceGuidanceController? = null
+    private var routeGuidanceActive = false
+    private var voiceGuidanceMuted = false
+
+    private var hasRouteDestination = false
+    private var routeDestinationLatitude = 0.0
+    private var routeDestinationLongitude = 0.0
+    private var routeDestinationLabel = ""
+    private var routeProfile = "driving-traffic"
 
     private var accessToken = ""
     private var mapStyleURL = Style.STANDARD
@@ -157,6 +170,13 @@ class SaMiMapboxView(
             latestBearing = enhancedLocation.bearing
             latestAccuracy = enhancedLocation.horizontalAccuracy
 
+            routeGuidanceController?.updateOrigin(
+                Point.fromLngLat(
+                    enhancedLocation.longitude,
+                    enhancedLocation.latitude
+                )
+            )
+
             emitLocation()
         }
     }
@@ -172,6 +192,9 @@ class SaMiMapboxView(
                 navigation.registerLocationObserver(
                     locationObserver
                 )
+
+                voiceGuidanceController?.attach(navigation)
+                routeGuidanceController?.attach(navigation)
 
                 syncNavigationSession()
             }
@@ -190,6 +213,10 @@ class SaMiMapboxView(
                 navigation.unregisterLocationObserver(
                     locationObserver
                 )
+
+                voiceGuidanceController?.detach()
+                routeGuidanceController?.detach()
+                routeGuidanceActive = false
 
                 mapboxNavigation = null
 
@@ -301,6 +328,64 @@ class SaMiMapboxView(
         applyLocationSettings()
     }
 
+    fun setHasRouteDestination(value: Boolean) {
+        hasRouteDestination = value
+    }
+
+    fun setRouteDestinationLatitude(value: Double) {
+        if (value.isFinite() && value in -90.0..90.0) {
+            routeDestinationLatitude = value
+        }
+    }
+
+    fun setRouteDestinationLongitude(value: Double) {
+        if (value.isFinite() && value in -180.0..180.0) {
+            routeDestinationLongitude = value
+        }
+    }
+
+    fun setRouteDestinationLabel(value: String) {
+        routeDestinationLabel = value.trim()
+    }
+
+    fun setRouteProfile(value: String) {
+        routeProfile = if (value == "cycling") {
+            "cycling"
+        } else {
+            "driving-traffic"
+        }
+    }
+
+    fun setVoiceGuidanceMuted(value: Boolean) {
+        voiceGuidanceMuted = value
+        voiceGuidanceController?.setMuted(value)
+    }
+
+    private fun syncRouteDestination() {
+        val controller = routeGuidanceController ?: return
+
+        val point = if (
+            hasRouteDestination &&
+            routeDestinationLatitude.isFinite() &&
+            routeDestinationLongitude.isFinite() &&
+            routeDestinationLatitude in -90.0..90.0 &&
+            routeDestinationLongitude in -180.0..180.0
+        ) {
+            Point.fromLngLat(
+                routeDestinationLongitude,
+                routeDestinationLatitude
+            )
+        } else {
+            null
+        }
+
+        controller.setDestination(
+            point = point,
+            label = routeDestinationLabel,
+            profile = routeProfile
+        )
+    }
+
     /* ------------------------------------------------------------------ */
     /* VIEW INITIALIZATION                                                */
     /* ------------------------------------------------------------------ */
@@ -314,6 +399,7 @@ class SaMiMapboxView(
         applyLocationSettings()
         applyCameraMode()
         syncNavigationSession()
+        syncRouteDestination()
     }
 
     private fun createMapIfNeeded() {
@@ -360,6 +446,35 @@ class SaMiMapboxView(
             mapView = nativeMapView
             appliedStyleURL = mapStyleURL
 
+            routeGuidanceController = SaMiRouteGuidanceController(
+                context = context,
+                mapView = nativeMapView,
+                onRouteEvent = { event ->
+                    val routeStatus = event["status"] as? String
+
+                    if (
+                        routeStatus == "requesting" ||
+                        routeStatus == "waiting_for_location" ||
+                        routeStatus == "idle"
+                    ) {
+                        voiceGuidanceController?.onRouteChanged()
+                    }
+
+                    routeGuidanceActive = routeStatus == "active"
+                    onRouteChanged(event)
+                    emitNavigationStatus()
+                }
+            )
+
+            voiceGuidanceController = SaMiVoiceGuidanceController(
+                context = context,
+                onInstructionChanged = { event ->
+                    onVoiceInstructionChanged(event)
+                }
+            ).also { controller ->
+                controller.setMuted(voiceGuidanceMuted)
+            }
+
             defaultLocationProvider =
                 nativeMapView.location.getLocationProvider()
 
@@ -395,6 +510,7 @@ class SaMiMapboxView(
 
                 applyLocationSettings()
                 applyCameraMode()
+                routeGuidanceController?.onStyleLoaded()
 
                 onMapReady(
                     mapOf("ready" to true)
@@ -474,6 +590,7 @@ class SaMiMapboxView(
                 applyMapControls()
                 applyLocationSettings()
                 applyCameraMode()
+                routeGuidanceController?.onStyleLoaded()
 
                 onMapReady(
                     mapOf("ready" to true)
@@ -638,6 +755,10 @@ class SaMiMapboxView(
     private fun releaseNavigationLifecycle() {
         val owner = navigationLifecycleOwner
 
+        voiceGuidanceController?.detach()
+        routeGuidanceController?.detach()
+        routeGuidanceActive = false
+
         if (navigationSessionRunning) {
             runCatching {
                 mapboxNavigation?.stopTripSession()
@@ -725,14 +846,16 @@ class SaMiMapboxView(
     private fun emitNavigationStatus() {
         val active = navigationSessionRunning
 
+        val mode = when {
+            !active -> "idle"
+            routeGuidanceActive -> "active_guidance"
+            else -> "free_drive"
+        }
+
         onNavigationStatusChanged(
             mapOf(
                 "active" to active,
-                "mode" to if (active) {
-                    "free_drive"
-                } else {
-                    "idle"
-                }
+                "mode" to mode
             )
         )
     }
@@ -862,6 +985,13 @@ class SaMiMapboxView(
 
         disposed = true
 
+        voiceGuidanceController?.dispose()
+        voiceGuidanceController = null
+
+        routeGuidanceController?.dispose()
+        routeGuidanceController = null
+        routeGuidanceActive = false
+
         releaseNavigationLifecycle()
         stopMap()
 
@@ -929,7 +1059,9 @@ class SaMiMapboxModule : Module() {
                 "onCameraChanged",
                 "onMapTap",
                 "onLocationChanged",
-                "onNavigationStatusChanged"
+                "onNavigationStatusChanged",
+                "onRouteChanged",
+                "onVoiceInstructionChanged"
             )
 
             Prop("accessToken", "") {
@@ -1014,6 +1146,42 @@ class SaMiMapboxModule : Module() {
                     view: SaMiMapboxView,
                     value: Boolean ->
                 view.setLocationPulsingEnabled(value)
+            }
+
+            Prop("hasRouteDestination", false) {
+                    view: SaMiMapboxView,
+                    value: Boolean ->
+                view.setHasRouteDestination(value)
+            }
+
+            Prop("routeDestinationLatitude", 0.0) {
+                    view: SaMiMapboxView,
+                    value: Double ->
+                view.setRouteDestinationLatitude(value)
+            }
+
+            Prop("routeDestinationLongitude", 0.0) {
+                    view: SaMiMapboxView,
+                    value: Double ->
+                view.setRouteDestinationLongitude(value)
+            }
+
+            Prop("routeDestinationLabel", "") {
+                    view: SaMiMapboxView,
+                    value: String ->
+                view.setRouteDestinationLabel(value)
+            }
+
+            Prop("routeProfile", "driving-traffic") {
+                    view: SaMiMapboxView,
+                    value: String ->
+                view.setRouteProfile(value)
+            }
+
+            Prop("voiceGuidanceMuted", false) {
+                    view: SaMiMapboxView,
+                    value: Boolean ->
+                view.setVoiceGuidanceMuted(value)
             }
 
             OnViewDidUpdateProps { view: SaMiMapboxView ->

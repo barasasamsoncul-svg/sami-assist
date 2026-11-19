@@ -1,4 +1,3 @@
-
 const {
   withProjectBuildGradle,
   withAppBuildGradle,
@@ -111,6 +110,10 @@ const PODFILE_INTEGRATION = [
   "",
 ].join(String.fromCharCode(10));
 
+/* -------------------------------------------------------------------------- */
+/* MAPBOX ANDROID MAVEN REPOSITORY                                            */
+/* -------------------------------------------------------------------------- */
+
 function withMapboxMavenRepository(config) {
   return withProjectBuildGradle(config, (mod) => {
     let contents = mod.modResults.contents;
@@ -143,9 +146,7 @@ function withMapboxMavenRepository(config) {
         "",
         "      " + PROJECT_MARKER,
         "      maven {",
-        '        url "'
-          + MAPBOX_MAVEN_URL
-          + '"',
+        '        url "' + MAPBOX_MAVEN_URL + '"',
         "",
         "        authentication {",
         "          basic(BasicAuthentication)",
@@ -181,9 +182,14 @@ function withMapboxMavenRepository(config) {
     }
 
     mod.modResults.contents = contents;
+
     return mod;
   });
 }
+
+/* -------------------------------------------------------------------------- */
+/* ANDROID NDK                                                                */
+/* -------------------------------------------------------------------------- */
 
 function withMapboxNdkVersion(config) {
   return withAppBuildGradle(config, (mod) => {
@@ -206,9 +212,14 @@ function withMapboxNdkVersion(config) {
     }
 
     mod.modResults.contents = contents;
+
     return mod;
   });
 }
+
+/* -------------------------------------------------------------------------- */
+/* IOS PODFILE                                                                */
+/* -------------------------------------------------------------------------- */
 
 function withMapboxPodfile(config) {
   return withPodfile(config, (mod) => {
@@ -222,9 +233,14 @@ function withMapboxPodfile(config) {
     }
 
     mod.modResults.contents = contents;
+
     return mod;
   });
 }
+
+/* -------------------------------------------------------------------------- */
+/* CONFIG PLUGIN                                                              */
+/* -------------------------------------------------------------------------- */
 
 module.exports = function withSamiMapboxNative(config) {
   config = withMapboxMavenRepository(config);

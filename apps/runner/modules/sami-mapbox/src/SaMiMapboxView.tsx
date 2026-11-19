@@ -29,6 +29,24 @@ function SaMiMapboxView(props: SaMiMapboxViewProps) {
       locationPulsingEnabled={
         props.locationPulsingEnabled ?? false
       }
+      hasRouteDestination={
+        props.hasRouteDestination ?? false
+      }
+      routeDestinationLatitude={
+        props.routeDestinationLatitude ?? 0
+      }
+      routeDestinationLongitude={
+        props.routeDestinationLongitude ?? 0
+      }
+      routeDestinationLabel={
+        props.routeDestinationLabel ?? ""
+      }
+      routeProfile={
+        props.routeProfile ?? "driving-traffic"
+      }
+      voiceGuidanceMuted={
+        props.voiceGuidanceMuted ?? false
+      }
       onMapReady={props.onMapReady}
       onMapError={props.onMapError}
       onCameraChanged={props.onCameraChanged}
@@ -36,6 +54,10 @@ function SaMiMapboxView(props: SaMiMapboxViewProps) {
       onLocationChanged={props.onLocationChanged}
       onNavigationStatusChanged={
         props.onNavigationStatusChanged
+      }
+      onRouteChanged={props.onRouteChanged}
+      onVoiceInstructionChanged={
+        props.onVoiceInstructionChanged
       }
     />
   );
