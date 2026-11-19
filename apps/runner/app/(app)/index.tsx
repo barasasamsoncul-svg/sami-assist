@@ -408,6 +408,7 @@ export default function RunnerDashboardScreen() {
   const [jobBusyId, setJobBusyId] = useState("");
   const [locationBusy, setLocationBusy] = useState(false);
   const [signingOut, setSigningOut] = useState(false);
+  const [workspaceExpanded, setWorkspaceExpanded] = useState(false);
 
   const [error, setError] = useState("");
   const [mapError, setMapError] = useState("");
@@ -1520,7 +1521,11 @@ export default function RunnerDashboardScreen() {
       <View
         style={[
           styles.mapControls,
-          { right: 16, bottom: insets.bottom + 300 },
+          {
+            right: 16,
+            bottom: insets.bottom + 300,
+            display: workspaceExpanded ? "none" : "flex",
+          },
         ]}
       >
         <IconButton
@@ -1592,18 +1597,43 @@ export default function RunnerDashboardScreen() {
             backgroundColor: colors.surface,
             borderColor: colors.border,
             paddingBottom: Math.max(insets.bottom, 14),
-            maxHeight: "67%",
+            height: workspaceExpanded ? "82%" : "36%",
+            maxHeight: workspaceExpanded ? "84%" : "42%",
           },
         ]}
       >
-        <View
-          style={[
-            styles.sheetHandle,
-            { backgroundColor: colors.borderStrong },
+        <Pressable
+          accessibilityRole="button"
+          accessibilityLabel={
+            workspaceExpanded
+              ? "Collapse runner workspace"
+              : "Expand runner workspace"
+          }
+          accessibilityHint="Show more or less of your runner workspace."
+          accessibilityState={{ expanded: workspaceExpanded }}
+          onPress={() => setWorkspaceExpanded((current) => !current)}
+          style={({ pressed }) => [
+            styles.sheetToggle,
+            { opacity: pressed ? 0.7 : 1 },
           ]}
-        />
+        >
+          <View
+            style={[
+              styles.sheetHandle,
+              { backgroundColor: colors.borderStrong },
+            ]}
+          />
+
+          <Ionicons
+            style={styles.sheetToggleIcon}
+            name={workspaceExpanded ? "chevron-down" : "chevron-up"}
+            size={17}
+            color={colors.textMuted}
+          />
+        </Pressable>
 
         <ScrollView
+          style={styles.sheetScrollView}
           showsVerticalScrollIndicator={false}
           contentContainerStyle={styles.sheetContent}
           refreshControl={
@@ -2862,13 +2892,29 @@ const styles = StyleSheet.create({
     shadowRadius: 16,
   },
 
+  sheetToggle: {
+    minHeight: 38,
+    justifyContent: "center",
+    alignItems: "center",
+    position: "relative",
+  },
+
+  sheetToggleIcon: {
+    position: "absolute",
+    right: 18,
+  },
+
+  sheetScrollView: {
+    flex: 1,
+  },
+
   sheetHandle: {
     width: 42,
     height: 4,
     borderRadius: 5,
     alignSelf: "center",
-    marginTop: 9,
-    marginBottom: 3,
+    marginTop: 0,
+    marginBottom: 0,
   },
 
   sheetContent: {
