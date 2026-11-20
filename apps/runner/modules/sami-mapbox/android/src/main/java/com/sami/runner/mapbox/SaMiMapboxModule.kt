@@ -5,6 +5,8 @@ import android.content.Context
 import android.content.pm.PackageManager
 
 import androidx.core.content.ContextCompat
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.LifecycleOwner
 
 import com.mapbox.common.Cancelable
@@ -94,6 +96,7 @@ class SaMiMapboxView(
     private var puckBearing = "course"
 
     private var mapStarted = false
+    private var mapResumed = false
     private var mapWasStopped = false
     private var disposed = false
     private var mapLoaded = false
@@ -113,6 +116,9 @@ class SaMiMapboxView(
     private var mapLoadedCancelable: Cancelable? = null
     private var mapErrorCancelable: Cancelable? = null
     private var cameraChangedCancelable: Cancelable? = null
+
+    private var mapLifecycleOwner: LifecycleOwner? = null
+    private var mapLifecycleObserver: LifecycleEventObserver? = null
 
     private var navigationLifecycleOwner: LifecycleOwner? = null
     private var navigationObserverRegistered = false
@@ -539,7 +545,7 @@ class SaMiMapboxView(
             addView(nativeMapView)
 
             if (isAttachedToWindow) {
-                startMap()
+                syncMapLifecycle()
             }
 
         } catch (error: Exception) {
@@ -1111,19 +1117,78 @@ class SaMiMapboxView(
     private fun shouldRunMap(): Boolean {
         /*
          * Dashboard focus does not control the native renderer.
-         * The MapView stays started while its native parent remains
-         * attached. This avoids stopping the renderer on every
-         * React Navigation transition.
+         * The MapView remains bound to the host Activity lifecycle while
+         * its native parent is attached, even when another app screen is
+         * temporarily focused.
          */
-        return !disposed && isAttachedToWindow
+        return !disposed &&
+            isAttachedToWindow &&
+            mapView != null
     }
 
     private fun syncMapLifecycle() {
         if (shouldRunMap()) {
-            startMap()
+            attachMapLifecycle()
         } else {
-            stopMap()
+            detachMapLifecycle()
         }
+    }
+
+    /**
+     * MapView can be created after the Activity has already reached RESUMED.
+     * Registering a LifecycleEventObserver synchronizes it to the Activity's
+     * current state, delivering ON_START and ON_RESUME when appropriate.
+     * This forwards the real host lifecycle instead of only starting the
+     * renderer when the ExpoView happens to attach to its window.
+     */
+    private fun attachMapLifecycle() {
+        if (!shouldRunMap()) return
+
+        val owner = appContext.currentActivity as? LifecycleOwner
+        if (owner == null) {
+            reportError(
+                "Mapbox could not connect to the Runner Activity lifecycle."
+            )
+            return
+        }
+
+        if (
+            mapLifecycleOwner === owner &&
+            mapLifecycleObserver != null
+        ) {
+            return
+        }
+
+        detachMapLifecycle()
+
+        val observer = LifecycleEventObserver { _, event ->
+            when (event) {
+                Lifecycle.Event.ON_START -> startMap()
+                Lifecycle.Event.ON_RESUME -> resumeMap()
+                Lifecycle.Event.ON_STOP -> stopMap()
+                Lifecycle.Event.ON_DESTROY -> stopMap()
+                else -> Unit
+            }
+        }
+
+        mapLifecycleOwner = owner
+        mapLifecycleObserver = observer
+
+        owner.lifecycle.addObserver(observer)
+    }
+
+    private fun detachMapLifecycle() {
+        val owner = mapLifecycleOwner
+        val observer = mapLifecycleObserver
+
+        if (owner != null && observer != null) {
+            owner.lifecycle.removeObserver(observer)
+        }
+
+        mapLifecycleOwner = null
+        mapLifecycleObserver = null
+
+        stopMap()
     }
 
     private fun startMap() {
@@ -1143,15 +1208,50 @@ class SaMiMapboxView(
         }
     }
 
-    private fun stopMap() {
+    /**
+     * Mapbox Maps SDK v11 requires onResume() to be forwarded from the host
+     * Activity. The view may be instantiated after that Activity callback,
+     * so the lifecycle observer must bring the new MapView into the Activity's
+     * current RESUMED state.
+     */
+    private fun resumeMap() {
         val nativeMapView = mapView ?: return
-        if (!mapStarted) return
+        if (!shouldRunMap()) return
+
+        if (!mapStarted) {
+            startMap()
+        }
+
+        if (mapResumed) return
+
+        try {
+            nativeMapView.onResume()
+            mapResumed = true
+        } catch (error: Exception) {
+            reportError(
+                error.message ?: "Mapbox could not resume."
+            )
+        }
+    }
+
+    private fun stopMap() {
+        val nativeMapView = mapView ?: run {
+            mapStarted = false
+            mapResumed = false
+            return
+        }
+
+        if (!mapStarted) {
+            mapResumed = false
+            return
+        }
 
         runCatching {
             nativeMapView.onStop()
         }
 
         mapStarted = false
+        mapResumed = false
         mapWasStopped = true
     }
 
@@ -1173,7 +1273,7 @@ class SaMiMapboxView(
     }
 
     override fun onDetachedFromWindow() {
-        stopMap()
+        detachMapLifecycle()
         releaseNavigationLifecycle()
 
         super.onDetachedFromWindow()
@@ -1192,7 +1292,7 @@ class SaMiMapboxView(
         routeGuidanceActive = false
 
         releaseNavigationLifecycle()
-        stopMap()
+        detachMapLifecycle()
 
         mapLoadedCancelable?.cancel()
         mapErrorCancelable?.cancel()
@@ -1227,6 +1327,7 @@ class SaMiMapboxView(
         mapView = null
         mapLoaded = false
         mapStarted = false
+        mapResumed = false
         mapWasStopped = false
     }
 
