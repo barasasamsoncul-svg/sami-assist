@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import {
   ActivityIndicator,
   PanResponder,
@@ -9,6 +9,7 @@ import {
   useWindowDimensions,
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
+import { useRunnerTheme } from "@/theme";
 
 export type RunnerDashboardSection =
   | "offers"
@@ -62,8 +63,10 @@ function MetricValue({
   visible: boolean;
   value: string | null;
 }) {
+  const { colors } = useRunnerTheme();
+
   return (
-    <Text style={styles.metricValue} numberOfLines={1}>
+    <Text style={[styles.metricValue, { color: colors.text }]} numberOfLines={1}>
       {visible ? value ?? "—" : "••••"}
     </Text>
   );
@@ -89,15 +92,17 @@ export function SaMiRunnerDashboardChrome({
   mapError,
 }: Props) {
   const { height: windowHeight } = useWindowDimensions();
+  const { colors: themeColors, showOverlay } = useRunnerTheme();
   const [earningsExpanded, setEarningsExpanded] = useState(false);
   const [earningsVisible, setEarningsVisible] = useState(true);
 
+  const safeBottom = Math.max(bottomInset, 0);
   const expandedHeight = Math.min(
-    Math.max(Math.round(windowHeight * 0.49), 360),
-    410,
+    Math.max(Math.round(windowHeight * 0.46), 340),
+    390,
   );
-  const sheetBottom = Math.max(bottomInset, 10) + 7;
-  const sheetHeight = expanded ? expandedHeight : 110;
+  const sheetBottom = 0;
+  const sheetHeight = (expanded ? expandedHeight : 104) + safeBottom;
 
   const panResponder = useMemo(
     () =>
@@ -114,7 +119,9 @@ export function SaMiRunnerDashboardChrome({
     [onExpandedChange],
   );
 
-  const statusText = statusLabel === "PENDING"
+  const statusText = activeErrand
+    ? "On errand"
+    : statusLabel === "PENDING"
     ? "Pending"
     : statusLabel === "RESTRICTED"
       ? "Restricted"
@@ -124,15 +131,27 @@ export function SaMiRunnerDashboardChrome({
 
   const visibleLocation = locationLabel?.trim() || "Finding location";
 
+  useEffect(() => {
+    const message = error || mapError;
+    if (!message) return;
+
+    showOverlay({
+      type: "error",
+      title: error ? "Runner dashboard issue" : "Map issue",
+      message,
+      dismissOnBackdrop: true,
+    });
+  }, [error, mapError, showOverlay]);
+
   return (
     <View pointerEvents="box-none" style={StyleSheet.absoluteFill}>
-      {/* Three independent header cards: availability, earnings, location. */}
+      {/* SaMi header controls sit directly over the map without card shells. */}
       <View
         style={[
           styles.headerRow,
           {
             top: topInset + 7,
-            paddingHorizontal: 12,
+            paddingHorizontal: 17,
           },
         ]}
       >
@@ -141,16 +160,16 @@ export function SaMiRunnerDashboardChrome({
           style={[styles.headerCard, styles.statusCard]}
         >
           {availabilityBusy ? (
-            <ActivityIndicator size="small" color={COLORS.blue} />
+            <ActivityIndicator size="small" color={themeColors.blue} />
           ) : (
             <View
               style={[
                 styles.statusDot,
-                { backgroundColor: isOnline ? COLORS.blue : COLORS.quiet },
+                { backgroundColor: isOnline || activeErrand ? themeColors.blue : themeColors.muted },
               ]}
             />
           )}
-          <Text style={styles.headerCardText} numberOfLines={1}>
+          <Text style={[styles.headerCardText, { color: themeColors.text }]} numberOfLines={1}>
             {statusText}
           </Text>
         </View>
@@ -163,10 +182,10 @@ export function SaMiRunnerDashboardChrome({
             onPress={() => setEarningsExpanded((current) => !current)}
             style={styles.earningsMain}
           >
-            <Ionicons name="bar-chart" size={17} color={COLORS.white} />
+            <Ionicons name="bar-chart" size={17} color={themeColors.text} />
             <View style={styles.earningsHeaderCopy}>
-              <Text style={styles.headerEyebrow}>EARNINGS</Text>
-              <Text style={styles.headerCardText} numberOfLines={1}>
+              <Text style={[styles.headerEyebrow, { color: themeColors.textMuted }]}>EARNINGS</Text>
+              <Text style={[styles.headerCardText, { color: themeColors.text }]} numberOfLines={1}>
                 {earningsVisible ? "KSh —" : "KSh ••••"}
               </Text>
             </View>
@@ -181,18 +200,18 @@ export function SaMiRunnerDashboardChrome({
             <Ionicons
               name={earningsVisible ? "eye-outline" : "eye-off-outline"}
               size={18}
-              color={COLORS.white}
+              color={themeColors.text}
             />
           </Pressable>
         </View>
 
-        {isOnline && authorized ? (
+        {(isOnline || activeErrand) && authorized ? (
           <View
             accessibilityLabel={`Current location: ${visibleLocation}`}
             style={[styles.headerCard, styles.locationCard]}
           >
-            <Ionicons name="location" size={17} color={COLORS.white} />
-            <Text style={styles.headerCardText} numberOfLines={1}>
+            <Ionicons name="location" size={17} color={themeColors.text} />
+            <Text style={[styles.headerCardText, { color: themeColors.text }]} numberOfLines={1}>
               {visibleLocation}
             </Text>
           </View>
@@ -200,14 +219,27 @@ export function SaMiRunnerDashboardChrome({
       </View>
 
       {earningsExpanded ? (
+        <Pressable
+          accessibilityRole="button"
+          accessibilityLabel="Close earnings details"
+          onPress={() => setEarningsExpanded(false)}
+          style={styles.overlayDismiss}
+        />
+      ) : null}
+
+      {earningsExpanded ? (
         <View
           style={[
             styles.earningsPanel,
-            { top: topInset + (hasActiveRoute ? 230 : 67) },
+            {
+              top: topInset + (hasActiveRoute ? 230 : 61),
+              backgroundColor: themeColors.surface,
+              borderColor: themeColors.border,
+            },
           ]}
         >
           <View style={styles.earningsPanelHeader}>
-            <Text style={styles.earningsPanelTitle}>Earnings overview</Text>
+            <Text style={[styles.earningsPanelTitle, { color: themeColors.text }]}>Earnings overview</Text>
             <Pressable
               accessibilityRole="button"
               accessibilityLabel={earningsVisible ? "Hide earnings values" : "Show earnings values"}
@@ -217,70 +249,65 @@ export function SaMiRunnerDashboardChrome({
               <Ionicons
                 name={earningsVisible ? "eye-outline" : "eye-off-outline"}
                 size={19}
-                color={COLORS.white}
+                color={themeColors.text}
               />
             </Pressable>
           </View>
 
           <View style={styles.metricTopRow}>
             <View style={styles.metricCell}>
-              <Ionicons name="wallet-outline" size={18} color="#9CBDF0" />
+              <Ionicons name="wallet-outline" size={18} color={themeColors.blue} />
               <MetricValue visible={earningsVisible} value={null} />
-              <Text style={styles.metricLabel}>Today</Text>
+              <Text style={[styles.metricLabel, { color: themeColors.textMuted }]}>Today</Text>
             </View>
-            <View style={styles.metricDivider} />
+            <View style={[styles.metricDivider, { backgroundColor: themeColors.border }]} />
             <View style={styles.metricCell}>
-              <Ionicons name="calendar-outline" size={18} color="#9CBDF0" />
+              <Ionicons name="calendar-outline" size={18} color={themeColors.blue} />
               <MetricValue visible={earningsVisible} value={null} />
-              <Text style={styles.metricLabel}>This week</Text>
+              <Text style={[styles.metricLabel, { color: themeColors.textMuted }]}>This week</Text>
             </View>
-            <View style={styles.metricDivider} />
+            <View style={[styles.metricDivider, { backgroundColor: themeColors.border }]} />
             <View style={styles.metricCell}>
-              <Ionicons name="card-outline" size={18} color="#9CBDF0" />
+              <Ionicons name="card-outline" size={18} color={themeColors.blue} />
               <MetricValue visible={earningsVisible} value={null} />
-              <Text style={styles.metricLabel}>Balance</Text>
+              <Text style={[styles.metricLabel, { color: themeColors.textMuted }]}>Balance</Text>
             </View>
           </View>
 
           <View style={styles.metricBottomRow}>
             <View style={styles.metricBottomCell}>
-              <Ionicons name="bicycle-outline" size={19} color="#9CBDF0" />
+              <Ionicons name="bicycle-outline" size={19} color={themeColors.blue} />
               <View>
                 <MetricValue visible={earningsVisible} value={null} />
-                <Text style={styles.metricLabel}>Trips</Text>
+                <Text style={[styles.metricLabel, { color: themeColors.textMuted }]}>Trips</Text>
               </View>
             </View>
-            <View style={styles.metricDivider} />
+            <View style={[styles.metricDivider, { backgroundColor: themeColors.border }]} />
             <View style={styles.metricBottomCell}>
-              <Ionicons name="time-outline" size={19} color="#9CBDF0" />
+              <Ionicons name="time-outline" size={19} color={themeColors.blue} />
               <View>
                 <MetricValue visible={earningsVisible} value={null} />
-                <Text style={styles.metricLabel}>Last trip</Text>
+                <Text style={[styles.metricLabel, { color: themeColors.textMuted }]}>Last trip</Text>
               </View>
             </View>
           </View>
-          <Text style={styles.metricsFootnote}>
+          <Text style={[styles.metricsFootnote, { color: themeColors.muted }]}>
             Earnings and trip totals will appear when the Runner metrics service is connected.
           </Text>
         </View>
       ) : null}
 
-      {(error || mapError) ? (
-        <View style={[styles.errorBanner, { top: topInset + 67 }]}>
-          <Ionicons name="alert-circle-outline" size={17} color={COLORS.error} />
-          <Text style={styles.errorBannerText} numberOfLines={2}>
-            {error || mapError}
-          </Text>
-        </View>
-      ) : null}
-
       {/* Persistent bottom sheet: offers stay first in both states. */}
+      {!activeErrand ? (
       <View
         style={[
           styles.bottomSheet,
           {
             bottom: sheetBottom,
             height: sheetHeight,
+            paddingBottom: safeBottom + 8,
+            backgroundColor: themeColors.surface,
+            borderTopColor: themeColors.border,
           },
         ]}
         {...panResponder.panHandlers}
@@ -292,11 +319,11 @@ export function SaMiRunnerDashboardChrome({
           onPress={() => onExpandedChange(!expanded)}
           style={styles.sheetHandleArea}
         >
-          <View style={styles.sheetHandle} />
+          <View style={[styles.sheetHandle, { backgroundColor: themeColors.borderStrong }]} />
           <Ionicons
             name={expanded ? "chevron-down" : "chevron-up"}
             size={16}
-            color={COLORS.muted}
+            color={themeColors.textMuted}
             style={styles.sheetChevron}
           />
         </Pressable>
@@ -311,22 +338,22 @@ export function SaMiRunnerDashboardChrome({
           ]}
         >
           <View style={styles.offerIconWrap}>
-            <Ionicons name="gift-outline" size={27} color={COLORS.white} />
+            <Ionicons name="gift-outline" size={25} color={themeColors.blue} />
           </View>
           <View style={styles.offerCopy}>
             <View style={styles.offerTitleRow}>
-              <Text style={styles.offerTitle}>Offers & Rewards</Text>
+              <Text style={[styles.offerTitle, { color: themeColors.text }]}>Offers & Rewards</Text>
               {offersCount > 0 ? (
                 <View style={styles.offerCountBadge}>
                   <Text style={styles.offerCountText}>{offersCount}</Text>
                 </View>
               ) : null}
             </View>
-            <Text style={styles.offerSubtitle} numberOfLines={1}>
+            <Text style={[styles.offerSubtitle, { color: themeColors.textMuted }]} numberOfLines={1}>
               SaMi offers, rewards and opportunities
             </Text>
           </View>
-          <Ionicons name="chevron-forward" size={22} color={COLORS.white} />
+          <Ionicons name="chevron-forward" size={21} color={themeColors.textMuted} />
         </Pressable>
 
         {expanded ? (
@@ -334,7 +361,7 @@ export function SaMiRunnerDashboardChrome({
             <View style={styles.quickCardGrid}>
               <QuickCard
                 icon="star"
-                iconColor={COLORS.gold}
+                iconColor={themeColors.amber}
                 label="Rating"
                 value="—"
                 onPress={() => onOpenSection("rating")}
@@ -380,14 +407,15 @@ export function SaMiRunnerDashboardChrome({
               ]}
             >
               {availabilityBusy ? (
-                <ActivityIndicator size="small" color={COLORS.navy} />
+                <ActivityIndicator size="small" color={themeColors.brandNavy} />
               ) : (
-                <Text style={styles.goButtonText}>GO</Text>
+                <Text style={[styles.goButtonText, { color: themeColors.brandNavy }]}>GO</Text>
               )}
             </Pressable>
           </>
         ) : null}
       </View>
+      ) : null}
     </View>
   );
 }
@@ -405,6 +433,8 @@ function QuickCard({
   value?: string;
   onPress: () => void;
 }) {
+  const { colors } = useRunnerTheme();
+
   return (
     <Pressable
       accessibilityRole="button"
@@ -415,9 +445,9 @@ function QuickCard({
         { opacity: pressed ? 0.78 : 1 },
       ]}
     >
-      <Ionicons name={icon} size={22} color={iconColor} />
-      {value ? <Text style={styles.quickCardValue}>{value}</Text> : null}
-      <Text style={styles.quickCardLabel}>{label}</Text>
+      <Ionicons name={icon} size={22} color={iconColor ?? colors.blue} />
+      {value ? <Text style={[styles.quickCardValue, { color: colors.text }]}>{value}</Text> : null}
+      <Text style={[styles.quickCardLabel, { color: colors.textMuted }]}>{label}</Text>
     </Pressable>
   );
 }
@@ -429,25 +459,20 @@ const styles = StyleSheet.create({
     right: 0,
     zIndex: 30,
     flexDirection: "row",
-    alignItems: "stretch",
-    gap: 7,
+    alignItems: "center",
+    gap: 10,
   },
   headerCard: {
-    minHeight: 48,
-    borderRadius: 15,
-    borderWidth: 1,
-    borderColor: COLORS.border,
-    backgroundColor: "rgba(0, 5, 35, 0.96)",
+    minHeight: 44,
+    borderRadius: 0,
+    borderWidth: 0,
+    borderColor: "transparent",
+    backgroundColor: "transparent",
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "center",
-    gap: 7,
-    paddingHorizontal: 9,
-    shadowColor: "#000000",
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.23,
-    shadowRadius: 8,
-    elevation: 9,
+    gap: 6,
+    paddingHorizontal: 2,
   },
   statusCard: {
     flexGrow: 0.85,
@@ -469,7 +494,7 @@ const styles = StyleSheet.create({
     borderRadius: 5,
   },
   headerCardText: {
-    color: COLORS.text,
+    color: "#FFFFFF",
     fontSize: 11,
     fontWeight: "800",
     flexShrink: 1,
@@ -496,24 +521,24 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
   },
+  overlayDismiss: {
+    ...StyleSheet.absoluteFill,
+    zIndex: 40,
+    elevation: 22,
+    backgroundColor: "transparent",
+  },
   earningsPanel: {
     position: "absolute",
-    left: 14,
-    right: 14,
-    zIndex: 29,
-    borderRadius: 20,
-    borderWidth: 1,
-    borderColor: "#547EBB",
-    backgroundColor: "rgba(0, 5, 35, 0.98)",
+    left: 12,
+    right: 12,
+    zIndex: 41,
+    borderRadius: 16,
+    borderWidth: StyleSheet.hairlineWidth,
     paddingHorizontal: 14,
     paddingTop: 12,
     paddingBottom: 10,
     gap: 10,
-    elevation: 12,
-    shadowColor: "#000000",
-    shadowOffset: { width: 0, height: 5 },
-    shadowOpacity: 0.28,
-    shadowRadius: 12,
+    elevation: 23,
   },
   earningsPanelHeader: {
     flexDirection: "row",
@@ -521,7 +546,7 @@ const styles = StyleSheet.create({
     justifyContent: "space-between",
   },
   earningsPanelTitle: {
-    color: COLORS.text,
+    color: "#FFFFFF",
     fontSize: 13,
     fontWeight: "900",
   },
@@ -543,13 +568,13 @@ const styles = StyleSheet.create({
     marginHorizontal: 8,
   },
   metricValue: {
-    color: COLORS.text,
+    color: "#FFFFFF",
     fontSize: 13,
     fontWeight: "900",
     textAlign: "center",
   },
   metricLabel: {
-    color: COLORS.muted,
+    color: "#D0D8E4",
     fontSize: 10,
     fontWeight: "600",
     textAlign: "center",
@@ -600,20 +625,13 @@ const styles = StyleSheet.create({
     left: 0,
     right: 0,
     zIndex: 35,
-    borderTopLeftRadius: 27,
-    borderTopRightRadius: 27,
-    borderWidth: 1,
-    borderBottomWidth: 0,
-    borderColor: "#31537F",
-    backgroundColor: "rgba(0, 5, 35, 0.985)",
-    paddingHorizontal: 15,
-    paddingBottom: 10,
-    gap: 10,
-    elevation: 20,
-    shadowColor: "#000000",
-    shadowOffset: { width: 0, height: -5 },
-    shadowOpacity: 0.3,
-    shadowRadius: 16,
+    borderTopLeftRadius: 22,
+    borderTopRightRadius: 22,
+    borderTopWidth: StyleSheet.hairlineWidth,
+    paddingHorizontal: 17,
+    paddingBottom: 8,
+    gap: 9,
+    elevation: 12,
   },
   sheetHandleArea: {
     height: 22,
@@ -631,22 +649,21 @@ const styles = StyleSheet.create({
     right: 7,
   },
   offerCard: {
-    minHeight: 64,
-    borderWidth: 1,
-    borderColor: "#315CA0",
-    borderRadius: 18,
-    backgroundColor: "#0A1D40",
-    paddingHorizontal: 12,
-    paddingVertical: 8,
+    minHeight: 60,
+    borderWidth: 0,
+    borderRadius: 0,
+    backgroundColor: "transparent",
+    paddingHorizontal: 2,
+    paddingVertical: 5,
     flexDirection: "row",
     alignItems: "center",
-    gap: 10,
+    gap: 11,
   },
   offerIconWrap: {
-    width: 43,
-    height: 43,
-    borderRadius: 14,
-    backgroundColor: "#112C56",
+    width: 38,
+    height: 38,
+    borderRadius: 19,
+    backgroundColor: "transparent",
     alignItems: "center",
     justifyContent: "center",
   },
@@ -660,12 +677,12 @@ const styles = StyleSheet.create({
     gap: 7,
   },
   offerTitle: {
-    color: COLORS.text,
+    color: "#FFFFFF",
     fontSize: 14,
     fontWeight: "900",
   },
   offerSubtitle: {
-    color: COLORS.muted,
+    color: "#D0D8E4",
     fontSize: 10,
     fontWeight: "600",
   },
@@ -690,23 +707,22 @@ const styles = StyleSheet.create({
   },
   quickCard: {
     width: "48.5%",
-    minHeight: 65,
-    borderWidth: 1,
-    borderColor: COLORS.border,
-    borderRadius: 16,
-    backgroundColor: COLORS.panelRaised,
+    minHeight: 58,
+    borderWidth: 0,
+    borderRadius: 0,
+    backgroundColor: "transparent",
     alignItems: "center",
     justifyContent: "center",
-    paddingVertical: 7,
-    gap: 2,
+    paddingVertical: 4,
+    gap: 4,
   },
   quickCardValue: {
-    color: COLORS.text,
+    color: "#FFFFFF",
     fontSize: 14,
     fontWeight: "900",
   },
   quickCardLabel: {
-    color: COLORS.muted,
+    color: "#D0D8E4",
     fontSize: 10,
     fontWeight: "700",
   },

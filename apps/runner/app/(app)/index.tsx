@@ -1601,6 +1601,7 @@ export default function RunnerDashboardScreen() {
 
       {/* BOTTOM WORKSPACE */}
 
+      {(!authorized || Boolean(activeJob)) ? (
       <View
         style={[
           styles.bottomWorkspace,
@@ -1610,7 +1611,6 @@ export default function RunnerDashboardScreen() {
             paddingBottom: Math.max(insets.bottom, 14),
             height: workspaceExpanded ? "82%" : "36%",
             maxHeight: workspaceExpanded ? "84%" : "42%",
-            display: authorized && !activeJob ? "none" : "flex",
           },
         ]}
       >
@@ -2656,7 +2656,8 @@ export default function RunnerDashboardScreen() {
           </View>
         </ScrollView>
       </View>
-      {authorized && !activeJob ? (
+      ) : null}
+      {authorized ? (
         <SaMiRunnerDashboardChrome
           topInset={insets.top}
           bottomInset={insets.bottom}

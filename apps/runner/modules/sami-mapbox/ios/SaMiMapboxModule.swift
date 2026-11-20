@@ -307,7 +307,7 @@ public final class SaMiMapboxView: ExpoView {
         }
 
         mapboxMap.setStyleImportConfigProperty(
-            for: "basemap", config: "lightPreset", value: "night"
+            for: "basemap", config: "lightPreset", value: "day"
         )
         mapboxMap.setStyleImportConfigProperty(
             for: "basemap", config: "theme", value: "default"
@@ -331,16 +331,16 @@ public final class SaMiMapboxView: ExpoView {
             for: "basemap", config: "showHdRoads", value: true
         )
         mapboxMap.setStyleImportConfigProperty(
-            for: "basemap", config: "show3dObjects", value: true
+            for: "basemap", config: "show3dObjects", value: false
         )
         mapboxMap.setStyleImportConfigProperty(
-            for: "basemap", config: "show3dBuildings", value: true
+            for: "basemap", config: "show3dBuildings", value: false
         )
         mapboxMap.setStyleImportConfigProperty(
-            for: "basemap", config: "show3dLandmarks", value: true
+            for: "basemap", config: "show3dLandmarks", value: false
         )
         mapboxMap.setStyleImportConfigProperty(
-            for: "basemap", config: "show3dTrees", value: true
+            for: "basemap", config: "show3dTrees", value: false
         )
         mapboxMap.setStyleImportConfigProperty(
             for: "basemap", config: "showLandmarkIcons", value: true
@@ -352,34 +352,7 @@ public final class SaMiMapboxView: ExpoView {
             for: "basemap", config: "showAdminBoundaries", value: true
         )
         mapboxMap.setStyleImportConfigProperty(
-            for: "basemap", config: "densityPointOfInterestLabels", value: 4.0
-        )
-        mapboxMap.setStyleImportConfigProperty(
-            for: "basemap", config: "colorLand", value: "#111C28"
-        )
-        mapboxMap.setStyleImportConfigProperty(
-            for: "basemap", config: "colorWater", value: "#071827"
-        )
-        mapboxMap.setStyleImportConfigProperty(
-            for: "basemap", config: "colorGreenspace", value: "#1F342C"
-        )
-        mapboxMap.setStyleImportConfigProperty(
-            for: "basemap", config: "colorRoads", value: "#344A62"
-        )
-        mapboxMap.setStyleImportConfigProperty(
-            for: "basemap", config: "colorTrunks", value: "#586F89"
-        )
-        mapboxMap.setStyleImportConfigProperty(
-            for: "basemap", config: "colorMotorways", value: "#748AA4"
-        )
-        mapboxMap.setStyleImportConfigProperty(
-            for: "basemap", config: "colorPlaceLabels", value: "#F0F4F8"
-        )
-        mapboxMap.setStyleImportConfigProperty(
-            for: "basemap", config: "colorRoadLabels", value: "#C7D3E2"
-        )
-        mapboxMap.setStyleImportConfigProperty(
-            for: "basemap", config: "colorPointOfInterestLabels", value: "#DDE6F1"
+            for: "basemap", config: "densityPointOfInterestLabels", value: 2.0
         )
     }
     private func configureMapControls() {
@@ -651,7 +624,7 @@ public final class SaMiMapboxView: ExpoView {
             bearing: navigationCamera
                 ? .course
                 : .constant(0),
-            pitch: navigationCamera ? 55 : 0
+            pitch: 0
         )
 
         let followState =

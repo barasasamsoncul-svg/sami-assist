@@ -642,7 +642,7 @@ class SaMiMapboxView(
 
         nativeMapView.mapboxMap.getStyle { style ->
             val settings = listOf(
-                "lightPreset" to Value.valueOf("night"),
+                "lightPreset" to Value.valueOf("day"),
                 "theme" to Value.valueOf("default"),
                 "showPlaceLabels" to Value.valueOf(true),
                 "showRoadLabels" to Value.valueOf(true),
@@ -650,23 +650,14 @@ class SaMiMapboxView(
                 "showTransitLabels" to Value.valueOf(true),
                 "showPedestrianRoads" to Value.valueOf(true),
                 "showHdRoads" to Value.valueOf(true),
-                "show3dObjects" to Value.valueOf(true),
-                "show3dBuildings" to Value.valueOf(true),
-                "show3dLandmarks" to Value.valueOf(true),
-                "show3dTrees" to Value.valueOf(true),
+                "show3dObjects" to Value.valueOf(false),
+                "show3dBuildings" to Value.valueOf(false),
+                "show3dLandmarks" to Value.valueOf(false),
+                "show3dTrees" to Value.valueOf(false),
                 "showLandmarkIcons" to Value.valueOf(true),
                 "showLandmarkIconLabels" to Value.valueOf(true),
                 "showAdminBoundaries" to Value.valueOf(true),
-                "densityPointOfInterestLabels" to Value.valueOf(4.0),
-                "colorLand" to Value.valueOf("#111C28"),
-                "colorWater" to Value.valueOf("#071827"),
-                "colorGreenspace" to Value.valueOf("#1F342C"),
-                "colorRoads" to Value.valueOf("#344A62"),
-                "colorTrunks" to Value.valueOf("#586F89"),
-                "colorMotorways" to Value.valueOf("#748AA4"),
-                "colorPlaceLabels" to Value.valueOf("#F0F4F8"),
-                "colorRoadLabels" to Value.valueOf("#C7D3E2"),
-                "colorPointOfInterestLabels" to Value.valueOf("#DDE6F1")
+                "densityPointOfInterestLabels" to Value.valueOf(2.0),
             )
 
             settings.forEach { (key, value) ->
@@ -971,8 +962,8 @@ class SaMiMapboxView(
 
                     val options =
                         FollowPuckViewportStateOptions.Builder()
-                            .zoom(17.5)
-                            .pitch(52.0)
+                            .zoom(17.0)
+                            .pitch(0.0)
                             .bearing(
                                 FollowPuckViewportStateBearing.SyncWithLocationPuck
                             )
