@@ -1,4 +1,3 @@
-
 package com.sami.runner.mapbox
 
 import android.Manifest
@@ -89,6 +88,7 @@ class SaMiMapboxView(
     private var showScaleBar = false
     private var locationPulsingEnabled = false
 
+    private var screenActive = true
     private var navigationActive = false
     private var cameraMode = "free"
     private var puckBearing = "course"
@@ -320,11 +320,12 @@ class SaMiMapboxView(
         locationPulsingEnabled = value
     }
 
+    fun setScreenActive(value: Boolean) {
+        screenActive = value
+    }
+
     fun setNavigationActive(value: Boolean) {
         navigationActive = value
-        syncNavigationSession()
-        applyLocationSettings()
-        emitNavigationStatus()
     }
 
     fun setCameraMode(value: String) {
@@ -412,13 +413,24 @@ class SaMiMapboxView(
     fun applyUpdatedProps() {
         if (disposed) return
 
-        createMapIfNeeded()
+        if (
+            shouldRunMap() &&
+            accessToken.isNotBlank()
+        ) {
+            createMapIfNeeded()
+        }
+
+        syncMapLifecycle()
+        syncRouteDestination()
+        syncNavigationLifecycle()
+        syncNavigationSession()
+
+        if (!shouldRunMap()) return
+
         applyMapStyle()
         applyMapControls()
         applyLocationSettings()
         applyCameraMode()
-        syncNavigationSession()
-        syncRouteDestination()
     }
 
     private fun createMapIfNeeded() {
@@ -432,8 +444,6 @@ class SaMiMapboxView(
         }
 
         try {
-            // MapboxOptions is provided by the Mapbox Common SDK.
-            // Set the token before creating MapView or Navigation.
             MapboxOptions.accessToken = accessToken
 
             val cameraOptions = CameraOptions.Builder()
@@ -512,9 +522,12 @@ class SaMiMapboxView(
 
             addView(nativeMapView)
 
-            if (isAttachedToWindow) {
-                startMap()
+            mapboxNavigation?.let { navigation ->
+                voiceGuidanceController?.attach(navigation)
+                routeGuidanceController?.attach(navigation)
             }
+
+            syncMapLifecycle()
 
         } catch (error: Exception) {
             reportError(
@@ -534,8 +547,9 @@ class SaMiMapboxView(
         mapLoadedCancelable =
             nativeMapView.mapboxMap.subscribeMapLoaded {
                 mapLoaded = true
-                applyStandardStyleConfiguration(nativeMapView)
+                appliedStyleURL = mapStyleURL
 
+                applyStandardStyleConfiguration(nativeMapView)
                 applyLocationSettings()
                 applyCameraMode()
                 routeGuidanceController?.onStyleLoaded()
@@ -614,8 +628,9 @@ class SaMiMapboxView(
         try {
             nativeMapView.mapboxMap.loadStyle(mapStyleURL) {
                 mapLoaded = true
-                applyStandardStyleConfiguration(nativeMapView)
+                appliedStyleURL = mapStyleURL
 
+                applyStandardStyleConfiguration(nativeMapView)
                 applyMapControls()
                 applyLocationSettings()
                 applyCameraMode()
@@ -629,6 +644,63 @@ class SaMiMapboxView(
             reportError(
                 error.message
                     ?: "The selected Mapbox style could not be loaded."
+            )
+        }
+    }
+
+    private fun restoreMapAfterStart() {
+        val nativeMapView = mapView ?: return
+
+        try {
+            val currentStyle = nativeMapView.mapboxMap.style
+
+            if (currentStyle == null) {
+                /*
+                 * On the first launch, MapInitOptions is already
+                 * loading the initial style. Do not trigger a second
+                 * style request while that initial load is underway.
+                 *
+                 * If a previously loaded style disappeared during
+                 * a stop/start transition, request it again.
+                 */
+                if (
+                    mapLoaded ||
+                    appliedStyleURL != mapStyleURL
+                ) {
+                    mapLoaded = false
+                    appliedStyleURL = ""
+                    applyMapStyle()
+                }
+
+                return
+            }
+
+            if (appliedStyleURL != mapStyleURL) {
+                applyMapStyle()
+                return
+            }
+
+            mapLoaded = true
+
+            applyStandardStyleConfiguration(nativeMapView)
+            applyMapControls()
+            applyLocationSettings()
+            applyCameraMode()
+            routeGuidanceController?.onStyleLoaded()
+
+            /*
+             * Notify JavaScript again after dashboard reactivation.
+             * This prevents the UI from relying on a stale ready state
+             * from the previous dashboard visit.
+             */
+            onMapReady(
+                mapOf("ready" to true)
+            )
+
+        } catch (error: Exception) {
+            reportError(
+                error.message
+                    ?: "Mapbox could not restore the map after reactivation."
             )
         }
     }
@@ -667,13 +739,13 @@ class SaMiMapboxView(
             }
         }
     }
+
     private fun applyMapControls() {
         val nativeMapView = mapView ?: return
 
         nativeMapView.compass.enabled = showCompass
         nativeMapView.scalebar.enabled = showScaleBar
 
-        // Mapbox attribution and logo remain visible.
         nativeMapView.logo.enabled = true
         nativeMapView.attribution.enabled = true
     }
@@ -742,9 +814,6 @@ class SaMiMapboxView(
         val point = latestPoint ?: return
         val navLocation = latestNavigationLocation
 
-        // Expo EventDispatcher requires Map<String, Any>.
-        // Optional native location values are included only
-        // when an actual provider value is available.
         val locationEvent = mutableMapOf<String, Any>(
             "latitude" to point.latitude(),
             "longitude" to point.longitude(),
@@ -773,6 +842,35 @@ class SaMiMapboxView(
     /* ------------------------------------------------------------------ */
     /* NAVIGATION SDK LIFECYCLE                                           */
     /* ------------------------------------------------------------------ */
+
+    private fun shouldAttachNavigationLifecycle(): Boolean {
+        if (disposed || !isAttachedToWindow) return false
+
+        /*
+         * Navigation remains attached while an active trip is running,
+         * even when the dashboard is temporarily not visible.
+         *
+         * For ordinary map browsing, Navigation SDK is initialized
+         * only when a destination exists and the dashboard is active.
+         */
+        return navigationActive ||
+            (screenActive && hasRouteDestination)
+    }
+
+    private fun syncNavigationLifecycle() {
+        if (shouldAttachNavigationLifecycle()) {
+            attachNavigationLifecycle()
+            return
+        }
+
+        if (
+            navigationLifecycleOwner != null ||
+            navigationObserverRegistered ||
+            mapboxNavigation != null
+        ) {
+            releaseNavigationLifecycle()
+        }
+    }
 
     private fun attachNavigationLifecycle() {
         if (navigationLifecycleOwner != null) return
@@ -1002,13 +1100,30 @@ class SaMiMapboxView(
     /* MAP VIEW LIFECYCLE                                                 */
     /* ------------------------------------------------------------------ */
 
+    private fun shouldRunMap(): Boolean {
+        return !disposed &&
+            screenActive &&
+            isAttachedToWindow
+    }
+
+    private fun syncMapLifecycle() {
+        if (shouldRunMap()) {
+            startMap()
+        } else {
+            stopMap()
+        }
+    }
+
     private fun startMap() {
         val nativeMapView = mapView ?: return
-        if (mapStarted) return
+        if (mapStarted || !shouldRunMap()) return
 
         try {
             nativeMapView.onStart()
             mapStarted = true
+
+            restoreMapAfterStart()
+
         } catch (error: Exception) {
             reportError(
                 error.message ?: "Mapbox could not start."
@@ -1032,9 +1147,15 @@ class SaMiMapboxView(
 
         disposed = false
 
-        createMapIfNeeded()
-        startMap()
-        attachNavigationLifecycle()
+        if (
+            screenActive &&
+            accessToken.isNotBlank()
+        ) {
+            createMapIfNeeded()
+        }
+
+        syncMapLifecycle()
+        syncNavigationLifecycle()
         syncNavigationSession()
     }
 
@@ -1187,6 +1308,12 @@ class SaMiMapboxModule : Module() {
                     view: SaMiMapboxView,
                     value: Boolean ->
                 view.setShowScaleBar(value)
+            }
+
+            Prop("screenActive", true) {
+                    view: SaMiMapboxView,
+                    value: Boolean ->
+                view.setScreenActive(value)
             }
 
             Prop("navigationActive", false) {

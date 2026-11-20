@@ -1,4 +1,3 @@
-
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   ActivityIndicator,
@@ -394,6 +393,10 @@ export default function RunnerDashboardScreen() {
   const { colors } = useRunnerTheme();
   const insets = useSafeAreaInsets();
 
+  const [appIsActive, setAppIsActive] = useState(
+    AppState.currentState === "active",
+  );
+
   const [runner, setRunner] = useState<RunnerMe | null>(null);
 
   const [jobs, setJobs] = useState<JobsState>({
@@ -578,6 +581,38 @@ export default function RunnerDashboardScreen() {
     setRouteState({ status: "idle" });
     setVoiceInstruction(null);
   }, [activeJob?.id, activeJob?.status]);
+
+  /*
+   * Keep the native map active only when this dashboard is focused
+   * and the application is in the foreground.
+   */
+  const mapScreenActive = Boolean(
+    isDashboardFocused && appIsActive,
+  );
+
+  useEffect(() => {
+    const subscription = AppState.addEventListener(
+      "change",
+      (nextState) => {
+        setAppIsActive(nextState === "active");
+      },
+    );
+
+    return () => {
+      subscription.remove();
+    };
+  }, []);
+
+  /*
+   * Clear stale readiness as soon as the dashboard loses focus or
+   * the app moves to the background. Native Mapbox emits onMapReady
+   * again after the map is restored.
+   */
+  useEffect(() => {
+    if (!mapScreenActive) {
+      setMapReady(false);
+    }
+  }, [mapScreenActive]);
 
   /* ------------------------------------------------------------------ */
   /* NAVIGATION                                                          */
@@ -1288,6 +1323,7 @@ export default function RunnerDashboardScreen() {
           showUserLocation
           showCompass
           showScaleBar={false}
+          screenActive={mapScreenActive}
           navigationActive={Boolean(navigationActive)}
           cameraMode={
             activeRouteTarget

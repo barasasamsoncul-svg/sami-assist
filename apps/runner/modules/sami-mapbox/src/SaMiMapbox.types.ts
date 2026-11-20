@@ -92,6 +92,13 @@ export type SaMiVoiceInstructionChangedEvent = {
 export type SaMiMapboxViewProps = {
   style?: StyleProp<ViewStyle>;
 
+  /**
+   * Controls whether the dashboard currently displays the map.
+   * The native module uses this to manage MapView lifecycle and recovery.
+   * Defaults to true.
+   */
+  screenActive?: boolean;
+
   accessToken: string;
   mapStyleURL?: string;
 

@@ -35,10 +35,18 @@ public final class SaMiMapboxView: ExpoView {
     var showCompass = true
     var showScaleBar = false
 
+    var screenActive = true
     var navigationActive = false
     var cameraMode = "free"
     var puckBearing = "course"
     var locationPulsingEnabled = false
+
+    private var mapIsReady = false
+    private var hasReportedReadyForCurrentActivation = false
+    private var lastAppliedStyleURL = ""
+    private var disposed = false
+
+    private var cancellables = Set<AnyCancelable>()
 
     // MARK: - Route guidance props
 
@@ -52,21 +60,13 @@ public final class SaMiMapboxView: ExpoView {
     private var routeGuidanceController: SaMiRouteGuidanceController?
     private var routeGuidanceActive = false
 
-    // These values let the view distinguish a genuinely new destination
-    // from routine React prop updates. A changed target requires free drive
-    // to resume before the next route is activated.
     private var lastAppliedHasRouteDestination: Bool?
     private var lastAppliedRouteLatitude: Double?
     private var lastAppliedRouteLongitude: Double?
     private var lastAppliedRouteProfile: String?
     private var lastAppliedVoiceGuidanceMuted: Bool?
 
-    private var lastAppliedStyleURL = ""
-    private var mapIsReady = false
     private var navigationSessionRunning = false
-    private var disposed = false
-
-    private var cancellables = Set<AnyCancelable>()
 
     // MARK: - Location providers
 
@@ -88,23 +88,35 @@ public final class SaMiMapboxView: ExpoView {
 
     private var navigationLocationSubscription: AnyCancellable?
 
-    // MARK: - Initialisation
+    // MARK: - Initialisation and UIKit lifecycle
 
     override public func layoutSubviews() {
         super.layoutSubviews()
 
-        guard !bounds.isEmpty else {
+        guard screenActive,
+              window != nil,
+              !bounds.isEmpty else {
+            syncMapVisibility()
             return
         }
 
         createMapIfNeeded()
         mapView?.frame = bounds
+        syncMapVisibility()
     }
 
     override public func didMoveToWindow() {
         super.didMoveToWindow()
 
         guard window != nil else {
+            hasReportedReadyForCurrentActivation = false
+            syncMapVisibility()
+            return
+        }
+
+        syncMapVisibility()
+
+        guard screenActive else {
             return
         }
 
@@ -112,11 +124,37 @@ public final class SaMiMapboxView: ExpoView {
         applyUpdatedProps()
     }
 
+    private func setScreenActive(_ active: Bool) {
+        guard screenActive != active else {
+            return
+        }
+
+        screenActive = active
+
+        if !active {
+            hasReportedReadyForCurrentActivation = false
+        }
+
+        syncMapVisibility()
+    }
+
+    private func syncMapVisibility() {
+        let visible =
+            screenActive &&
+            window != nil &&
+            !disposed
+
+        mapView?.isHidden = !visible
+        mapView?.isUserInteractionEnabled = visible
+    }
+
     // MARK: - Map creation
 
     private func createMapIfNeeded() {
         guard mapView == nil,
               !disposed,
+              screenActive,
+              window != nil,
               !bounds.isEmpty else {
             return
         }
@@ -165,9 +203,6 @@ public final class SaMiMapboxView: ExpoView {
 
             lastAppliedStyleURL = mapStyleURL
 
-            // The route controller uses the same Navigation provider and
-            // native map view as free drive. The view remains the owner of
-            // location permissions and trip-session lifecycle.
             routeGuidanceController = SaMiRouteGuidanceController(
                 navigationProvider: navigationProvider,
                 mapView: nativeMap,
@@ -182,6 +217,7 @@ public final class SaMiMapboxView: ExpoView {
             configureLocationProvider()
             configureMapEvents()
             configureMapControls()
+            syncMapVisibility()
 
             if navigationActive || hasRouteDestination {
                 startFreeDrive()
@@ -194,7 +230,7 @@ public final class SaMiMapboxView: ExpoView {
         }
     }
 
-    // MARK: - Style
+    // MARK: - Map style
 
     private func resolvedStyleURI() -> StyleURI {
         guard let customStyle = StyleURI(
@@ -216,8 +252,26 @@ public final class SaMiMapboxView: ExpoView {
 
         lastAppliedStyleURL = mapStyleURL
         mapIsReady = false
+        hasReportedReadyForCurrentActivation = false
 
         mapView.mapboxMap.loadStyle(styleURI)
+    }
+
+    // MARK: - Map readiness
+
+    private func emitMapReadyIfNeeded() {
+        guard screenActive,
+              window != nil,
+              mapIsReady,
+              !hasReportedReadyForCurrentActivation else {
+            return
+        }
+
+        hasReportedReadyForCurrentActivation = true
+
+        onMapReady([
+            "ready": true
+        ])
     }
 
     // MARK: - Map events
@@ -240,10 +294,7 @@ public final class SaMiMapboxView: ExpoView {
             self.configureMapControls()
             self.configureLocationProvider()
             self.applyCameraMode()
-
-            self.onMapReady([
-                "ready": true
-            ])
+            self.emitMapReadyIfNeeded()
 
         }.store(in: &cancellables)
 
@@ -274,7 +325,12 @@ public final class SaMiMapboxView: ExpoView {
         mapView.gestures.onMapTap.observe {
             [weak self] context in
 
-            self?.onMapTap([
+            guard let self,
+                  self.screenActive else {
+                return
+            }
+
+            self.onMapTap([
                 "latitude": context.coordinate.latitude,
                 "longitude": context.coordinate.longitude
             ])
@@ -355,6 +411,7 @@ public final class SaMiMapboxView: ExpoView {
             for: "basemap", config: "densityPointOfInterestLabels", value: 2.0
         )
     }
+
     private func configureMapControls() {
         guard let mapView else {
             return
@@ -369,8 +426,6 @@ public final class SaMiMapboxView: ExpoView {
             showScaleBar ? .visible : .hidden
 
         mapView.ornaments.options = ornaments
-
-        // Mapbox logo and attribution remain enabled.
     }
 
     // MARK: - Location puck
@@ -436,8 +491,6 @@ public final class SaMiMapboxView: ExpoView {
         do {
             navigationLocationSubscription?.cancel()
 
-            // Subscribe before starting the navigation session so
-            // the first enhanced location update is not missed.
             navigationLocationSubscription =
                 mapboxNavigation.navigation()
                     .locationMatching
@@ -453,9 +506,6 @@ public final class SaMiMapboxView: ExpoView {
                         )
                     }
 
-            // Start the actual Mapbox Navigation SDK free-drive
-            // session. This enables map matching and enhanced
-            // location updates without requiring a destination.
             navigationProvider.tripSession().startFreeDrive()
 
             navigationSessionRunning = true
@@ -506,8 +556,6 @@ public final class SaMiMapboxView: ExpoView {
             return
         }
 
-        // Feed Navigation SDK's enhanced, map-matched position
-        // into the Mapbox Maps location puck.
         let matchedLocation = MapboxMaps.Location(
             coordinate: location.coordinate
         )
@@ -516,8 +564,6 @@ public final class SaMiMapboxView: ExpoView {
             matchedLocation
         )
 
-        // Route requests and progress are driven by enhanced GPS fixes,
-        // not by the raw location provider.
         routeGuidanceController?.updateOrigin(location)
 
         let bearing: Any =
@@ -573,6 +619,7 @@ public final class SaMiMapboxView: ExpoView {
 
     private func emitNavigationStatus() {
         let mode: String
+
         if routeGuidanceActive {
             mode = "active_guidance"
         } else if navigationSessionRunning {
@@ -644,16 +691,17 @@ public final class SaMiMapboxView: ExpoView {
             return
         }
 
-        createMapIfNeeded()
+        syncMapVisibility()
 
-        updateMapStyle()
-        configureMapControls()
-        configureLocationProvider()
+        if screenActive && window != nil {
+            createMapIfNeeded()
+        }
 
         let previousHasRouteDestination =
             lastAppliedHasRouteDestination ?? false
 
         let destinationChanged: Bool
+
         if let previousHasDestination = lastAppliedHasRouteDestination {
             destinationChanged =
                 previousHasDestination != hasRouteDestination ||
@@ -666,17 +714,20 @@ public final class SaMiMapboxView: ExpoView {
             destinationChanged = true
         }
 
-        let shouldRunNavigation = navigationActive || hasRouteDestination
+        /*
+         * Keep a currently active trip session alive when the dashboard
+         * loses focus. A route-only session is started only while the
+         * dashboard is visible.
+         */
+        let shouldRunNavigation =
+            navigationActive ||
+            (screenActive && hasRouteDestination)
 
         if shouldRunNavigation {
-            // A changed pickup/delivery target must move the trip session
-            // back to free drive before requesting its replacement route.
             if destinationChanged && navigationSessionRunning {
                 navigationProvider.tripSession().startFreeDrive()
             }
 
-            // This checks location authorization and establishes the native
-            // enhanced-location subscription before a route can be requested.
             startFreeDrive()
         }
 
@@ -720,7 +771,16 @@ public final class SaMiMapboxView: ExpoView {
             )
         }
 
+        guard screenActive,
+              window != nil else {
+            return
+        }
+
+        updateMapStyle()
+        configureMapControls()
+        configureLocationProvider()
         applyCameraMode()
+        emitMapReadyIfNeeded()
     }
 
     // MARK: - Errors
@@ -832,6 +892,12 @@ public final class SaMiMapboxModule: Module {
                 (view: SaMiMapboxView, value: Bool) in
 
                 view.showScaleBar = value
+            }
+
+            Prop("screenActive", true) {
+                (view: SaMiMapboxView, value: Bool) in
+
+                view.setScreenActive(value)
             }
 
             Prop("navigationActive", false) {

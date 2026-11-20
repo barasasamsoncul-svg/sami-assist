@@ -23,6 +23,7 @@ function SaMiMapboxView(props: SaMiMapboxViewProps) {
       showUserLocation={props.showUserLocation ?? true}
       showCompass={props.showCompass ?? true}
       showScaleBar={props.showScaleBar ?? false}
+      screenActive={props.screenActive ?? true}
       navigationActive={props.navigationActive ?? false}
       cameraMode={props.cameraMode ?? "free"}
       puckBearing={props.puckBearing ?? "course"}
