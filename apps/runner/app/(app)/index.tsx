@@ -29,6 +29,7 @@ import {
 } from "@/api";
 
 import { useRunnerTheme } from "@/theme";
+import { SaMiRunnerDashboardChrome } from "@/components/RunnerDashboardChrome";
 
 import {
   SaMiMapboxView,
@@ -77,11 +78,7 @@ const TRACKING_STATUSES = [
   "in_progress",
 ];
 
-const MAPBOX_DAY_STYLE =
-  "mapbox://styles/mapbox/navigation-day-v1";
-
-const MAPBOX_NIGHT_STYLE =
-  "mapbox://styles/mapbox/navigation-night-v1";
+const MAPBOX_STANDARD_STYLE = "mapbox://styles/mapbox/standard";
 
 function money(
   value: number | null,
@@ -392,7 +389,7 @@ function RoutePoint({
 }
 
 export default function RunnerDashboardScreen() {
-  const { colors, mode } = useRunnerTheme();
+  const { colors } = useRunnerTheme();
   const insets = useSafeAreaInsets();
 
   const [runner, setRunner] = useState<RunnerMe | null>(null);
@@ -416,6 +413,9 @@ export default function RunnerDashboardScreen() {
 
   const [cameraFollowing, setCameraFollowing] = useState(false);
   const [location, setLocation] = useState<MapLocation | null>(null);
+  const [currentLocationName, setCurrentLocationName] = useState("");
+  const lastReverseGeocodeAtRef = useRef(0);
+  const reverseGeocodeInFlightRef = useRef(false);
   const [navigationMode, setNavigationMode] =
     useState<NavigationMode>("idle");
 
@@ -478,10 +478,7 @@ export default function RunnerDashboardScreen() {
     !signingOut &&
     (!activeJob || activeJob.status === "completion_submitted");
 
-  const mapStyleURL =
-    mode === "dark"
-      ? MAPBOX_NIGHT_STYLE
-      : MAPBOX_DAY_STYLE;
+  const mapStyleURL = MAPBOX_STANDARD_STYLE;
 
   /*
    * An accepted errand routes the Runner to pickup.
@@ -712,6 +709,38 @@ export default function RunnerDashboardScreen() {
   /* LOCATION                                                            */
   /* ------------------------------------------------------------------ */
 
+  const updateCurrentLocationName = useCallback(async (coordinates: Coordinates) => {
+    const now = Date.now();
+    if (
+      reverseGeocodeInFlightRef.current ||
+      now - lastReverseGeocodeAtRef.current < 60000
+    ) {
+      return;
+    }
+
+    lastReverseGeocodeAtRef.current = now;
+    reverseGeocodeInFlightRef.current = true;
+
+    try {
+      const results = await Location.reverseGeocodeAsync(coordinates);
+      const address = results[0];
+      const locality = [
+        address?.district,
+        address?.subregion,
+        address?.city,
+        address?.name,
+      ].find((value) => typeof value === "string" && value.trim().length > 0);
+
+      if (locality && mountedRef.current) {
+        setCurrentLocationName(locality.trim());
+      }
+    } catch {
+      // Keep the saved service area as a fallback if reverse geocoding fails.
+    } finally {
+      reverseGeocodeInFlightRef.current = false;
+    }
+  }, []);
+
   const requestCurrentLocation = useCallback(async () => {
     const permission =
       await Location.requestForegroundPermissionsAsync();
@@ -741,13 +770,14 @@ export default function RunnerDashboardScreen() {
       });
 
       setCameraFollowing(true);
+      void updateCurrentLocationName(coords);
     }
 
     return {
       coords,
       position,
     };
-  }, []);
+  }, [updateCurrentLocationName]);
 
   const locateMe = useCallback(async () => {
     if (locationBusy || signingOut) return;
@@ -826,6 +856,10 @@ export default function RunnerDashboardScreen() {
       if (mountedRef.current) {
         setLocation(nextLocation);
       }
+      void updateCurrentLocationName({
+        latitude: next.latitude,
+        longitude: next.longitude,
+      });
 
       if (
         !authorized ||
@@ -867,6 +901,7 @@ export default function RunnerDashboardScreen() {
       isOnline,
       activeJobIsTrackable,
       signingOut,
+      updateCurrentLocationName,
     ],
   );
 
@@ -1145,7 +1180,7 @@ export default function RunnerDashboardScreen() {
 
   return (
     <View style={styles.root}>
-      <StatusBar barStyle={mode === "dark" ? "light-content" : "dark-content"} />
+      <StatusBar barStyle="light-content" />
 
       {/* MAPBOX CANVAS */}
 
@@ -1208,120 +1243,6 @@ export default function RunnerDashboardScreen() {
             setVoiceInstruction(event.nativeEvent);
           }}
         />
-      </View>
-
-      {/* MAP HEADER */}
-
-      <View
-        style={[
-          styles.header,
-          {
-            paddingTop: insets.top + 9,
-            paddingHorizontal: 16,
-          },
-        ]}
-      >
-        <View
-          style={[
-            styles.brandCard,
-            {
-              backgroundColor: colors.surface,
-              borderColor: colors.border,
-            },
-          ]}
-        >
-          <View style={styles.brandCopy}>
-            <Text
-              style={[
-                styles.brandTitle,
-                { color: colors.navy },
-              ]}
-            >
-              SaMi
-              <Text style={{ color: colors.blue }}>
-                {" "}Runner
-              </Text>
-            </Text>
-
-            <Text
-              style={[
-                styles.brandTagline,
-                { color: colors.textMuted },
-              ]}
-            >
-              CONSIDER IT DONE
-            </Text>
-          </View>
-
-          <View
-            style={[
-              styles.statusPill,
-              {
-                backgroundColor: !authorized
-                  ? restricted
-                    ? colors.dangerSoft
-                    : colors.warningSoft
-                  : isOnline
-                    ? colors.successSoft
-                    : colors.blueSoft,
-              },
-            ]}
-          >
-            <View
-              style={[
-                styles.statusDot,
-                {
-                  backgroundColor: !authorized
-                    ? restricted
-                      ? colors.red
-                      : colors.warning
-                    : isOnline
-                      ? colors.success
-                      : colors.blue,
-                },
-              ]}
-            />
-
-            <Text
-              style={[
-                styles.statusPillText,
-                {
-                  color: !authorized
-                    ? restricted
-                      ? colors.red
-                      : colors.warning
-                    : isOnline
-                      ? colors.success
-                      : colors.blue,
-                },
-              ]}
-            >
-              {onlineLabel}
-            </Text>
-          </View>
-        </View>
-
-        <View style={styles.headerActions}>
-          <IconButton
-            icon="refresh-outline"
-            label="Refresh dashboard"
-            onPress={() => void loadDashboard(true)}
-            busy={refreshing}
-            color={colors.text}
-            backgroundColor={colors.surface}
-            borderColor={colors.border}
-          />
-
-          <IconButton
-            icon="person-outline"
-            label="Runner profile"
-            onPress={goToProfile}
-            disabled={signingOut}
-            color={colors.text}
-            backgroundColor={colors.surface}
-            borderColor={colors.border}
-          />
-        </View>
       </View>
 
       {/* TURN-BY-TURN MANEUVER CARD */}
@@ -1523,7 +1444,7 @@ export default function RunnerDashboardScreen() {
           styles.mapControls,
           {
             right: 16,
-            bottom: insets.bottom + 300,
+            bottom: insets.bottom + (workspaceExpanded ? 410 : 134),
             display: workspaceExpanded ? "none" : "flex",
           },
         ]}
@@ -1551,6 +1472,7 @@ export default function RunnerDashboardScreen() {
             top: insets.top + (activeRouteTarget ? 218 : 72),
             backgroundColor: colors.surface,
             borderColor: colors.border,
+            display: "none",
           },
         ]}
       >
@@ -1599,6 +1521,7 @@ export default function RunnerDashboardScreen() {
             paddingBottom: Math.max(insets.bottom, 14),
             height: workspaceExpanded ? "82%" : "36%",
             maxHeight: workspaceExpanded ? "84%" : "42%",
+            display: authorized && !activeJob ? "none" : "flex",
           },
         ]}
       >
@@ -2644,6 +2567,32 @@ export default function RunnerDashboardScreen() {
           </View>
         </ScrollView>
       </View>
+      {authorized && !activeJob ? (
+        <SaMiRunnerDashboardChrome
+          topInset={insets.top}
+          bottomInset={insets.bottom}
+          isOnline={isOnline}
+          statusLabel={onlineLabel}
+          authorized={Boolean(authorized)}
+          canChangeAvailability={canChangeAvailability}
+          availabilityBusy={availabilityBusy}
+          locationLabel={currentLocationName || runner?.serviceArea || locationQualityLabel}
+          expanded={workspaceExpanded}
+          onExpandedChange={setWorkspaceExpanded}
+          onToggleAvailability={() => void toggleAvailability()}
+          onOpenSection={(section) => {
+            router.push({
+              pathname: "/(app)/runner-section",
+              params: { section },
+            } as never);
+          }}
+          offersCount={jobs.offers.length}
+          activeErrand={Boolean(activeJob)}
+          hasActiveRoute={Boolean(activeRouteTarget)}
+          error={error}
+          mapError={mapError}
+        />
+      ) : null}
     </View>
   );
 }

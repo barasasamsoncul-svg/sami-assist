@@ -236,6 +236,7 @@ public final class SaMiMapboxView: ExpoView {
 
             self.mapIsReady = true
 
+            self.configureStandardStyleConfiguration()
             self.configureMapControls()
             self.configureLocationProvider()
             self.applyCameraMode()
@@ -299,6 +300,88 @@ public final class SaMiMapboxView: ExpoView {
 
     // MARK: - Map controls
 
+    private func configureStandardStyleConfiguration() {
+        guard mapStyleURL == StyleURI.standard.rawValue,
+              let mapboxMap = mapView?.mapboxMap else {
+            return
+        }
+
+        mapboxMap.setStyleImportConfigProperty(
+            for: "basemap", config: "lightPreset", value: "night"
+        )
+        mapboxMap.setStyleImportConfigProperty(
+            for: "basemap", config: "theme", value: "default"
+        )
+        mapboxMap.setStyleImportConfigProperty(
+            for: "basemap", config: "showPlaceLabels", value: true
+        )
+        mapboxMap.setStyleImportConfigProperty(
+            for: "basemap", config: "showRoadLabels", value: true
+        )
+        mapboxMap.setStyleImportConfigProperty(
+            for: "basemap", config: "showPointOfInterestLabels", value: true
+        )
+        mapboxMap.setStyleImportConfigProperty(
+            for: "basemap", config: "showTransitLabels", value: true
+        )
+        mapboxMap.setStyleImportConfigProperty(
+            for: "basemap", config: "showPedestrianRoads", value: true
+        )
+        mapboxMap.setStyleImportConfigProperty(
+            for: "basemap", config: "showHdRoads", value: true
+        )
+        mapboxMap.setStyleImportConfigProperty(
+            for: "basemap", config: "show3dObjects", value: true
+        )
+        mapboxMap.setStyleImportConfigProperty(
+            for: "basemap", config: "show3dBuildings", value: true
+        )
+        mapboxMap.setStyleImportConfigProperty(
+            for: "basemap", config: "show3dLandmarks", value: true
+        )
+        mapboxMap.setStyleImportConfigProperty(
+            for: "basemap", config: "show3dTrees", value: true
+        )
+        mapboxMap.setStyleImportConfigProperty(
+            for: "basemap", config: "showLandmarkIcons", value: true
+        )
+        mapboxMap.setStyleImportConfigProperty(
+            for: "basemap", config: "showLandmarkIconLabels", value: true
+        )
+        mapboxMap.setStyleImportConfigProperty(
+            for: "basemap", config: "showAdminBoundaries", value: true
+        )
+        mapboxMap.setStyleImportConfigProperty(
+            for: "basemap", config: "densityPointOfInterestLabels", value: 4.0
+        )
+        mapboxMap.setStyleImportConfigProperty(
+            for: "basemap", config: "colorLand", value: "#111C28"
+        )
+        mapboxMap.setStyleImportConfigProperty(
+            for: "basemap", config: "colorWater", value: "#071827"
+        )
+        mapboxMap.setStyleImportConfigProperty(
+            for: "basemap", config: "colorGreenspace", value: "#1F342C"
+        )
+        mapboxMap.setStyleImportConfigProperty(
+            for: "basemap", config: "colorRoads", value: "#344A62"
+        )
+        mapboxMap.setStyleImportConfigProperty(
+            for: "basemap", config: "colorTrunks", value: "#586F89"
+        )
+        mapboxMap.setStyleImportConfigProperty(
+            for: "basemap", config: "colorMotorways", value: "#748AA4"
+        )
+        mapboxMap.setStyleImportConfigProperty(
+            for: "basemap", config: "colorPlaceLabels", value: "#F0F4F8"
+        )
+        mapboxMap.setStyleImportConfigProperty(
+            for: "basemap", config: "colorRoadLabels", value: "#C7D3E2"
+        )
+        mapboxMap.setStyleImportConfigProperty(
+            for: "basemap", config: "colorPointOfInterestLabels", value: "#DDE6F1"
+        )
+    }
     private func configureMapControls() {
         guard let mapView else {
             return

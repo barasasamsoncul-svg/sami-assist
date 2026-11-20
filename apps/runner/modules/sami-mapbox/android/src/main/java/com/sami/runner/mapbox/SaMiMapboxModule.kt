@@ -10,6 +10,7 @@ import androidx.lifecycle.LifecycleOwner
 
 import com.mapbox.common.Cancelable
 import com.mapbox.common.MapboxOptions
+import com.mapbox.bindgen.Value
 import com.mapbox.common.location.Location as MapboxLocation
 import com.mapbox.geojson.Point
 import com.mapbox.maps.CameraOptions
@@ -533,6 +534,7 @@ class SaMiMapboxView(
         mapLoadedCancelable =
             nativeMapView.mapboxMap.subscribeMapLoaded {
                 mapLoaded = true
+                applyStandardStyleConfiguration(nativeMapView)
 
                 applyLocationSettings()
                 applyCameraMode()
@@ -612,6 +614,7 @@ class SaMiMapboxView(
         try {
             nativeMapView.mapboxMap.loadStyle(mapStyleURL) {
                 mapLoaded = true
+                applyStandardStyleConfiguration(nativeMapView)
 
                 applyMapControls()
                 applyLocationSettings()
@@ -634,6 +637,45 @@ class SaMiMapboxView(
     /* MAP CONTROLS                                                       */
     /* ------------------------------------------------------------------ */
 
+    private fun applyStandardStyleConfiguration(nativeMapView: MapView) {
+        if (mapStyleURL != "mapbox://styles/mapbox/standard") return
+
+        nativeMapView.mapboxMap.getStyle { style ->
+            val settings = listOf(
+                "lightPreset" to Value.valueOf("night"),
+                "theme" to Value.valueOf("default"),
+                "showPlaceLabels" to Value.valueOf(true),
+                "showRoadLabels" to Value.valueOf(true),
+                "showPointOfInterestLabels" to Value.valueOf(true),
+                "showTransitLabels" to Value.valueOf(true),
+                "showPedestrianRoads" to Value.valueOf(true),
+                "showHdRoads" to Value.valueOf(true),
+                "show3dObjects" to Value.valueOf(true),
+                "show3dBuildings" to Value.valueOf(true),
+                "show3dLandmarks" to Value.valueOf(true),
+                "show3dTrees" to Value.valueOf(true),
+                "showLandmarkIcons" to Value.valueOf(true),
+                "showLandmarkIconLabels" to Value.valueOf(true),
+                "showAdminBoundaries" to Value.valueOf(true),
+                "densityPointOfInterestLabels" to Value.valueOf(4.0),
+                "colorLand" to Value.valueOf("#111C28"),
+                "colorWater" to Value.valueOf("#071827"),
+                "colorGreenspace" to Value.valueOf("#1F342C"),
+                "colorRoads" to Value.valueOf("#344A62"),
+                "colorTrunks" to Value.valueOf("#586F89"),
+                "colorMotorways" to Value.valueOf("#748AA4"),
+                "colorPlaceLabels" to Value.valueOf("#F0F4F8"),
+                "colorRoadLabels" to Value.valueOf("#C7D3E2"),
+                "colorPointOfInterestLabels" to Value.valueOf("#DDE6F1")
+            )
+
+            settings.forEach { (key, value) ->
+                runCatching {
+                    style.setStyleImportConfigProperty("basemap", key, value)
+                }
+            }
+        }
+    }
     private fun applyMapControls() {
         val nativeMapView = mapView ?: return
 
