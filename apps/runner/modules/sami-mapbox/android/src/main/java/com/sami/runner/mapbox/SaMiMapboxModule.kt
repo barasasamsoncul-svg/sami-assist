@@ -17,7 +17,6 @@ import com.mapbox.maps.CameraOptions
 import com.mapbox.maps.EdgeInsets
 import com.mapbox.maps.MapInitOptions
 import com.mapbox.maps.MapView
-import com.mapbox.maps.Style
 
 import com.mapbox.maps.plugin.PuckBearing
 import com.mapbox.maps.plugin.attribution.attribution
