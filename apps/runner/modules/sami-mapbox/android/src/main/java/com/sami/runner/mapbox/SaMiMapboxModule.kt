@@ -11,7 +11,6 @@ import androidx.lifecycle.LifecycleOwner
 
 import com.mapbox.common.Cancelable
 import com.mapbox.common.MapboxOptions
-import com.mapbox.bindgen.Value
 import com.mapbox.common.location.Location as MapboxLocation
 import com.mapbox.geojson.Point
 import com.mapbox.maps.CameraOptions
@@ -76,7 +75,7 @@ class SaMiMapboxView(
     private var routeProfile = "driving-traffic"
 
     private var accessToken = ""
-    private var mapStyleURL = Style.STANDARD
+    private var mapStyleURL = "mapbox://styles/mapbox/navigation-day-v1"
     private var appliedStyleURL = ""
 
     private var initialLatitude = -1.2921
@@ -277,7 +276,7 @@ class SaMiMapboxView(
 
     fun setMapStyle(value: String) {
         mapStyleURL = value.trim().ifBlank {
-            Style.STANDARD
+            "mapbox://styles/mapbox/navigation-day-v1"
         }
     }
 
@@ -434,7 +433,6 @@ class SaMiMapboxView(
         if (disposed) return
 
         if (
-            screenActive &&
             isAttachedToWindow &&
             accessToken.isNotBlank()
         ) {
@@ -482,7 +480,6 @@ class SaMiMapboxView(
             val mapInitOptions = MapInitOptions(
                 context = context,
                 cameraOptions = cameraOptions,
-                textureView = true,
                 styleUri = mapStyleURL
             )
 
@@ -568,8 +565,6 @@ class SaMiMapboxView(
                 mapLoaded = true
                 mapWasStopped = false
                 appliedStyleURL = mapStyleURL
-
-                applyStandardStyleConfiguration(nativeMapView)
                 applyLocationSettings()
                 applyCameraMode()
                 routeGuidanceController?.onStyleLoaded()
@@ -654,8 +649,6 @@ class SaMiMapboxView(
                 mapLoaded = true
                 mapWasStopped = false
                 appliedStyleURL = mapStyleURL
-
-                applyStandardStyleConfiguration(nativeMapView)
                 applyMapControls()
                 applyLocationSettings()
                 applyCameraMode()
@@ -705,8 +698,6 @@ class SaMiMapboxView(
                 applyMapStyle()
                 return
             }
-
-            applyStandardStyleConfiguration(nativeMapView)
             applyMapControls()
             applyLocationSettings()
             applyCameraMode()
@@ -729,37 +720,6 @@ class SaMiMapboxView(
     /* ------------------------------------------------------------------ */
     /* MAP CONTROLS                                                       */
     /* ------------------------------------------------------------------ */
-
-    private fun applyStandardStyleConfiguration(nativeMapView: MapView) {
-        if (mapStyleURL != "mapbox://styles/mapbox/standard") return
-
-        nativeMapView.mapboxMap.getStyle { style ->
-            val settings = listOf(
-                "lightPreset" to Value.valueOf("day"),
-                "theme" to Value.valueOf("default"),
-                "showPlaceLabels" to Value.valueOf(true),
-                "showRoadLabels" to Value.valueOf(true),
-                "showPointOfInterestLabels" to Value.valueOf(true),
-                "showTransitLabels" to Value.valueOf(true),
-                "showPedestrianRoads" to Value.valueOf(true),
-                "showHdRoads" to Value.valueOf(true),
-                "show3dObjects" to Value.valueOf(false),
-                "show3dBuildings" to Value.valueOf(false),
-                "show3dLandmarks" to Value.valueOf(false),
-                "show3dTrees" to Value.valueOf(false),
-                "showLandmarkIcons" to Value.valueOf(true),
-                "showLandmarkIconLabels" to Value.valueOf(true),
-                "showAdminBoundaries" to Value.valueOf(true),
-                "densityPointOfInterestLabels" to Value.valueOf(2.0),
-            )
-
-            settings.forEach { (key, value) ->
-                runCatching {
-                    style.setStyleImportConfigProperty("basemap", key, value)
-                }
-            }
-        }
-    }
 
     private fun applyMapControls() {
         val nativeMapView = mapView ?: return
@@ -1261,7 +1221,6 @@ class SaMiMapboxView(
         disposed = false
 
         if (
-            screenActive &&
             accessToken.isNotBlank()
         ) {
             createMapIfNeeded()
@@ -1371,7 +1330,7 @@ class SaMiMapboxModule : Module() {
                 view.setAccessToken(value)
             }
 
-            Prop("mapStyleURL", Style.STANDARD) {
+            Prop("mapStyleURL", "mapbox://styles/mapbox/navigation-day-v1") {
                     view: SaMiMapboxView,
                     value: String ->
                 view.setMapStyle(value)
