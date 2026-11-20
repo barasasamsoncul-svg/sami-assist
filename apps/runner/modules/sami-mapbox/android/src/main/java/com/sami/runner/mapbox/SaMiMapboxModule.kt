@@ -94,6 +94,7 @@ class SaMiMapboxView(
     private var puckBearing = "course"
 
     private var mapStarted = false
+    private var mapWasStopped = false
     private var disposed = false
     private var mapLoaded = false
 
@@ -321,11 +322,24 @@ class SaMiMapboxView(
     }
 
     fun setScreenActive(value: Boolean) {
+        val becameActive = !screenActive && value
         screenActive = value
+
+        /*
+         * The native renderer is deliberately not stopped when a
+         * React Navigation screen loses focus. When it becomes active
+         * again, refresh the JS readiness state using the existing map.
+         */
+        if (becameActive && mapStarted && mapLoaded) {
+            restoreMapAfterStart()
+        }
     }
 
     fun setNavigationActive(value: Boolean) {
         navigationActive = value
+        syncNavigationSession()
+        applyLocationSettings()
+        emitNavigationStatus()
     }
 
     fun setCameraMode(value: String) {
@@ -414,7 +428,8 @@ class SaMiMapboxView(
         if (disposed) return
 
         if (
-            shouldRunMap() &&
+            screenActive &&
+            isAttachedToWindow &&
             accessToken.isNotBlank()
         ) {
             createMapIfNeeded()
@@ -425,7 +440,7 @@ class SaMiMapboxView(
         syncNavigationLifecycle()
         syncNavigationSession()
 
-        if (!shouldRunMap()) return
+        if (!screenActive || !isAttachedToWindow) return
 
         applyMapStyle()
         applyMapControls()
@@ -461,6 +476,7 @@ class SaMiMapboxView(
             val mapInitOptions = MapInitOptions(
                 context = context,
                 cameraOptions = cameraOptions,
+                textureView = true,
                 styleUri = mapStyleURL
             )
 
@@ -522,12 +538,9 @@ class SaMiMapboxView(
 
             addView(nativeMapView)
 
-            mapboxNavigation?.let { navigation ->
-                voiceGuidanceController?.attach(navigation)
-                routeGuidanceController?.attach(navigation)
+            if (isAttachedToWindow) {
+                startMap()
             }
-
-            syncMapLifecycle()
 
         } catch (error: Exception) {
             reportError(
@@ -547,6 +560,7 @@ class SaMiMapboxView(
         mapLoadedCancelable =
             nativeMapView.mapboxMap.subscribeMapLoaded {
                 mapLoaded = true
+                mapWasStopped = false
                 appliedStyleURL = mapStyleURL
 
                 applyStandardStyleConfiguration(nativeMapView)
@@ -554,9 +568,11 @@ class SaMiMapboxView(
                 applyCameraMode()
                 routeGuidanceController?.onStyleLoaded()
 
-                onMapReady(
-                    mapOf("ready" to true)
-                )
+                if (screenActive) {
+                    onMapReady(
+                        mapOf("ready" to true)
+                    )
+                }
 
                 emitNavigationStatus()
             }
@@ -590,12 +606,14 @@ class SaMiMapboxView(
         nativeMapView.gestures.addOnMapClickListener {
             point ->
 
-            onMapTap(
-                mapOf(
-                    "latitude" to point.latitude(),
-                    "longitude" to point.longitude()
+            if (screenActive) {
+                onMapTap(
+                    mapOf(
+                        "latitude" to point.latitude(),
+                        "longitude" to point.longitude()
+                    )
                 )
-            )
+            }
 
             true
         }
@@ -628,6 +646,7 @@ class SaMiMapboxView(
         try {
             nativeMapView.mapboxMap.loadStyle(mapStyleURL) {
                 mapLoaded = true
+                mapWasStopped = false
                 appliedStyleURL = mapStyleURL
 
                 applyStandardStyleConfiguration(nativeMapView)
@@ -636,9 +655,11 @@ class SaMiMapboxView(
                 applyCameraMode()
                 routeGuidanceController?.onStyleLoaded()
 
-                onMapReady(
-                    mapOf("ready" to true)
-                )
+                if (screenActive) {
+                    onMapReady(
+                        mapOf("ready" to true)
+                    )
+                }
             }
         } catch (error: Exception) {
             reportError(
@@ -656,17 +677,12 @@ class SaMiMapboxView(
 
             if (currentStyle == null) {
                 /*
-                 * On the first launch, MapInitOptions is already
-                 * loading the initial style. Do not trigger a second
-                 * style request while that initial load is underway.
-                 *
-                 * If a previously loaded style disappeared during
-                 * a stop/start transition, request it again.
+                 * Do not duplicate the initial MapInitOptions style load.
+                 * Reload only when a previously running MapView was stopped
+                 * and its style is no longer available.
                  */
-                if (
-                    mapLoaded ||
-                    appliedStyleURL != mapStyleURL
-                ) {
+                if (mapWasStopped) {
+                    mapWasStopped = false
                     mapLoaded = false
                     appliedStyleURL = ""
                     applyMapStyle()
@@ -675,12 +691,14 @@ class SaMiMapboxView(
                 return
             }
 
+            mapWasStopped = false
+            mapLoaded = true
+
             if (appliedStyleURL != mapStyleURL) {
+                appliedStyleURL = ""
                 applyMapStyle()
                 return
             }
-
-            mapLoaded = true
 
             applyStandardStyleConfiguration(nativeMapView)
             applyMapControls()
@@ -688,14 +706,11 @@ class SaMiMapboxView(
             applyCameraMode()
             routeGuidanceController?.onStyleLoaded()
 
-            /*
-             * Notify JavaScript again after dashboard reactivation.
-             * This prevents the UI from relying on a stale ready state
-             * from the previous dashboard visit.
-             */
-            onMapReady(
-                mapOf("ready" to true)
-            )
+            if (screenActive) {
+                onMapReady(
+                    mapOf("ready" to true)
+                )
+            }
 
         } catch (error: Exception) {
             reportError(
@@ -846,13 +861,6 @@ class SaMiMapboxView(
     private fun shouldAttachNavigationLifecycle(): Boolean {
         if (disposed || !isAttachedToWindow) return false
 
-        /*
-         * Navigation remains attached while an active trip is running,
-         * even when the dashboard is temporarily not visible.
-         *
-         * For ordinary map browsing, Navigation SDK is initialized
-         * only when a destination exists and the dashboard is active.
-         */
         return navigationActive ||
             (screenActive && hasRouteDestination)
     }
@@ -1101,9 +1109,13 @@ class SaMiMapboxView(
     /* ------------------------------------------------------------------ */
 
     private fun shouldRunMap(): Boolean {
-        return !disposed &&
-            screenActive &&
-            isAttachedToWindow
+        /*
+         * Dashboard focus does not control the native renderer.
+         * The MapView stays started while its native parent remains
+         * attached. This avoids stopping the renderer on every
+         * React Navigation transition.
+         */
+        return !disposed && isAttachedToWindow
     }
 
     private fun syncMapLifecycle() {
@@ -1140,6 +1152,7 @@ class SaMiMapboxView(
         }
 
         mapStarted = false
+        mapWasStopped = true
     }
 
     override fun onAttachedToWindow() {
@@ -1214,6 +1227,7 @@ class SaMiMapboxView(
         mapView = null
         mapLoaded = false
         mapStarted = false
+        mapWasStopped = false
     }
 
     /* ------------------------------------------------------------------ */
