@@ -9,22 +9,22 @@ import androidx.core.content.ContextCompat
 import androidx.lifecycle.LifecycleOwner
 
 import com.mapbox.common.Cancelable
+import com.mapbox.common.MapboxOptions
 import com.mapbox.common.location.Location as MapboxLocation
 import com.mapbox.geojson.Point
 import com.mapbox.maps.CameraOptions
 import com.mapbox.maps.EdgeInsets
 import com.mapbox.maps.MapInitOptions
 import com.mapbox.maps.MapView
-import com.mapbox.maps.MapboxOptions
 import com.mapbox.maps.Style
 
+import com.mapbox.maps.plugin.PuckBearing
 import com.mapbox.maps.plugin.attribution.attribution
 import com.mapbox.maps.plugin.compass.compass
 import com.mapbox.maps.plugin.gestures.gestures
 import com.mapbox.maps.plugin.locationcomponent.OnIndicatorAccuracyRadiusChangedListener
 import com.mapbox.maps.plugin.locationcomponent.OnIndicatorBearingChangedListener
 import com.mapbox.maps.plugin.locationcomponent.OnIndicatorPositionChangedListener
-import com.mapbox.maps.plugin.locationcomponent.PuckBearing
 import com.mapbox.maps.plugin.locationcomponent.createDefault2DPuck
 import com.mapbox.maps.plugin.locationcomponent.location
 import com.mapbox.maps.plugin.logo.logo
@@ -233,6 +233,24 @@ class SaMiMapboxView(
     }
 
     /* ------------------------------------------------------------------ */
+    /* EVENT PAYLOAD NORMALIZATION                                        */
+    /* ------------------------------------------------------------------ */
+
+    private fun toNativeEventPayload(
+        payload: Map<String, Any?>
+    ): Map<String, Any> {
+        val result = mutableMapOf<String, Any>()
+
+        payload.forEach { (key, value) ->
+            if (value != null) {
+                result[key] = value
+            }
+        }
+
+        return result
+    }
+
+    /* ------------------------------------------------------------------ */
     /* REACT NATIVE PROPS                                                 */
     /* ------------------------------------------------------------------ */
 
@@ -413,6 +431,8 @@ class SaMiMapboxView(
         }
 
         try {
+            // MapboxOptions is provided by the Mapbox Common SDK.
+            // Set the token before creating MapView or Navigation.
             MapboxOptions.accessToken = accessToken
 
             val cameraOptions = CameraOptions.Builder()
@@ -461,7 +481,11 @@ class SaMiMapboxView(
                     }
 
                     routeGuidanceActive = routeStatus == "active"
-                    onRouteChanged(event)
+
+                    onRouteChanged(
+                        toNativeEventPayload(event)
+                    )
+
                     emitNavigationStatus()
                 }
             )
@@ -469,7 +493,9 @@ class SaMiMapboxView(
             voiceGuidanceController = SaMiVoiceGuidanceController(
                 context = context,
                 onInstructionChanged = { event ->
-                    onVoiceInstructionChanged(event)
+                    onVoiceInstructionChanged(
+                        toNativeEventPayload(event)
+                    )
                 }
             ).also { controller ->
                 controller.setMuted(voiceGuidanceMuted)
@@ -681,28 +707,34 @@ class SaMiMapboxView(
 
     private fun emitLocation() {
         val point = latestPoint ?: return
-
         val navLocation = latestNavigationLocation
 
-        onLocationChanged(
-            mapOf(
-                "latitude" to point.latitude(),
-                "longitude" to point.longitude(),
-                "bearing" to (
-                    navLocation?.bearing ?: latestBearing
-                ),
-                "speedMetersPerSecond" to navLocation?.speed,
-                "horizontalAccuracyMeters" to (
-                    navLocation?.horizontalAccuracy
-                        ?: latestAccuracy
-                ),
-                "timestamp" to (
-                    navLocation?.timestamp
-                        ?: System.currentTimeMillis()
-                ),
-                "enhanced" to latestLocationEnhanced
-            )
+        // Expo EventDispatcher requires Map<String, Any>.
+        // Optional native location values are included only
+        // when an actual provider value is available.
+        val locationEvent = mutableMapOf<String, Any>(
+            "latitude" to point.latitude(),
+            "longitude" to point.longitude(),
+            "timestamp" to (
+                navLocation?.timestamp ?: System.currentTimeMillis()
+            ),
+            "enhanced" to latestLocationEnhanced
         )
+
+        (navLocation?.bearing ?: latestBearing)?.let { bearing ->
+            locationEvent["bearing"] = bearing
+        }
+
+        navLocation?.speed?.let { speed ->
+            locationEvent["speedMetersPerSecond"] = speed
+        }
+
+        (navLocation?.horizontalAccuracy ?: latestAccuracy)?.let {
+            accuracy ->
+            locationEvent["horizontalAccuracyMeters"] = accuracy
+        }
+
+        onLocationChanged(locationEvent)
     }
 
     /* ------------------------------------------------------------------ */

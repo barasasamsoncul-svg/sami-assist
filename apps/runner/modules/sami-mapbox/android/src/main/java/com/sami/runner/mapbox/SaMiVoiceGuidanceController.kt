@@ -66,8 +66,9 @@ class SaMiVoiceGuidanceController(
 
             if (!disposed) {
 
+                // Navigation SDK announcements may be nullable.
                 val announcement =
-                    voiceInstructions.announcement().trim()
+                    voiceInstructions.announcement()?.trim().orEmpty()
 
                 val ssmlAnnouncement =
                     voiceInstructions.ssmlAnnouncement()

@@ -13,6 +13,14 @@ const PROJECT_MARKER =
 const PODFILE_MARKER =
   "# @generated begin SaMi Mapbox iOS SPM integration";
 
+const ANDROID_SIGNING_MARKER =
+  "// @generated begin SaMi EAS-compatible Android signing";
+
+const AUTO_VALUE_MARKER =
+  "// @generated begin SaMi Mapbox AutoValue annotations dependency";
+const AUTO_VALUE_DEPENDENCY =
+  'implementation "com.google.auto.value:auto-value-annotations:1.11.1"';
+
 const APP_NDK_VERSION = "27.1.12297006";
 
 const PODFILE_INTEGRATION = [
@@ -188,10 +196,155 @@ function withMapboxMavenRepository(config) {
 }
 
 /* -------------------------------------------------------------------------- */
-/* ANDROID NDK                                                                */
+/* ANDROID NDK AND EAS-COMPATIBLE LOCAL SIGNING                               */
 /* -------------------------------------------------------------------------- */
 
-function withMapboxNdkVersion(config) {
+function escapeRegExp(value) {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+function addEasCompatibleReleaseSigning(contents, newline) {
+  if (!contents.includes("android {")) {
+    throw new Error(
+      "SaMi Runner signing: Could not find the generated android block in app/build.gradle."
+    );
+  }
+
+  const buildTypesMatch = contents.match(/^([ \t]*)buildTypes[ \t]*\{[ \t]*$/m);
+
+  if (!buildTypesMatch) {
+    throw new Error(
+      "SaMi Runner signing: Could not find the Android buildTypes block."
+    );
+  }
+
+  const buildTypesIndent = buildTypesMatch[1];
+  const signingBlockIndent = buildTypesIndent;
+  const innerIndent = signingBlockIndent + "    ";
+  const nestedIndent = innerIndent + "    ";
+
+  if (!contents.includes(ANDROID_SIGNING_MARKER)) {
+    const signingBlock = [
+      `${signingBlockIndent}${ANDROID_SIGNING_MARKER}`,
+      `${signingBlockIndent}signingConfigs {`,
+      `${innerIndent}samiEas {`,
+      `${nestedIndent}def samiCredentialsFile = new File(rootProject.projectDir.parentFile, "credentials.json")`,
+      `${nestedIndent}if (!samiCredentialsFile.isFile()) {`,
+      `${nestedIndent}    throw new GradleException("SaMi Runner: credentials.json is missing. Restore the original EAS Android credentials before building a release APK.")`,
+      `${nestedIndent}}`,
+      `${nestedIndent}def samiCredentials = new groovy.json.JsonSlurper().parse(samiCredentialsFile)`,
+      `${nestedIndent}def samiKeystore = samiCredentials?.android?.keystore`,
+      `${nestedIndent}if (samiKeystore == null || !samiKeystore.keystorePath || !samiKeystore.keystorePassword || !samiKeystore.keyAlias || !samiKeystore.keyPassword) {`,
+      `${nestedIndent}    throw new GradleException("SaMi Runner: credentials.json does not contain a complete Android keystore configuration.")`,
+      `${nestedIndent}}`,
+      `${nestedIndent}def samiKeystoreFile = new File(samiKeystore.keystorePath.toString())`,
+      `${nestedIndent}if (!samiKeystoreFile.isAbsolute()) {`,
+      `${nestedIndent}    samiKeystoreFile = new File(rootProject.projectDir.parentFile, samiKeystore.keystorePath.toString())`,
+      `${nestedIndent}}`,
+      `${nestedIndent}if (!samiKeystoreFile.isFile()) {`,
+      `${nestedIndent}    throw new GradleException("SaMi Runner: the Android keystore referenced by credentials.json was not found: " + samiKeystoreFile.absolutePath)`,
+      `${nestedIndent}}`,
+      `${nestedIndent}storeFile samiKeystoreFile`,
+      `${nestedIndent}storePassword samiKeystore.keystorePassword.toString()`,
+      `${nestedIndent}keyAlias samiKeystore.keyAlias.toString()`,
+      `${nestedIndent}keyPassword samiKeystore.keyPassword.toString()`,
+      `${innerIndent}}`,
+      `${signingBlockIndent}}`,
+      `${signingBlockIndent}// @generated end SaMi EAS-compatible Android signing`,
+      "",
+    ].join(newline);
+
+    contents =
+      contents.slice(0, buildTypesMatch.index) +
+      signingBlock +
+      contents.slice(buildTypesMatch.index);
+  }
+
+  const updatedBuildTypesMatch = contents.match(/^([ \t]*)buildTypes[ \t]*\{[ \t]*$/m);
+  const afterBuildTypesIndex = updatedBuildTypesMatch.index + updatedBuildTypesMatch[0].length;
+  const remainingContents = contents.slice(afterBuildTypesIndex);
+  const releaseMatch = remainingContents.match(/^([ \t]*)release[ \t]*\{[ \t]*$/m);
+
+  if (!releaseMatch) {
+    throw new Error(
+      "SaMi Runner signing: Could not find the release build type inside buildTypes."
+    );
+  }
+
+  const releaseIndent = releaseMatch[1];
+  const releaseOpeningIndex = afterBuildTypesIndex + releaseMatch.index;
+  const releaseBodyStart = releaseOpeningIndex + releaseMatch[0].length;
+  const releaseClosingLine = new RegExp(
+    `^${escapeRegExp(releaseIndent)}\\}[\\t ]*$`,
+    "m"
+  );
+  const afterReleaseOpening = contents.slice(releaseBodyStart);
+  const releaseCloseMatch = afterReleaseOpening.match(releaseClosingLine);
+
+  if (!releaseCloseMatch) {
+    throw new Error(
+      "SaMi Runner signing: Could not locate the closing brace for the release build type."
+    );
+  }
+
+  const releaseBodyEnd = releaseBodyStart + releaseCloseMatch.index;
+  let releaseBody = contents.slice(releaseBodyStart, releaseBodyEnd);
+
+  // Remove any previous debug or custom signing assignment in release. The
+  // SaMi EAS-compatible assignment below must be the final signing selection.
+  releaseBody = releaseBody.replace(
+    /^[ \t]*signingConfig[ \t]+signingConfigs\.[A-Za-z0-9_]+[ \t]*\r?\n/gm,
+    ""
+  );
+
+  const signingAssignment =
+    `${releaseIndent}    signingConfig signingConfigs.samiEas${newline}`;
+
+  releaseBody = releaseBody.replace(/[\r\n]*$/, newline) + signingAssignment;
+
+  contents =
+    contents.slice(0, releaseBodyStart) +
+    releaseBody +
+    contents.slice(releaseBodyEnd);
+
+  return contents;
+}
+
+function addMapboxAutoValueAnnotations(contents, newline) {
+  if (contents.includes(AUTO_VALUE_DEPENDENCY)) {
+    return contents;
+  }
+
+  const dependencyBlockMatch = contents.match(
+    /^([ \t]*)dependencies[ \t]*\{[ \t]*$/m
+  );
+
+  if (!dependencyBlockMatch) {
+    throw new Error(
+      "SaMi Mapbox: Could not find the generated app dependencies block to add the AutoValue annotations required by Mapbox Directions models."
+    );
+  }
+
+  const indent = dependencyBlockMatch[1];
+  const innerIndent = indent + "    ";
+  const dependencyLines = [
+    `${innerIndent}${AUTO_VALUE_MARKER}`,
+    `${innerIndent}${AUTO_VALUE_DEPENDENCY}`,
+    `${innerIndent}// @generated end SaMi Mapbox AutoValue annotations dependency`,
+  ].join(newline);
+
+  const insertionIndex =
+    dependencyBlockMatch.index + dependencyBlockMatch[0].length;
+
+  return (
+    contents.slice(0, insertionIndex) +
+    newline +
+    dependencyLines +
+    contents.slice(insertionIndex)
+  );
+}
+
+function withMapboxNdkAndEasSigning(config) {
   return withAppBuildGradle(config, (mod) => {
     let contents = mod.modResults.contents;
 
@@ -210,6 +363,11 @@ function withMapboxNdkVersion(config) {
         "SaMi Mapbox: Could not locate the generated Android ndkVersion setting."
       );
     }
+
+    const newline = String.fromCharCode(10);
+
+    contents = addEasCompatibleReleaseSigning(contents, newline);
+    contents = addMapboxAutoValueAnnotations(contents, newline);
 
     mod.modResults.contents = contents;
 
@@ -244,7 +402,7 @@ function withMapboxPodfile(config) {
 
 module.exports = function withSamiMapboxNative(config) {
   config = withMapboxMavenRepository(config);
-  config = withMapboxNdkVersion(config);
+  config = withMapboxNdkAndEasSigning(config);
   config = withMapboxPodfile(config);
 
   return config;

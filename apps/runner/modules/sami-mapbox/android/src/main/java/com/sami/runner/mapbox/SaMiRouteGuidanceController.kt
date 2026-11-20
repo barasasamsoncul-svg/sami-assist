@@ -201,8 +201,9 @@ internal class SaMiRouteGuidanceController(
 
         observersRegistered = true
 
+        // Use the explicit Navigation SDK API accessor.
         val existingRoutes =
-            mapboxNavigation.navigationRoutes
+            mapboxNavigation.getNavigationRoutes()
 
         if (existingRoutes.isNotEmpty()) {
             latestRoutes = existingRoutes
