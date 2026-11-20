@@ -1,4 +1,3 @@
-
 import { NextResponse } from "next/server";
 
 import { authenticateRunner } from "@/apps/runner/server/auth";
@@ -8,22 +7,61 @@ import { errorResponse, isRecord } from "@/apps/runner/server/http";
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
+type RunnerLocation = {
+  latitude: number;
+  longitude: number;
+  accuracy: number | null;
+  heading: number | null;
+  speed: number | null;
+};
+
+function optionalNumber(value: unknown, minimum: number, maximum: number): number | null {
+  if (typeof value !== "number" || !Number.isFinite(value)) return null;
+  return value >= minimum && value <= maximum ? value : null;
+}
+
+function readLocation(value: unknown): RunnerLocation | null {
+  if (!isRecord(value)) return null;
+  const latitude = value.latitude;
+  const longitude = value.longitude;
+
+  if (
+    typeof latitude !== "number" ||
+    !Number.isFinite(latitude) ||
+    latitude < -90 || latitude > 90 ||
+    typeof longitude !== "number" ||
+    !Number.isFinite(longitude) ||
+    longitude < -180 || longitude > 180
+  ) {
+    return null;
+  }
+
+  return {
+    latitude,
+    longitude,
+    accuracy: optionalNumber(value.accuracy, 0, 10000),
+    heading: optionalNumber(value.heading, 0, 360),
+    speed: optionalNumber(value.speed, 0, 150),
+  };
+}
+
 export async function POST(request: Request) {
   try {
-    // Restricted accounts may still go offline.
-    // Permission to go online is checked again under the account lock below.
+    // Restricted accounts may still go offline. Permission to go online
+    // is checked again under the account lock below.
     const auth = await authenticateRunner(request, {
       allowRestricted: true,
     });
-
     if (auth.response) return auth.response;
 
     const body: unknown = await request.json().catch(() => null);
-
     if (!isRecord(body) || typeof body.isOnline !== "boolean") {
-      return errorResponse(
-        "Choose whether you want to go online or offline.",
-      );
+      return errorResponse("Choose whether you want to go online or offline.");
+    }
+
+    const location = body.isOnline ? readLocation(body.location) : null;
+    if (body.isOnline && !location) {
+      return errorResponse("A valid current GPS location is required before going online.");
     }
 
     const client = await databasePool().connect();
@@ -33,8 +71,8 @@ export async function POST(request: Request) {
       await client.query("BEGIN");
       transactionOpen = true;
 
-      // Lock the account so an Admin approval, suspension, or closure
-      // cannot race with this availability update.
+      // All availability and acceptance operations lock the account first.
+      // This serializes GO changes against concurrent errand acceptance.
       const accountResult = await client.query<{
         account_status: string;
         verification_status: string;
@@ -57,22 +95,29 @@ export async function POST(request: Request) {
       );
 
       const account = accountResult.rows[0];
-
       if (!account) {
         await client.query("ROLLBACK");
         transactionOpen = false;
-
         return errorResponse("Runner account could not be found.", 404);
       }
 
+      const activeResult = await client.query<{ id: string; status: string }>(
+        `SELECT id, status
+         FROM public.runner_jobs
+         WHERE accepted_runner_id = $1
+           AND status IN ('accepted', 'in_progress', 'completion_submitted')
+         ORDER BY accepted_at DESC
+         LIMIT 1
+         FOR UPDATE`,
+        [auth.runner.id],
+      );
+      const activeJob = activeResult.rows[0] ?? null;
+
       if (body.isOnline) {
         const profileIsComplete =
-          typeof account.full_name === "string" &&
-          account.full_name.trim().length > 0 &&
-          typeof account.service_area === "string" &&
-          account.service_area.trim().length > 0 &&
-          typeof account.vehicle_type === "string" &&
-          account.vehicle_type.trim().length > 0;
+          typeof account.full_name === "string" && account.full_name.trim().length > 0 &&
+          typeof account.service_area === "string" && account.service_area.trim().length > 0 &&
+          typeof account.vehicle_type === "string" && account.vehicle_type.trim().length > 0;
 
         const isEligible =
           account.account_status === "active" &&
@@ -82,12 +127,27 @@ export async function POST(request: Request) {
         if (!isEligible) {
           await client.query("ROLLBACK");
           transactionOpen = false;
-
           return errorResponse(
             "Your profile and verification must be approved before you can go online.",
             403,
           );
         }
+
+        if (activeJob) {
+          await client.query("ROLLBACK");
+          transactionOpen = false;
+          return errorResponse(
+            "Finish your current errand and wait for customer confirmation before going online for another errand.",
+            409,
+          );
+        }
+      } else if (activeJob && activeJob.status !== "completion_submitted") {
+        await client.query("ROLLBACK");
+        transactionOpen = false;
+        return errorResponse(
+          "You cannot go offline while an errand is in progress.",
+          409,
+        );
       }
 
       const result = await client.query<{
@@ -95,10 +155,7 @@ export async function POST(request: Request) {
         last_heartbeat_at: string | null;
       }>(
         `INSERT INTO public.runner_availability (
-           runner_id,
-           is_online,
-           last_heartbeat_at,
-           updated_at
+           runner_id, is_online, last_heartbeat_at, updated_at
          )
          VALUES (
            $1,
@@ -118,6 +175,37 @@ export async function POST(request: Request) {
         [auth.runner.id, body.isOnline],
       );
 
+      if (body.isOnline && location) {
+        await client.query(
+          `INSERT INTO public.runner_presence_locations (
+             runner_id, latitude, longitude, accuracy_meters,
+             heading_degrees, speed_meters_per_second, captured_at
+           )
+           VALUES ($1, $2, $3, $4, $5, $6, now())
+           ON CONFLICT (runner_id)
+           DO UPDATE SET
+             latitude = EXCLUDED.latitude,
+             longitude = EXCLUDED.longitude,
+             accuracy_meters = EXCLUDED.accuracy_meters,
+             heading_degrees = EXCLUDED.heading_degrees,
+             speed_meters_per_second = EXCLUDED.speed_meters_per_second,
+             captured_at = now()`,
+          [
+            auth.runner.id,
+            location.latitude,
+            location.longitude,
+            location.accuracy,
+            location.heading,
+            location.speed,
+          ],
+        );
+      } else {
+        await client.query(
+          "DELETE FROM public.runner_presence_locations WHERE runner_id = $1",
+          [auth.runner.id],
+        );
+      }
+
       await client.query("COMMIT");
       transactionOpen = false;
 
@@ -129,21 +217,12 @@ export async function POST(request: Request) {
             lastHeartbeatAt: result.rows[0].last_heartbeat_at,
           },
         },
-        {
-          headers: {
-            "Cache-Control": "no-store",
-          },
-        },
+        { headers: { "Cache-Control": "no-store" } },
       );
     } catch {
       if (transactionOpen) {
-        try {
-          await client.query("ROLLBACK");
-        } catch {
-          // Preserve the original request failure.
-        }
+        await client.query("ROLLBACK").catch(() => undefined);
       }
-
       return errorResponse("Your availability could not be updated.", 503);
     } finally {
       client.release();

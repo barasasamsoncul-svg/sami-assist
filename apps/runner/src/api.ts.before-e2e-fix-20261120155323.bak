@@ -1,0 +1,1298 @@
+import * as SecureStore from "expo-secure-store";
+import { fetch as expoFetch } from "expo/fetch";
+import { File as ExpoFile } from "expo-file-system";
+
+const SESSION_KEY = "sami_runner_access_token";
+
+const PUBLIC_AUTH_PATHS = [
+  "/api/runner/auth/request-otp",
+  "/api/runner/auth/verify-otp",
+  "/api/runner/auth/confirm-registration",
+  "/api/runner/auth/cancel-registration",
+];
+
+const ONBOARDING_DOCUMENTS_PATH =
+  "/api/runner/me/onboarding/documents";
+
+type ApiOptions = {
+  method?: "GET" | "POST" | "PUT";
+  body?: unknown;
+};
+
+/* -------------------------------------------------------------------------- */
+/* RUNNER DOMAIN TYPES                                                        */
+/* -------------------------------------------------------------------------- */
+
+export const RUNNER_SERVICE_KEYS = [
+  "pickup_deliver",
+  "shop_deliver",
+] as const;
+
+export type RunnerServiceKey =
+  (typeof RUNNER_SERVICE_KEYS)[number];
+
+export const RUNNER_VEHICLE_TYPES = [
+  "bike",
+  "motorbike",
+  "vehicle",
+] as const;
+
+export type RunnerVehicleType =
+  (typeof RUNNER_VEHICLE_TYPES)[number];
+
+/**
+ * Values retained by older Runner database records.
+ * New onboarding requests should use RunnerVehicleType.
+ */
+export type LegacyRunnerVehicleType =
+  | "bicycle"
+  | "motorcycle"
+  | "car"
+  | "van"
+  | "other";
+
+export type RunnerProfile = {
+  id: string;
+  phone: string | null;
+  email: string | null;
+  fullName: string | null;
+  accountStatus: string;
+  verificationStatus: string;
+  serviceArea: string | null;
+  vehicleType: string | null;
+  vehicleRegistration: string | null;
+  profileComplete: boolean;
+};
+
+export type RunnerMe = RunnerProfile & {
+  availability: {
+    isOnline: boolean;
+    lastHeartbeatAt: string | null;
+  };
+};
+
+/**
+ * Geographic coordinates returned by the Runner jobs API.
+ * Coordinates remain nullable because older or incomplete
+ * errand records may not have a verified location.
+ */
+export type RunnerCoordinates = {
+  latitude: number | null;
+  longitude: number | null;
+};
+
+export type RunnerJob = {
+  id: string;
+  publicCode: string;
+  title: string;
+  category: string;
+  description: string;
+
+  pickupLabel: string;
+  pickupCoordinates: RunnerCoordinates;
+
+  destinationLabel: string;
+  destinationCoordinates: RunnerCoordinates;
+
+  distanceKm: number | null;
+  runnerPayoutAmount: number | null;
+  currency: string;
+  status: string;
+  offerExpiresAt?: string | null;
+};
+
+export type RunnerAuthenticatedAccount = {
+  id: string;
+  email: string;
+  phone: string | null;
+  fullName: string | null;
+  accountStatus: string;
+  verificationStatus: string;
+  serviceArea: string | null;
+  vehicleType: string | null;
+  selectedCategories: string[];
+};
+
+export type RunnerOtpPurpose = "login" | "register";
+
+export type RunnerOtpChallenge = {
+  ok: boolean;
+  purpose: RunnerOtpPurpose;
+  challengeId: string;
+  destination: string;
+  expiresInSeconds: number;
+  message: string;
+};
+
+/**
+ * Registration captures identity and contact details only.
+ * Service selection happens after email verification.
+ */
+export type RunnerRegistrationInput = {
+  fullName: string;
+  email: string;
+  phone: string;
+};
+
+export type RunnerOnboardingStatus =
+  | "incomplete"
+  | "pending_review"
+  | "approved"
+  | "changes_required";
+
+/**
+ * Authoritative destinations returned by Runner compliance.
+ *
+ * Legacy values are retained temporarily while the OTP endpoint
+ * and its screen consumer are migrated to the same resolver.
+ */
+export type RunnerNextStep =
+  | "tasks"
+  | "documents"
+  | "dashboard"
+  | "restricted"
+  | "onboarding"
+  | "status"
+  | "app";
+
+export type RunnerComplianceStage =
+  | "tasks"
+  | "documents"
+  | "dashboard"
+  | "restricted";
+
+export type RunnerComplianceStatus =
+  | "incomplete"
+  | "pending_review"
+  | "changes_required"
+  | "approved"
+  | "restricted"
+  | "configuration_error";
+
+export type RunnerComplianceResult = {
+  status: RunnerComplianceStatus;
+  nextStep: RunnerComplianceStage;
+
+  account: {
+    eligible: boolean;
+    restricted: boolean;
+  };
+
+  tasks: {
+    complete: boolean;
+    selectedCategories: string[];
+    missingFields: string[];
+  };
+
+  documents: {
+    configured: boolean;
+    complete: boolean;
+    approved: boolean;
+    requiredCount: number;
+    satisfiedCount: number;
+    pendingCount: number;
+    missingRequirements: string[];
+    rejectedRequirements: string[];
+  };
+
+  canSubmit: boolean;
+  reasons: string[];
+};
+
+export type RunnerOtpVerificationResult = {
+  ok: boolean;
+  sessionToken: string;
+  expiresInDays: number;
+  profileComplete: boolean;
+  onboardingStatus: RunnerOnboardingStatus;
+  nextStep: RunnerNextStep;
+  runner: RunnerAuthenticatedAccount;
+};
+
+export type RunnerCategory = {
+  key: string;
+};
+
+export type RunnerDocumentRequirement = {
+  key: string;
+  categoryKey: string | null;
+  vehicleType: string;
+  documentType: string;
+  title: string;
+  instructions: string | null;
+  required: boolean;
+};
+
+export type RunnerDocumentReviewStatus =
+  | "pending"
+  | "approved"
+  | "rejected"
+  | "resubmission_required";
+
+export type RunnerUploadedDocument = {
+  id: string;
+  documentType: string;
+  categoryKey: string | null;
+  requirementKey: string | null;
+  reviewStatus: RunnerDocumentReviewStatus;
+  rejectionReason: string | null;
+  submittedAt: string;
+  reviewedAt: string | null;
+};
+
+export type RunnerOnboardingData = {
+  ok: boolean;
+  onboardingStatus: RunnerOnboardingStatus;
+
+  /** Server-calculated compliance decision. */
+  complianceStatus: RunnerComplianceStatus;
+  nextStep: RunnerComplianceStage;
+  canSubmit: boolean;
+  compliance: RunnerComplianceResult;
+
+  runner: {
+    id: string;
+    fullName: string | null;
+    email: string | null;
+    accountStatus: string;
+    verificationStatus: string;
+    serviceArea: string | null;
+    vehicleType: string | null;
+    vehicleModel: string | null;
+    vehicleRegistration: string | null;
+    selectedCategories: string[];
+  };
+
+  requirements: RunnerDocumentRequirement[];
+  documents: RunnerUploadedDocument[];
+};
+
+export type RunnerDocumentFile = {
+  uri: string;
+  name: string;
+  mimeType?: string | null;
+};
+
+export type RunnerDocumentUploadResult = {
+  ok: boolean;
+  message: string;
+  document: RunnerUploadedDocument;
+};
+
+export type RunnerDocumentGroupUploadResult = {
+  ok: boolean;
+  message: string;
+  documents: RunnerUploadedDocument[];
+  document: RunnerUploadedDocument;
+  uploadCount: number;
+};
+
+export type RunnerOnboardingSubmissionResult = {
+  ok: boolean;
+  message: string;
+  onboardingStatus: "pending_review";
+  runner: {
+    accountStatus: string;
+    verificationStatus: string;
+  };
+};
+
+export type RunnerOnboardingUpdateResult = {
+  ok: boolean;
+  message: string;
+  runner: {
+    serviceArea: string;
+    vehicleType: RunnerVehicleType | null;
+    vehicleModel: string | null;
+    vehicleRegistration: string | null;
+    selectedCategories: string[];
+  };
+  requirements: RunnerDocumentRequirement[];
+};
+
+export type RunnerCategoriesUpdateResult = {
+  ok: boolean;
+  message: string;
+  selectedCategories: RunnerServiceKey[];
+  nextStep: "tasks";
+};
+
+/* -------------------------------------------------------------------------- */
+/* RUNNER VALUE NORMALIZATION                                                 */
+/* -------------------------------------------------------------------------- */
+
+/**
+ * Normalize legacy database transport values to the three Runner choices.
+ *
+ * bike      <- bicycle
+ * motorbike <- motorcycle
+ * vehicle   <- car, van, other
+ *
+ * This keeps older account records readable while the database migration
+ * is handled separately.
+ */
+export function normalizeRunnerVehicleType(
+  value: string | null | undefined,
+): RunnerVehicleType | null {
+  switch (value?.trim().toLowerCase()) {
+    case "bike":
+    case "bicycle":
+      return "bike";
+
+    case "motorbike":
+    case "motorcycle":
+      return "motorbike";
+
+    case "vehicle":
+    case "car":
+    case "van":
+    case "other":
+      return "vehicle";
+
+    default:
+      return null;
+  }
+}
+
+function normalizeRunnerAccount<T extends {
+  vehicleType: string | null;
+}>(runner: T): T {
+  const normalizedVehicle = normalizeRunnerVehicleType(
+    runner.vehicleType,
+  );
+
+  return {
+    ...runner,
+    vehicleType: normalizedVehicle ?? runner.vehicleType,
+  };
+}
+
+function normalizeRequirements(
+  requirements: RunnerDocumentRequirement[],
+): RunnerDocumentRequirement[] {
+  // Client-side safeguard: optional requirements are never exposed
+  // through the onboarding helper.
+  return requirements.filter(
+    (requirement) => requirement.required === true,
+  );
+}
+
+function normalizeOnboardingData(
+  data: RunnerOnboardingData,
+): RunnerOnboardingData {
+  if (
+    !data ||
+    !data.runner ||
+    !data.compliance ||
+    !Array.isArray(data.requirements) ||
+    !Array.isArray(data.documents)
+  ) {
+    throw new Error(
+      "The Runner server returned an incomplete compliance response. Refresh your onboarding information.",
+    );
+  }
+
+  const validNextSteps = new Set<RunnerComplianceStage>([
+    "tasks",
+    "documents",
+    "dashboard",
+    "restricted",
+  ]);
+
+  if (
+    !validNextSteps.has(data.nextStep) ||
+    data.compliance.nextStep !== data.nextStep ||
+    data.compliance.status !== data.complianceStatus ||
+    data.compliance.canSubmit !== data.canSubmit
+  ) {
+    throw new Error(
+      "The Runner server returned an inconsistent compliance decision. Refresh your onboarding information.",
+    );
+  }
+
+  return {
+    ...data,
+    runner: normalizeRunnerAccount(data.runner),
+    requirements: normalizeRequirements(data.requirements),
+    documents: data.documents,
+  };
+}
+
+/**
+ * A Runner must select exactly one service.
+ *
+ * Valid:
+ * - pickup_deliver
+ * - shop_deliver
+ *
+ * Invalid:
+ * - No service
+ * - Both services
+ * - Duplicate service entries
+ * - Unsupported service values
+ */
+function assertRunnerServiceKeys(
+  categoryKeys: string[],
+): asserts categoryKeys is RunnerServiceKey[] {
+  if (
+    !Array.isArray(categoryKeys) ||
+    categoryKeys.length !== 1
+  ) {
+    throw new Error(
+      "Select exactly one Runner service: Pick Up & Deliver or Shop & Deliver.",
+    );
+  }
+
+  if (
+    categoryKeys.some(
+      (key) =>
+        !RUNNER_SERVICE_KEYS.includes(
+          key as RunnerServiceKey,
+        ),
+    )
+  ) {
+    throw new Error(
+      "Only Pick Up & Deliver or Shop & Deliver is supported.",
+    );
+  }
+
+  if (new Set(categoryKeys).size !== 1) {
+    throw new Error(
+      "A Runner can select only one service.",
+    );
+  }
+}
+
+function assertRunnerVehicleType(
+  vehicleType: string,
+): asserts vehicleType is RunnerVehicleType {
+  if (!RUNNER_VEHICLE_TYPES.includes(vehicleType as RunnerVehicleType)) {
+    throw new Error(
+      "Choose Bike, Motorbike or Vehicle.",
+    );
+  }
+}
+
+function assertRunnerTransportInput(input: {
+  serviceArea: string;
+  vehicleType: string;
+  vehicleRegistration?: string;
+}) {
+  const serviceArea = input.serviceArea.trim();
+  const registration = input.vehicleRegistration?.trim() ?? "";
+
+  if (serviceArea.length < 2) {
+    throw new Error("Enter your main service area.");
+  }
+
+  assertRunnerVehicleType(input.vehicleType);
+
+  if (
+    (input.vehicleType === "motorbike" ||
+      input.vehicleType === "vehicle") &&
+    !registration
+  ) {
+    throw new Error(
+      "Vehicle registration is required for Motorbike and Vehicle.",
+    );
+  }
+}
+
+function assertRunnerOnboardingTransportInput(input: {
+  serviceArea: string;
+  vehicleType: string;
+  vehicleModel?: string;
+  vehicleRegistration?: string;
+}) {
+  assertRunnerTransportInput(input);
+
+  if (
+    (input.vehicleType === "motorbike" ||
+      input.vehicleType === "vehicle") &&
+    (input.vehicleModel?.trim().length ?? 0) < 2
+  ) {
+    throw new Error(
+      "Vehicle make and model are required for Motorbike and Vehicle.",
+    );
+  }
+}
+
+/* -------------------------------------------------------------------------- */
+/* API CONFIGURATION AND SESSION                                              */
+/* -------------------------------------------------------------------------- */
+
+function apiBase(): string {
+  const value = process.env.EXPO_PUBLIC_SAMI_API_URL
+    ?.trim()
+    .replace(/\/+$/, "");
+
+  if (!value) {
+    throw new Error(
+      "Set EXPO_PUBLIC_SAMI_API_URL in apps/runner/.env before using SaMi Runner.",
+    );
+  }
+
+  return value;
+}
+
+async function clearSession(): Promise<void> {
+  await SecureStore.deleteItemAsync(SESSION_KEY).catch(
+    () => undefined,
+  );
+}
+
+function describeError(cause: unknown): string {
+  if (cause instanceof Error) {
+    const nested = (cause as Error & {
+      cause?: unknown;
+    }).cause;
+
+    if (nested instanceof Error && nested.message) {
+      return `${cause.message}: ${nested.message}`;
+    }
+
+    return cause.message || cause.name;
+  }
+
+  return String(cause || "Unknown network error");
+}
+
+function getApiError(
+  payload: unknown,
+  fallback: string,
+): string {
+  if (
+    payload !== null &&
+    typeof payload === "object" &&
+    "error" in payload &&
+    typeof payload.error === "string"
+  ) {
+    return payload.error;
+  }
+
+  return fallback;
+}
+
+/* -------------------------------------------------------------------------- */
+/* KENYAN PHONE NORMALIZATION                                                 */
+/* -------------------------------------------------------------------------- */
+
+/**
+ * Normalize common Kenyan mobile number formats to E.164.
+ *
+ * 0712345678    -> +254712345678
+ * 0112345678    -> +254112345678
+ * 254712345678 -> +254712345678
+ * +254712345678 -> +254712345678
+ */
+function normalizeKenyanPhone(value: string): string {
+  const trimmed = value.trim();
+
+  if (!/^[+\d\s().-]+$/.test(trimmed)) {
+    throw new Error("Enter a valid Kenyan mobile number.");
+  }
+
+  const digits = trimmed.replace(/\D/g, "");
+
+  if (/^0[17]\d{8}$/.test(digits)) {
+    return `+254${digits.slice(1)}`;
+  }
+
+  if (/^254[17]\d{8}$/.test(digits)) {
+    return `+${digits}`;
+  }
+
+  if (/^[17]\d{8}$/.test(digits)) {
+    return `+254${digits}`;
+  }
+
+  throw new Error(
+    "Enter a valid Kenyan mobile number, such as 0712 345 678.",
+  );
+}
+
+/* -------------------------------------------------------------------------- */
+/* SESSION ACCESS                                                             */
+/* -------------------------------------------------------------------------- */
+
+export async function getRunnerSession(): Promise<string | null> {
+  // Let SecureStore failures propagate. A storage failure is not
+  // the same thing as a user who has no saved session.
+  return SecureStore.getItemAsync(SESSION_KEY);
+}
+
+export async function saveRunnerSession(
+  token: string,
+): Promise<void> {
+  if (!token || token.length < 40) {
+    throw new Error(
+      "The Runner server returned an invalid session.",
+    );
+  }
+
+  await SecureStore.setItemAsync(SESSION_KEY, token);
+}
+
+/**
+ * Explicit logout.
+ *
+ * Normal navigation and screen changes must not call this function.
+ * Local credentials are cleared even if the device is offline.
+ */
+export async function clearRunnerSession(): Promise<void> {
+  try {
+    // Read the token inside the try block so a SecureStore read
+    // failure cannot prevent local cleanup during explicit logout.
+    const token = await getRunnerSession();
+
+    if (token) {
+      const response = await expoFetch(
+        apiBase() + "/api/runner/auth/logout",
+        {
+          method: "POST",
+          headers: {
+            Accept: "application/json",
+            "x-sami-client": "runner",
+            Authorization: "Bearer " + token,
+          },
+        },
+      );
+
+      if (!response.ok) {
+        const payload: unknown = await response.json().catch(
+          () => ({}),
+        );
+
+        console.warn(
+          "[SaMi Runner Auth] Server-side logout was not confirmed.",
+          getApiError(
+            payload,
+            `Logout failed with HTTP ${response.status}.`,
+          ),
+        );
+      }
+    }
+  } catch (cause) {
+    console.warn(
+      "[SaMi Runner Auth] Could not complete server-side logout.",
+      describeError(cause),
+    );
+  } finally {
+    // Explicit logout always removes the local credential,
+    // even when the device is offline or SecureStore fails.
+    await clearSession();
+  }
+}
+
+/* -------------------------------------------------------------------------- */
+/* JSON API REQUEST                                                           */
+/* -------------------------------------------------------------------------- */
+
+export async function apiRequest<T>(
+  path: string,
+  options: ApiOptions = {},
+): Promise<T> {
+  const isPublicAuthRequest = PUBLIC_AUTH_PATHS.includes(path);
+
+  // Public OTP requests must remain usable without reading an existing
+  // session. Protected endpoints propagate SecureStore read failures.
+  const token = isPublicAuthRequest
+    ? null
+    : await getRunnerSession();
+
+  const method = options.method || "GET";
+  const requestUrl = apiBase() + path;
+
+  const headers: Record<string, string> = {
+    Accept: "application/json",
+    "x-sami-client": "runner",
+  };
+
+  if (options.body !== undefined) {
+    headers["Content-Type"] = "application/json";
+  }
+
+  if (token) {
+    headers.Authorization = "Bearer " + token;
+  }
+
+  let response: Response;
+
+  try {
+    response = await expoFetch(requestUrl, {
+      method,
+      headers,
+      body:
+        options.body === undefined
+          ? undefined
+          : JSON.stringify(options.body),
+    });
+  } catch (cause) {
+    const detail = describeError(cause);
+
+    console.error("[SaMi Runner API] Network request failed.", {
+      method,
+      path,
+      detail,
+    });
+
+    throw new Error(
+      "Could not reach SaMi Runner. Check your connection and SaMi API URL.",
+    );
+  }
+
+  const payload: unknown = await response.json().catch(
+    () => ({}),
+  );
+
+  if (!response.ok) {
+    // A rejected authenticated request clears the expired or invalid
+    // credential. Ordinary navigation does not clear the session.
+    if (
+      response.status === 401 &&
+      token &&
+      !isPublicAuthRequest
+    ) {
+      await clearSession();
+    }
+
+    throw new Error(
+      getApiError(
+        payload,
+        `SaMi Runner request failed with HTTP ${response.status}.`,
+      ),
+    );
+  }
+
+  return payload as T;
+}
+
+/* -------------------------------------------------------------------------- */
+/* MULTIPART DOCUMENT UPLOAD                                                  */
+/* -------------------------------------------------------------------------- */
+
+/**
+ * Expo SDK 57 uses the standard File/Blob implementation with expo/fetch.
+ *
+ * A React Native { uri, name, type } object cast to Blob is not a real
+ * Blob and cannot be reliably serialized into multipart FormData.
+ *
+ * Convert the selected local URI into an Expo File before appending it.
+ * This is shared by regular documents and the two-sided National ID.
+ */
+function appendRunnerFile(
+  formData: FormData,
+  fieldName: string,
+  file: RunnerDocumentFile,
+): void {
+  if (!file.uri) {
+    throw new Error("Select a document to upload.");
+  }
+
+  let nativeFile: ExpoFile;
+
+  try {
+    nativeFile = new ExpoFile(file.uri);
+  } catch {
+    throw new Error(
+      "The selected document could not be opened. Select it again and retry.",
+    );
+  }
+
+  if (!nativeFile.exists) {
+    throw new Error(
+      "The selected document is no longer available. Select it again and retry.",
+    );
+  }
+
+  if (nativeFile.size === 0) {
+    throw new Error("The selected document is empty.");
+  }
+
+  const filename =
+    file.name?.trim() ||
+    nativeFile.name ||
+    "runner-document";
+
+  // Expo File is a real File/Blob-compatible part.
+  // Do not manually set multipart Content-Type; expo/fetch generates
+  // the multipart boundary.
+  formData.append(fieldName, nativeFile, filename);
+}
+
+async function uploadRunnerFile<T>(
+  path: string,
+  formData: FormData,
+): Promise<T> {
+  const token = await getRunnerSession();
+
+  if (!token) {
+    throw new Error(
+      "Your Runner session has expired. Sign in again.",
+    );
+  }
+
+  const requestUrl = apiBase() + path;
+
+  try {
+    const response = await expoFetch(requestUrl, {
+      method: "POST",
+      headers: {
+        Accept: "application/json",
+        "x-sami-client": "runner",
+        Authorization: "Bearer " + token,
+      },
+      body: formData,
+    });
+
+    const payload: unknown = await response.json().catch(
+      () => ({}),
+    );
+
+    if (!response.ok) {
+      if (response.status === 401) {
+        await clearSession();
+      }
+
+      throw new Error(
+        getApiError(
+          payload,
+          `Document upload failed with HTTP ${response.status}.`,
+        ),
+      );
+    }
+
+    return payload as T;
+  } catch (cause) {
+    if (cause instanceof Error) {
+      throw cause;
+    }
+
+    console.error(
+      "[SaMi Runner API] Document upload failed.",
+      describeError(cause),
+    );
+
+    throw new Error(
+      "Could not upload your document. Check your connection and try again.",
+    );
+  }
+}
+
+/* -------------------------------------------------------------------------- */
+/* RUNNER EMAIL AUTHENTICATION                                                */
+/* -------------------------------------------------------------------------- */
+
+export async function requestRunnerOtp(
+  email: string,
+): Promise<RunnerOtpChallenge> {
+  const normalizedEmail = email.trim().toLowerCase();
+
+  if (
+    normalizedEmail.length > 254 ||
+    !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(normalizedEmail)
+  ) {
+    throw new Error("Enter a valid email address.");
+  }
+
+  return apiRequest<RunnerOtpChallenge>(
+    "/api/runner/auth/request-otp",
+    {
+      method: "POST",
+      body: {
+        email: normalizedEmail,
+        purpose: "login",
+      },
+    },
+  );
+}
+
+export async function requestRunnerRegistrationOtp(
+  input: RunnerRegistrationInput,
+): Promise<RunnerOtpChallenge> {
+  const fullName = input.fullName
+    .trim()
+    .replace(/\s+/g, " ");
+
+  const email = input.email.trim().toLowerCase();
+  const phone = normalizeKenyanPhone(input.phone);
+
+  if (fullName.length < 2 || fullName.length > 120) {
+    throw new Error(
+      "Your full name must contain between 2 and 120 characters.",
+    );
+  }
+
+  if (
+    email.length > 254 ||
+    !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)
+  ) {
+    throw new Error("Enter a valid email address.");
+  }
+
+  return apiRequest<RunnerOtpChallenge>(
+    "/api/runner/auth/request-otp",
+    {
+      method: "POST",
+      body: {
+        email,
+        purpose: "register",
+        fullName,
+        phone,
+      },
+    },
+  );
+}
+
+export async function verifyRunnerOtp(
+  challengeId: string,
+  code: string,
+): Promise<RunnerOtpVerificationResult> {
+  const result = await apiRequest<RunnerOtpVerificationResult>(
+    "/api/runner/auth/verify-otp",
+    {
+      method: "POST",
+      body: {
+        challengeId,
+        code,
+      },
+    },
+  );
+
+  return {
+    ...result,
+    runner: normalizeRunnerAccount(result.runner),
+  };
+}
+
+/* -------------------------------------------------------------------------- */
+/* RUNNER TASK CATEGORIES                                                     */
+/* -------------------------------------------------------------------------- */
+
+export async function getRunnerCategories(): Promise<{
+  ok: boolean;
+  categories: RunnerCategory[];
+}> {
+  return apiRequest("/api/runner/categories");
+}
+
+/**
+ * Save exactly one Runner service selection.
+ *
+ * The available catalogue contains two services, but each Runner
+ * account must select only one of them.
+ */
+export async function updateRunnerCategories(
+  categoryKeys: RunnerServiceKey[],
+): Promise<RunnerCategoriesUpdateResult> {
+  assertRunnerServiceKeys(categoryKeys);
+
+  return apiRequest<RunnerCategoriesUpdateResult>(
+    "/api/runner/me/categories",
+    {
+      method: "PUT",
+      body: {
+        categoryKeys,
+      },
+    },
+  );
+}
+
+/* -------------------------------------------------------------------------- */
+/* RUNNER PROFILE                                                             */
+/* -------------------------------------------------------------------------- */
+
+export async function getRunnerMe(): Promise<{
+  runner: RunnerMe;
+}> {
+  const result = await apiRequest<{ runner: RunnerMe }>(
+    "/api/runner/me",
+  );
+
+  return {
+    ...result,
+    runner: normalizeRunnerAccount(result.runner),
+  };
+}
+
+export async function updateRunnerProfile(input: {
+  fullName: string;
+  serviceArea: string;
+  vehicleType: RunnerVehicleType;
+  vehicleRegistration?: string;
+}): Promise<void> {
+  assertRunnerTransportInput(input);
+
+  await apiRequest("/api/runner/me", {
+    method: "PUT",
+    body: {
+      fullName: input.fullName.trim(),
+      serviceArea: input.serviceArea.trim(),
+      vehicleType: input.vehicleType,
+      vehicleRegistration: input.vehicleRegistration?.trim() || undefined,
+    },
+  });
+}
+
+/* -------------------------------------------------------------------------- */
+/* RUNNER ONBOARDING                                                          */
+/* -------------------------------------------------------------------------- */
+
+export async function getRunnerOnboarding(): Promise<RunnerOnboardingData> {
+  const result = await apiRequest<RunnerOnboardingData>(
+    "/api/runner/me/onboarding",
+  );
+
+  return normalizeOnboardingData(result);
+}
+
+export async function updateRunnerOnboarding(input: {
+  serviceArea: string;
+  vehicleType: RunnerVehicleType;
+  vehicleModel?: string;
+  vehicleRegistration?: string;
+}): Promise<RunnerOnboardingUpdateResult> {
+  assertRunnerOnboardingTransportInput(input);
+
+  const result = await apiRequest<RunnerOnboardingUpdateResult>(
+    "/api/runner/me/onboarding",
+    {
+      method: "PUT",
+      body: {
+        serviceArea: input.serviceArea.trim(),
+        vehicleType: input.vehicleType,
+        vehicleModel: input.vehicleModel?.trim() || undefined,
+        vehicleRegistration: input.vehicleRegistration?.trim() || undefined,
+      },
+    },
+  );
+
+  return {
+    ...result,
+    requirements: normalizeRequirements(
+      Array.isArray(result.requirements) ? result.requirements : [],
+    ),
+  };
+}
+
+/**
+ * Upload one document requirement.
+ *
+ * This helper must not be used for either National ID side.
+ * National ID front and back are submitted together using
+ * uploadRunnerNationalId().
+ */
+export async function uploadRunnerDocument(input: {
+  requirementKey: string;
+  file: RunnerDocumentFile;
+}): Promise<RunnerDocumentUploadResult> {
+  const requirementKey = input.requirementKey.trim();
+
+  if (!requirementKey) {
+    throw new Error(
+      "Choose the document requirement before uploading.",
+    );
+  }
+
+  if (
+    requirementKey === "identity_national_id_front" ||
+    requirementKey === "identity_national_id_back"
+  ) {
+    throw new Error(
+      "Submit both sides of your National ID together.",
+    );
+  }
+
+  if (!input.file?.uri) {
+    throw new Error("Select a document to upload.");
+  }
+
+  const formData = new FormData();
+
+  formData.append("requirementKey", requirementKey);
+
+  appendRunnerFile(
+    formData,
+    "file",
+    input.file,
+  );
+
+  return uploadRunnerFile<RunnerDocumentUploadResult>(
+    ONBOARDING_DOCUMENTS_PATH,
+    formData,
+  );
+}
+
+/**
+ * Upload both sides of a National ID in a single request.
+ *
+ * The backend validates both files and creates both document
+ * records in one database transaction.
+ */
+export async function uploadRunnerNationalId(input: {
+  front: RunnerDocumentFile;
+  back: RunnerDocumentFile;
+}): Promise<RunnerDocumentGroupUploadResult> {
+  if (!input.front?.uri || !input.back?.uri) {
+    throw new Error(
+      "Select both the front and back of your National ID.",
+    );
+  }
+
+  const formData = new FormData();
+
+  formData.append(
+    "requirementKeyFront",
+    "identity_national_id_front",
+  );
+
+  appendRunnerFile(
+    formData,
+    "fileFront",
+    input.front,
+  );
+
+  formData.append(
+    "requirementKeyBack",
+    "identity_national_id_back",
+  );
+
+  appendRunnerFile(
+    formData,
+    "fileBack",
+    input.back,
+  );
+
+  const result =
+    await uploadRunnerFile<RunnerDocumentGroupUploadResult>(
+      ONBOARDING_DOCUMENTS_PATH,
+      formData,
+    );
+
+  const uploadedKeys = new Set(
+    (result.documents ?? []).map(
+      (document) => document.requirementKey,
+    ),
+  );
+
+  if (
+    !Array.isArray(result.documents) ||
+    result.documents.length !== 2 ||
+    result.uploadCount !== 2 ||
+    !uploadedKeys.has("identity_national_id_front") ||
+    !uploadedKeys.has("identity_national_id_back")
+  ) {
+    throw new Error(
+      "The server did not confirm both National ID sides. Refresh your document checklist before continuing.",
+    );
+  }
+
+  return result;
+}
+
+export async function submitRunnerOnboarding(): Promise<RunnerOnboardingSubmissionResult> {
+  return apiRequest<RunnerOnboardingSubmissionResult>(
+    "/api/runner/me/onboarding",
+    {
+      method: "POST",
+      body: {},
+    },
+  );
+}
+
+/* -------------------------------------------------------------------------- */
+/* RUNNER AVAILABILITY                                                        */
+/* -------------------------------------------------------------------------- */
+
+export async function setRunnerAvailability(
+  isOnline: boolean,
+): Promise<{
+  availability: {
+    isOnline: boolean;
+    lastHeartbeatAt: string | null;
+  };
+}> {
+  return apiRequest(
+    "/api/runner/me/availability",
+    {
+      method: "POST",
+      body: { isOnline },
+    },
+  );
+}
+
+/* -------------------------------------------------------------------------- */
+/* RUNNER ERRANDS                                                             */
+/* -------------------------------------------------------------------------- */
+
+export async function getRunnerJobs(): Promise<{
+  offers: RunnerJob[];
+  active: RunnerJob[];
+}> {
+  return apiRequest("/api/runner/jobs");
+}
+
+export async function acceptRunnerJob(
+  jobId: string,
+): Promise<void> {
+  if (!jobId.trim()) {
+    throw new Error("A valid Runner job is required.");
+  }
+
+  await apiRequest(
+    "/api/runner/jobs/" +
+      encodeURIComponent(jobId) +
+      "/accept",
+    {
+      method: "POST",
+      body: {},
+    },
+  );
+}
+
+export async function updateRunnerJobStatus(
+  jobId: string,
+  action: "start" | "submit_completion",
+): Promise<void> {
+  if (!jobId.trim()) {
+    throw new Error("A valid Runner job is required.");
+  }
+
+  await apiRequest(
+    "/api/runner/jobs/" +
+      encodeURIComponent(jobId) +
+      "/status",
+    {
+      method: "POST",
+      body: { action },
+    },
+  );
+}
+
+/* -------------------------------------------------------------------------- */
+/* RUNNER LIVE LOCATION                                                       */
+/* -------------------------------------------------------------------------- */
+
+export async function publishRunnerLocation(input: {
+  latitude: number;
+  longitude: number;
+  accuracy?: number | null;
+  heading?: number | null;
+  speed?: number | null;
+}): Promise<void> {
+  if (
+    !Number.isFinite(input.latitude) ||
+    !Number.isFinite(input.longitude) ||
+    input.latitude < -90 ||
+    input.latitude > 90 ||
+    input.longitude < -180 ||
+    input.longitude > 180
+  ) {
+    throw new Error("A valid Runner location is required.");
+  }
+
+  await apiRequest("/api/runner/location", {
+    method: "POST",
+    body: input,
+  });
+}

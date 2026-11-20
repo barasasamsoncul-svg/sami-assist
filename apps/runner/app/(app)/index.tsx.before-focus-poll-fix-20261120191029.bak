@@ -1,0 +1,3454 @@
+
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import {
+  ActivityIndicator,
+  Alert,
+  AppState,
+  Pressable,
+  RefreshControl,
+  ScrollView,
+  StatusBar,
+  StyleSheet,
+  Text,
+  View,
+} from "react-native";
+import { router, useFocusEffect } from "expo-router";
+import { Ionicons } from "@expo/vector-icons";
+import * as Location from "expo-location";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
+
+import {
+  acceptRunnerJob,
+  clearRunnerSession,
+  getRunnerJobs,
+  getRunnerMe,
+  publishRunnerLocation,
+  setRunnerAvailability,
+  updateRunnerJobStatus,
+  type RunnerJob,
+  type RunnerMe,
+} from "@/api";
+
+import { useRunnerTheme } from "@/theme";
+import { SaMiRunnerDashboardChrome } from "@/components/RunnerDashboardChrome";
+
+import {
+  SaMiMapboxView,
+  type SaMiRouteChangedEvent,
+  type SaMiRouteProfile,
+  type SaMiVoiceInstructionChangedEvent,
+} from "../../modules/sami-mapbox/src";
+
+type JobsState = {
+  offers: RunnerJob[];
+  active: RunnerJob[];
+};
+
+type Coordinates = {
+  latitude: number;
+  longitude: number;
+};
+
+type ActiveRouteTarget = Coordinates & {
+  label: string;
+  stage: "pickup" | "delivery";
+};
+
+type MapLocation = Coordinates & {
+  bearing: number | null;
+  speedMetersPerSecond: number | null;
+  horizontalAccuracyMeters: number | null;
+  enhanced: boolean;
+};
+
+type NavigationMode = "idle" | "free_drive" | "active_guidance";
+
+const DEFAULT_COORDINATES: Coordinates = {
+  latitude: -1.2921,
+  longitude: 36.8219,
+};
+
+const ACTIVE_STATUSES = [
+  "accepted",
+  "in_progress",
+  "completion_submitted",
+];
+
+const TRACKING_STATUSES = [
+  "accepted",
+  "in_progress",
+];
+
+const MAPBOX_STANDARD_STYLE = "mapbox://styles/mapbox/standard";
+
+function money(
+  value: number | null,
+  currency = "KES",
+): string {
+  if (value === null || !Number.isFinite(value)) {
+    return "Awaiting payout";
+  }
+
+  return (
+    `${currency} ` +
+    value.toLocaleString("en-KE", {
+      minimumFractionDigits: 0,
+      maximumFractionDigits: 2,
+    })
+  );
+}
+
+function titleCase(value: string): string {
+  return value
+    .replaceAll("_", " ")
+    .replace(/\b\w/g, (letter) => letter.toUpperCase());
+}
+
+function activeStatusLabel(status: string): string {
+  const labels: Record<string, string> = {
+    accepted: "Errand accepted",
+    in_progress: "Errand in progress",
+    completion_submitted: "Awaiting customer confirmation",
+    completed: "Completed",
+  };
+
+  return labels[status] ?? titleCase(status);
+}
+
+function isRestrictedAccount(status?: string): boolean {
+  return status === "suspended" || status === "closed";
+}
+
+function isSessionError(message: string): boolean {
+  return /HTTP 401|session has expired|no valid runner session|sign in again|unauthorized/i.test(
+    message,
+  );
+}
+
+function distanceBetweenMeters(
+  first: Coordinates,
+  second: Coordinates,
+): number {
+  const earthRadius = 6371000;
+  const radians = (value: number) => (value * Math.PI) / 180;
+
+  const latitudeDifference = radians(
+    second.latitude - first.latitude,
+  );
+
+  const longitudeDifference = radians(
+    second.longitude - first.longitude,
+  );
+
+  const a =
+    Math.sin(latitudeDifference / 2) ** 2 +
+    Math.cos(radians(first.latitude)) *
+      Math.cos(radians(second.latitude)) *
+      Math.sin(longitudeDifference / 2) ** 2;
+
+  return (
+    earthRadius *
+    2 *
+    Math.atan2(Math.sqrt(a), Math.sqrt(1 - a))
+  );
+}
+
+function formatRouteDistance(
+  distanceMeters?: number | null,
+): string | null {
+  if (
+    distanceMeters == null ||
+    !Number.isFinite(distanceMeters) ||
+    distanceMeters < 0
+  ) {
+    return null;
+  }
+
+  if (distanceMeters < 1000) {
+    return `${Math.round(distanceMeters)} m`;
+  }
+
+  return `${(distanceMeters / 1000).toFixed(
+    distanceMeters < 10000 ? 1 : 0,
+  )} km`;
+}
+
+function formatRouteDuration(
+  durationSeconds?: number | null,
+): string | null {
+  if (
+    durationSeconds == null ||
+    !Number.isFinite(durationSeconds) ||
+    durationSeconds < 0
+  ) {
+    return null;
+  }
+
+  const totalMinutes = Math.ceil(durationSeconds / 60);
+
+  if (totalMinutes < 1) {
+    return "Less than 1 min";
+  }
+
+  if (totalMinutes < 60) {
+    return `${totalMinutes} min`;
+  }
+
+  const hours = Math.floor(totalMinutes / 60);
+  const remainingMinutes = totalMinutes % 60;
+
+  return remainingMinutes > 0
+    ? `${hours} hr ${remainingMinutes} min`
+    : `${hours} hr`;
+}
+
+function IconButton({
+  icon,
+  label,
+  onPress,
+  disabled = false,
+  busy = false,
+  color,
+  backgroundColor,
+  borderColor,
+}: {
+  icon: keyof typeof Ionicons.glyphMap;
+  label: string;
+  onPress: () => void;
+  disabled?: boolean;
+  busy?: boolean;
+  color: string;
+  backgroundColor: string;
+  borderColor: string;
+}) {
+  return (
+    <Pressable
+      accessibilityRole="button"
+      accessibilityLabel={label}
+      disabled={disabled || busy}
+      onPress={onPress}
+      style={({ pressed }) => [
+        styles.iconButton,
+        {
+          backgroundColor,
+          borderColor,
+          opacity: disabled || busy ? 0.5 : pressed ? 0.7 : 1,
+        },
+      ]}
+    >
+      {busy ? (
+        <ActivityIndicator size="small" color={color} />
+      ) : (
+        <Ionicons name={icon} size={20} color={color} />
+      )}
+    </Pressable>
+  );
+}
+
+function PrimaryButton({
+  label,
+  icon,
+  onPress,
+  disabled = false,
+  loading = false,
+  backgroundColor,
+  textColor = "#FFFFFF",
+}: {
+  label: string;
+  icon?: keyof typeof Ionicons.glyphMap;
+  onPress: () => void;
+  disabled?: boolean;
+  loading?: boolean;
+  backgroundColor: string;
+  textColor?: string;
+}) {
+  return (
+    <Pressable
+      accessibilityRole="button"
+      disabled={disabled || loading}
+      onPress={onPress}
+      style={({ pressed }) => [
+        styles.primaryButton,
+        {
+          backgroundColor,
+          opacity: disabled || loading ? 0.5 : pressed ? 0.82 : 1,
+        },
+      ]}
+    >
+      {loading ? (
+        <ActivityIndicator size="small" color={textColor} />
+      ) : icon ? (
+        <Ionicons name={icon} size={19} color={textColor} />
+      ) : null}
+
+      <Text style={[styles.primaryButtonText, { color: textColor }]}>
+        {label}
+      </Text>
+    </Pressable>
+  );
+}
+
+function SectionHeading({
+  eyebrow,
+  title,
+  subtitle,
+  colors,
+}: {
+  eyebrow?: string;
+  title: string;
+  subtitle?: string;
+  colors: ReturnType<typeof useRunnerTheme>["colors"];
+}) {
+  return (
+    <View style={styles.sectionHeading}>
+      {eyebrow ? (
+        <Text
+          style={[
+            styles.eyebrow,
+            { color: colors.textMuted },
+          ]}
+        >
+          {eyebrow.toUpperCase()}
+        </Text>
+      ) : null}
+
+      <Text style={[styles.sectionTitle, { color: colors.text }]}>
+        {title}
+      </Text>
+
+      {subtitle ? (
+        <Text
+          style={[
+            styles.sectionSubtitle,
+            { color: colors.textMuted },
+          ]}
+        >
+          {subtitle}
+        </Text>
+      ) : null}
+    </View>
+  );
+}
+
+function RoutePoint({
+  icon,
+  label,
+  value,
+  colors,
+  last = false,
+}: {
+  icon: keyof typeof Ionicons.glyphMap;
+  label: string;
+  value: string;
+  colors: ReturnType<typeof useRunnerTheme>["colors"];
+  last?: boolean;
+}) {
+  return (
+    <View style={styles.routePoint}>
+      <View style={styles.routePointIconColumn}>
+        <View
+          style={[
+            styles.routePointIcon,
+            { backgroundColor: colors.blueSoft },
+          ]}
+        >
+          <Ionicons name={icon} size={15} color={colors.blue} />
+        </View>
+
+        {!last ? (
+          <View
+            style={[
+              styles.routeConnector,
+              { backgroundColor: colors.border },
+            ]}
+          />
+        ) : null}
+      </View>
+
+      <View style={styles.routePointCopy}>
+        <Text
+          style={[
+            styles.routePointLabel,
+            { color: colors.textMuted },
+          ]}
+        >
+          {label}
+        </Text>
+
+        <Text
+          style={[
+            styles.routePointValue,
+            { color: colors.text },
+          ]}
+          numberOfLines={2}
+        >
+          {value || "Address not provided"}
+        </Text>
+      </View>
+    </View>
+  );
+}
+
+export default function RunnerDashboardScreen() {
+  const { colors } = useRunnerTheme();
+  const insets = useSafeAreaInsets();
+
+  const [runner, setRunner] = useState<RunnerMe | null>(null);
+
+  const [jobs, setJobs] = useState<JobsState>({
+    offers: [],
+    active: [],
+  });
+
+  const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
+  const [availabilityBusy, setAvailabilityBusy] = useState(false);
+  const [jobBusyId, setJobBusyId] = useState("");
+  const [locationBusy, setLocationBusy] = useState(false);
+  const [signingOut, setSigningOut] = useState(false);
+  const [workspaceExpanded, setWorkspaceExpanded] = useState(false);
+
+  const [error, setError] = useState("");
+  const [mapError, setMapError] = useState("");
+  const [mapReady, setMapReady] = useState(false);
+
+  const [cameraFollowing, setCameraFollowing] = useState(false);
+  const [location, setLocation] = useState<MapLocation | null>(null);
+  const [currentLocationName, setCurrentLocationName] = useState("");
+  const lastReverseGeocodeAtRef = useRef(0);
+  const reverseGeocodeInFlightRef = useRef(false);
+  const [navigationMode, setNavigationMode] =
+    useState<NavigationMode>("idle");
+
+  const [routeState, setRouteState] =
+    useState<SaMiRouteChangedEvent>({
+      status: "idle",
+    });
+
+  const [voiceInstruction, setVoiceInstruction] =
+    useState<SaMiVoiceInstructionChangedEvent | null>(null);
+
+  const [voiceGuidanceMuted, setVoiceGuidanceMuted] =
+    useState(false);
+
+  const mountedRef = useRef(true);
+  const loadInFlightRef = useRef(false);
+  const logoutInFlightRef = useRef(false);
+  const lastPublishedAtRef = useRef(0);
+  const lastPublishedCoordinatesRef = useRef<Coordinates | null>(null);
+
+  const activeJob = useMemo(
+    () =>
+      jobs.active.find((job) =>
+        ACTIVE_STATUSES.includes(String(job.status)),
+      ) ?? null,
+    [jobs.active],
+  );
+
+  const activeJobIsTrackable =
+    Boolean(activeJob) &&
+    TRACKING_STATUSES.includes(String(activeJob?.status));
+
+  const approved = runner?.verificationStatus === "approved";
+  const restricted = isRestrictedAccount(runner?.accountStatus);
+  const isOnline = runner?.availability.isOnline === true;
+
+  const authorized =
+    Boolean(runner) &&
+    approved &&
+    runner?.accountStatus === "active" &&
+    runner?.profileComplete === true;
+
+  const navigationActive =
+    authorized && (isOnline || activeJobIsTrackable);
+
+  const displayCoordinates =
+    location ?? DEFAULT_COORDINATES;
+
+  const onlineLabel = !authorized
+    ? restricted
+      ? "RESTRICTED"
+      : "PENDING"
+    : isOnline
+      ? "ONLINE"
+      : "OFFLINE";
+
+  const canChangeAvailability =
+    Boolean(authorized) &&
+    !availabilityBusy &&
+    !signingOut &&
+    (!activeJob || (activeJob.status === "completion_submitted" && isOnline));
+
+  const mapStyleURL = MAPBOX_STANDARD_STYLE;
+
+  /*
+   * An accepted errand routes the Runner to pickup.
+   * Once started, the route target changes to delivery.
+   * Completion-submitted errands do not keep an active route.
+   */
+  const activeRouteTarget = useMemo<ActiveRouteTarget | null>(() => {
+    if (!activeJob) return null;
+
+    const isPickupStage = activeJob.status === "accepted";
+    const isDeliveryStage = activeJob.status === "in_progress";
+
+    if (!isPickupStage && !isDeliveryStage) {
+      return null;
+    }
+
+    const coordinates = isPickupStage
+      ? activeJob.pickupCoordinates
+      : activeJob.destinationCoordinates;
+
+    const latitude = coordinates?.latitude;
+    const longitude = coordinates?.longitude;
+
+    if (
+      typeof latitude !== "number" ||
+      typeof longitude !== "number" ||
+      !Number.isFinite(latitude) ||
+      !Number.isFinite(longitude) ||
+      latitude < -90 ||
+      latitude > 90 ||
+      longitude < -180 ||
+      longitude > 180
+    ) {
+      return null;
+    }
+
+    return {
+      latitude,
+      longitude,
+      label: isPickupStage
+        ? activeJob.pickupLabel
+        : activeJob.destinationLabel,
+      stage: isPickupStage ? "pickup" : "delivery",
+    };
+  }, [activeJob]);
+
+  const activeJobNeedsRoute =
+    activeJob?.status === "accepted" ||
+    activeJob?.status === "in_progress";
+
+  const routeCoordinatesMissing =
+    Boolean(activeJobNeedsRoute && !activeRouteTarget);
+
+  const routeProfile: SaMiRouteProfile =
+    runner?.vehicleType === "bike" ||
+    runner?.vehicleType === "bicycle"
+      ? "cycling"
+      : "driving-traffic";
+
+  const routeInstruction =
+    routeState.nextInstruction?.trim() ||
+    voiceInstruction?.instruction?.trim() ||
+    "Follow the highlighted route";
+
+  const routeSecondaryInstruction =
+    routeState.secondaryInstruction?.trim() || "";
+
+  const nextManeuverDistance =
+    formatRouteDistance(routeState.stepDistanceRemainingMeters);
+
+  const routeRemainingDistance =
+    formatRouteDistance(routeState.distanceRemainingMeters);
+
+  const routeRemainingTime =
+    formatRouteDuration(routeState.durationRemainingSeconds);
+
+  const routePanelStatusText =
+    routeState.status === "requesting"
+      ? "Calculating route"
+      : routeState.status === "waiting_for_location"
+        ? "Waiting for GPS"
+        : routeState.status === "error"
+          ? "Route unavailable"
+          : routeState.status === "active"
+            ? activeRouteTarget?.stage === "pickup"
+              ? "NAVIGATING TO PICKUP"
+              : "NAVIGATING TO DELIVERY"
+            : "Preparing navigation";
+
+  /*
+   * Clear old maneuver information when a new errand starts
+   * or when the active errand advances from pickup to delivery.
+   */
+  useEffect(() => {
+    setRouteState({ status: "idle" });
+    setVoiceInstruction(null);
+  }, [activeJob?.id, activeJob?.status]);
+
+  /* ------------------------------------------------------------------ */
+  /* NAVIGATION                                                          */
+  /* ------------------------------------------------------------------ */
+
+  const goToSignedOut = useCallback(() => {
+    router.dismissAll();
+
+    router.replace({
+      pathname: "/",
+      params: { signedOut: "1" },
+    });
+  }, []);
+
+  const goToProfile = useCallback(() => {
+    router.push("/(app)/profile-setup");
+  }, []);
+
+  const goToApplicationStatus = useCallback(() => {
+    router.push("/(app)/profile-setup?mode=status");
+  }, []);
+
+  /* ------------------------------------------------------------------ */
+  /* DASHBOARD DATA                                                      */
+  /* ------------------------------------------------------------------ */
+
+  const loadDashboard = useCallback(
+    async (refresh = false) => {
+      if (
+        loadInFlightRef.current ||
+        logoutInFlightRef.current
+      ) {
+        return;
+      }
+
+      loadInFlightRef.current = true;
+
+      if (refresh) {
+        setRefreshing(true);
+      } else {
+        setLoading(true);
+      }
+
+      setError("");
+
+      try {
+        const [meResult, jobsResult] = await Promise.all([
+          getRunnerMe(),
+          getRunnerJobs(),
+        ]);
+
+        if (!mountedRef.current) return;
+
+        const nextJobs: JobsState = {
+          offers: Array.isArray(jobsResult.offers)
+            ? jobsResult.offers
+            : [],
+          active: Array.isArray(jobsResult.active)
+            ? jobsResult.active
+            : [],
+        };
+
+        setRunner(meResult.runner);
+        setJobs(nextJobs);
+
+        if (!meResult.runner.profileComplete) {
+          router.replace("/(app)/profile-setup");
+          return;
+        }
+
+        if (
+          meResult.runner.verificationStatus !== "approved" &&
+          meResult.runner.availability.isOnline
+        ) {
+          setRunner((current) =>
+            current
+              ? {
+                  ...current,
+                  availability: {
+                    ...current.availability,
+                    isOnline: false,
+                  },
+                }
+              : current,
+          );
+        }
+      } catch (cause) {
+        if (!mountedRef.current) return;
+
+        const message =
+          cause instanceof Error
+            ? cause.message
+            : "Your Runner dashboard could not be loaded.";
+
+        if (isSessionError(message)) {
+          goToSignedOut();
+          return;
+        }
+
+        setError(message);
+      } finally {
+        loadInFlightRef.current = false;
+
+        if (mountedRef.current) {
+          setLoading(false);
+          setRefreshing(false);
+        }
+      }
+    },
+    [goToSignedOut],
+  );
+
+  useFocusEffect(
+    useCallback(() => {
+      mountedRef.current = true;
+      void loadDashboard();
+
+      return () => {
+        mountedRef.current = false;
+      };
+    }, [loadDashboard]),
+  );
+
+  useEffect(() => {
+    return () => {
+      mountedRef.current = false;
+    };
+  }, []);
+
+  // Offers and active-trip state must not depend on reopening a screen.
+  // Refresh only while this dashboard is focused and the app is foregrounded.
+  const shouldPollRunnerJobs = Boolean(
+    authorized && (isOnline || activeJob) && !signingOut,
+  );
+
+  useEffect(() => {
+    if (!shouldPollRunnerJobs) return;
+
+    let disposed = false;
+    let requestInFlight = false;
+
+    const refreshRunnerJobs = async () => {
+      if (
+        disposed ||
+        !mountedRef.current ||
+        AppState.currentState !== "active" ||
+        requestInFlight
+      ) {
+        return;
+      }
+
+      requestInFlight = true;
+      try {
+        const result = await getRunnerJobs();
+        if (disposed || !mountedRef.current) return;
+
+        setJobs({
+          offers: Array.isArray(result.offers) ? result.offers : [],
+          active: Array.isArray(result.active) ? result.active : [],
+        });
+      } catch (cause) {
+        if (disposed || !mountedRef.current) return;
+        const message =
+          cause instanceof Error
+            ? cause.message
+            : "Runner errands could not be refreshed.";
+
+        if (isSessionError(message)) {
+          goToSignedOut();
+        }
+        // Transient polling errors are intentionally non-blocking. The next
+        // poll or the user's manual refresh can recover without a modal loop.
+      } finally {
+        requestInFlight = false;
+      }
+    };
+
+    const timer = setInterval(() => {
+      void refreshRunnerJobs();
+    }, 20000);
+
+    const appStateSubscription = AppState.addEventListener(
+      "change",
+      (state) => {
+        if (state === "active") void refreshRunnerJobs();
+      },
+    );
+
+    return () => {
+      disposed = true;
+      clearInterval(timer);
+      appStateSubscription.remove();
+    };
+  }, [shouldPollRunnerJobs, goToSignedOut]);
+
+  /* ------------------------------------------------------------------ */
+  /* LOCATION                                                            */
+  /* ------------------------------------------------------------------ */
+
+  const updateCurrentLocationName = useCallback(async (coordinates: Coordinates) => {
+    const now = Date.now();
+    if (
+      reverseGeocodeInFlightRef.current ||
+      now - lastReverseGeocodeAtRef.current < 60000
+    ) {
+      return;
+    }
+
+    lastReverseGeocodeAtRef.current = now;
+    reverseGeocodeInFlightRef.current = true;
+
+    try {
+      const results = await Location.reverseGeocodeAsync(coordinates);
+      const address = results[0];
+      const locality = [
+        address?.district,
+        address?.subregion,
+        address?.city,
+        address?.name,
+      ].find((value) => typeof value === "string" && value.trim().length > 0);
+
+      if (locality && mountedRef.current) {
+        setCurrentLocationName(locality.trim());
+      }
+    } catch {
+      // Keep the saved service area as a fallback if reverse geocoding fails.
+    } finally {
+      reverseGeocodeInFlightRef.current = false;
+    }
+  }, []);
+
+  const requestCurrentLocation = useCallback(async () => {
+    const permission =
+      await Location.requestForegroundPermissionsAsync();
+
+    if (!permission.granted) {
+      throw new Error(
+        "Location permission is required to use your live Runner map.",
+      );
+    }
+
+    const position = await Location.getCurrentPositionAsync({
+      accuracy: Location.Accuracy.BestForNavigation,
+    });
+
+    const coords: Coordinates = {
+      latitude: position.coords.latitude,
+      longitude: position.coords.longitude,
+    };
+
+    if (mountedRef.current) {
+      setLocation({
+        ...coords,
+        bearing: position.coords.heading,
+        speedMetersPerSecond: position.coords.speed,
+        horizontalAccuracyMeters: position.coords.accuracy,
+        enhanced: false,
+      });
+
+      setCameraFollowing(true);
+      void updateCurrentLocationName(coords);
+    }
+
+    return {
+      coords,
+      position,
+    };
+  }, [updateCurrentLocationName]);
+
+  const locateMe = useCallback(async () => {
+    if (locationBusy || signingOut) return;
+
+    setLocationBusy(true);
+    setError("");
+
+    try {
+      const result = await requestCurrentLocation();
+      const canShareLocation =
+        authorized &&
+        (activeJobIsTrackable || (isOnline && !activeJob));
+
+      // GPS recentering is useful while offline too. Only publish when
+      // the Runner is online and idle, or has an active tracked errand.
+      if (canShareLocation) {
+        await publishRunnerLocation({
+          latitude: result.coords.latitude,
+          longitude: result.coords.longitude,
+          accuracy: result.position.coords.accuracy,
+          heading: result.position.coords.heading,
+          speed: result.position.coords.speed,
+        });
+      }
+    } catch (cause) {
+      if (mountedRef.current) {
+        setError(
+          cause instanceof Error
+            ? cause.message
+            : "Your location could not be detected.",
+        );
+      }
+    } finally {
+      if (mountedRef.current) {
+        setLocationBusy(false);
+      }
+    }
+  }, [
+    locationBusy,
+    signingOut,
+    requestCurrentLocation,
+    authorized,
+    activeJobIsTrackable,
+    isOnline,
+    activeJob,
+  ]);
+
+  /**
+   * The Mapbox native module supplies location updates.
+   *
+   * While the Runner is online or completing an errand,
+   * the Navigation SDK can provide enhanced, map-matched
+   * locations. Updates are throttled before publishing to
+   * the backend to avoid sending redundant GPS events.
+   */
+  const handleMapLocation = useCallback(
+    (event: {
+      nativeEvent: {
+        latitude: number;
+        longitude: number;
+        bearing: number | null;
+        speedMetersPerSecond: number | null;
+        horizontalAccuracyMeters: number | null;
+        timestamp: number;
+        enhanced: boolean;
+      };
+    }) => {
+      const next = event.nativeEvent;
+
+      if (
+        !Number.isFinite(next.latitude) ||
+        !Number.isFinite(next.longitude)
+      ) {
+        return;
+      }
+
+      const nextLocation: MapLocation = {
+        latitude: next.latitude,
+        longitude: next.longitude,
+        bearing: next.bearing,
+        speedMetersPerSecond: next.speedMetersPerSecond,
+        horizontalAccuracyMeters:
+          next.horizontalAccuracyMeters,
+        enhanced: next.enhanced,
+      };
+
+      if (mountedRef.current) {
+        setLocation(nextLocation);
+      }
+      void updateCurrentLocationName({
+        latitude: next.latitude,
+        longitude: next.longitude,
+      });
+
+      const canShareLocation =
+        activeJobIsTrackable || (isOnline && !activeJob);
+
+      if (!authorized || !canShareLocation || signingOut) {
+        return;
+      }
+
+      const now = Date.now();
+      const previous = lastPublishedCoordinatesRef.current;
+
+      const elapsed = now - lastPublishedAtRef.current;
+
+      const movedMeters = previous
+        ? distanceBetweenMeters(previous, nextLocation)
+        : Number.POSITIVE_INFINITY;
+
+      if (elapsed < 5000 && movedMeters < 10) {
+        return;
+      }
+
+      lastPublishedAtRef.current = now;
+      lastPublishedCoordinatesRef.current = {
+        latitude: nextLocation.latitude,
+        longitude: nextLocation.longitude,
+      };
+
+      void publishRunnerLocation({
+        latitude: nextLocation.latitude,
+        longitude: nextLocation.longitude,
+        accuracy: nextLocation.horizontalAccuracyMeters,
+        heading: nextLocation.bearing,
+        speed: nextLocation.speedMetersPerSecond,
+      }).catch(() => undefined);
+    },
+    [
+      authorized,
+      isOnline,
+      activeJobIsTrackable,
+      activeJob,
+      signingOut,
+      updateCurrentLocationName,
+    ],
+  );
+
+  /* ------------------------------------------------------------------ */
+  /* AVAILABILITY                                                        */
+  /* ------------------------------------------------------------------ */
+
+  const toggleAvailability = useCallback(async () => {
+    if (
+      !runner ||
+      availabilityBusy ||
+      !authorized ||
+      signingOut
+    ) {
+      return;
+    }
+
+    if (
+      activeJob &&
+      activeJob.status !== "completion_submitted"
+    ) {
+      setError(
+        "Complete your active errand before changing availability.",
+      );
+      return;
+    }
+
+    setAvailabilityBusy(true);
+    setError("");
+
+    try {
+      let locationForAvailability: Parameters<typeof setRunnerAvailability>[1] = undefined;
+
+      if (!isOnline) {
+        const result = await requestCurrentLocation();
+        locationForAvailability = {
+          latitude: result.coords.latitude,
+          longitude: result.coords.longitude,
+          accuracy: result.position.coords.accuracy,
+          heading: result.position.coords.heading,
+          speed: result.position.coords.speed,
+        };
+      }
+
+      // The server writes online status and the initial presence location
+      // in one transaction. Do not call the trip-only location endpoint first.
+      const result = await setRunnerAvailability(
+        !isOnline,
+        locationForAvailability,
+      );
+
+      if (!mountedRef.current) return;
+
+      setRunner((current) =>
+        current
+          ? {
+              ...current,
+              availability: result.availability,
+            }
+          : current,
+      );
+
+      setCameraFollowing(!isOnline);
+      if (!isOnline) {
+        await loadDashboard(true);
+      }
+    } catch (cause) {
+      if (!mountedRef.current) return;
+
+      const message =
+        cause instanceof Error
+          ? cause.message
+          : "Availability could not be updated.";
+
+      if (isSessionError(message)) {
+        goToSignedOut();
+        return;
+      }
+
+      setError(message);
+    } finally {
+      if (mountedRef.current) {
+        setAvailabilityBusy(false);
+      }
+    }
+  }, [
+    runner,
+    availabilityBusy,
+    authorized,
+    signingOut,
+    activeJob,
+    isOnline,
+    requestCurrentLocation,
+    loadDashboard,
+    goToSignedOut,
+  ]);
+
+  /* ------------------------------------------------------------------ */
+  /* ERRAND ACTIONS                                                      */
+  /* ------------------------------------------------------------------ */
+
+  const acceptJob = useCallback(
+    async (job: RunnerJob) => {
+      if (
+        !authorized ||
+        !isOnline ||
+        jobBusyId ||
+        signingOut
+      ) {
+        return;
+      }
+
+      setJobBusyId(job.id);
+      setError("");
+
+      try {
+        await acceptRunnerJob(job.id);
+
+        if (!mountedRef.current) return;
+
+        await loadDashboard(true);
+      } catch (cause) {
+        if (!mountedRef.current) return;
+
+        const message =
+          cause instanceof Error
+            ? cause.message
+            : "This errand could not be accepted.";
+
+        if (isSessionError(message)) {
+          goToSignedOut();
+          return;
+        }
+
+        setError(message);
+      } finally {
+        if (mountedRef.current) {
+          setJobBusyId("");
+        }
+      }
+    },
+    [
+      authorized,
+      isOnline,
+      jobBusyId,
+      signingOut,
+      loadDashboard,
+      goToSignedOut,
+    ],
+  );
+
+  const advanceJob = useCallback(
+    async (job: RunnerJob) => {
+      if (jobBusyId || signingOut) return;
+
+      const action =
+        job.status === "accepted"
+          ? "start"
+          : job.status === "in_progress"
+            ? "submit_completion"
+            : null;
+
+      if (!action) return;
+
+      setJobBusyId(job.id);
+      setError("");
+
+      try {
+        await updateRunnerJobStatus(job.id, action);
+
+        if (!mountedRef.current) return;
+
+        await loadDashboard(true);
+      } catch (cause) {
+        if (!mountedRef.current) return;
+
+        const message =
+          cause instanceof Error
+            ? cause.message
+            : "The errand status could not be updated.";
+
+        if (isSessionError(message)) {
+          goToSignedOut();
+          return;
+        }
+
+        setError(message);
+      } finally {
+        if (mountedRef.current) {
+          setJobBusyId("");
+        }
+      }
+    },
+    [
+      jobBusyId,
+      signingOut,
+      loadDashboard,
+      goToSignedOut,
+    ],
+  );
+
+  /* ------------------------------------------------------------------ */
+  /* SIGN OUT                                                            */
+  /* ------------------------------------------------------------------ */
+
+  const signOut = useCallback(() => {
+    if (signingOut || logoutInFlightRef.current) return;
+
+    Alert.alert(
+      "Sign out",
+      "Are you sure you want to sign out of SaMi Runner?",
+      [
+        {
+          text: "Cancel",
+          style: "cancel",
+        },
+        {
+          text: "Sign out",
+          style: "destructive",
+          onPress: async () => {
+            if (logoutInFlightRef.current) return;
+
+            logoutInFlightRef.current = true;
+            setSigningOut(true);
+
+            try {
+              await clearRunnerSession();
+            } finally {
+              if (mountedRef.current) {
+                router.dismissAll();
+
+                router.replace({
+                  pathname: "/",
+                  params: { signedOut: "1" },
+                });
+              }
+            }
+          },
+        },
+      ],
+    );
+  }, [signingOut]);
+
+  /* ------------------------------------------------------------------ */
+  /* DERIVED DASHBOARD STATE                                             */
+  /* ------------------------------------------------------------------ */
+
+  const dashboardState = !runner
+    ? loading
+      ? "loading"
+      : "error"
+    : restricted
+      ? "restricted"
+      : !authorized
+        ? "unverified"
+        : activeJob?.status === "completion_submitted"
+          ? "completion"
+          : activeJob
+            ? "active"
+            : jobs.offers.length > 0
+              ? "offers"
+              : isOnline
+                ? "searching"
+                : "offline";
+
+  const greetingName =
+    runner?.fullName?.trim().split(/\s+/)[0] || "Runner";
+
+  const locationAccuracyLabel =
+    location?.horizontalAccuracyMeters != null
+      ? `±${Math.round(location.horizontalAccuracyMeters)} m`
+      : "Waiting for GPS";
+
+  const locationQualityLabel = location?.enhanced
+    ? "Map matched"
+    : location
+      ? "GPS location"
+      : "Locating";
+
+  const canAcceptOffers =
+    authorized && isOnline && !jobBusyId && !signingOut;
+
+  /* ------------------------------------------------------------------ */
+  /* UI                                                                  */
+  /* ------------------------------------------------------------------ */
+
+  return (
+    <View style={styles.root}>
+      <StatusBar barStyle="light-content" />
+
+      {/* MAPBOX CANVAS */}
+
+      <View style={StyleSheet.absoluteFill}>
+        <SaMiMapboxView
+          style={StyleSheet.absoluteFill}
+          accessToken={
+            process.env.EXPO_PUBLIC_MAPBOX_ACCESS_TOKEN ?? ""
+          }
+          mapStyleURL={mapStyleURL}
+          initialLatitude={displayCoordinates.latitude}
+          initialLongitude={displayCoordinates.longitude}
+          initialZoom={15.5}
+          initialBearing={0}
+          initialPitch={0}
+          showUserLocation
+          showCompass
+          showScaleBar={false}
+          navigationActive={Boolean(navigationActive)}
+          cameraMode={
+            activeRouteTarget
+              ? "navigation"
+              : cameraFollowing
+                ? "follow"
+                : "free"
+          }
+          puckBearing="course"
+          locationPulsingEnabled={Boolean(isOnline && authorized)}
+          hasRouteDestination={Boolean(
+            authorized && activeRouteTarget,
+          )}
+          routeDestinationLatitude={
+            activeRouteTarget?.latitude ?? 0
+          }
+          routeDestinationLongitude={
+            activeRouteTarget?.longitude ?? 0
+          }
+          routeDestinationLabel={
+            activeRouteTarget?.label ?? ""
+          }
+          routeProfile={routeProfile}
+          voiceGuidanceMuted={voiceGuidanceMuted}
+          onMapReady={() => {
+            setMapReady(true);
+            setMapError("");
+          }}
+          onMapError={(event) => {
+            setMapError(event.nativeEvent.message);
+          }}
+          onLocationChanged={handleMapLocation}
+          onNavigationStatusChanged={(event) => {
+            setNavigationMode(
+              event.nativeEvent.mode as NavigationMode,
+            );
+          }}
+          onRouteChanged={(event) => {
+            setRouteState(event.nativeEvent);
+          }}
+          onVoiceInstructionChanged={(event) => {
+            setVoiceInstruction(event.nativeEvent);
+          }}
+        />
+      </View>
+
+      {/* TURN-BY-TURN MANEUVER CARD */}
+
+      {authorized && activeRouteTarget ? (
+        <View
+          style={[
+            styles.maneuverCard,
+            {
+              top: insets.top + 77,
+              backgroundColor: colors.surface,
+              borderColor: colors.border,
+            },
+          ]}
+        >
+          <View style={styles.maneuverMainRow}>
+            <View
+              style={[
+                styles.maneuverIcon,
+                { backgroundColor: colors.blueSoft },
+              ]}
+            >
+              <Ionicons
+                name="navigate"
+                size={25}
+                color={colors.blue}
+              />
+            </View>
+
+            <View style={styles.maneuverCopy}>
+              <Text
+                style={[
+                  styles.maneuverEyebrow,
+                  { color: colors.textMuted },
+                ]}
+              >
+                {routePanelStatusText}
+              </Text>
+
+              <Text
+                style={[
+                  styles.maneuverInstruction,
+                  { color: colors.text },
+                ]}
+                numberOfLines={2}
+              >
+                {routeState.status === "active"
+                  ? routeInstruction
+                  : routeState.status === "error"
+                    ? routeState.message ||
+                      "Route could not be calculated"
+                    : routeState.status === "requesting"
+                      ? "Finding the best route..."
+                      : "Waiting for your GPS position..."}
+              </Text>
+
+              {routeState.status === "active" &&
+              routeSecondaryInstruction ? (
+                <Text
+                  style={[
+                    styles.maneuverSecondary,
+                    { color: colors.textMuted },
+                  ]}
+                  numberOfLines={1}
+                >
+                  {routeSecondaryInstruction}
+                </Text>
+              ) : null}
+            </View>
+
+            <Pressable
+              accessibilityRole="switch"
+              accessibilityState={{
+                checked: !voiceGuidanceMuted,
+              }}
+              accessibilityLabel={
+                voiceGuidanceMuted
+                  ? "Unmute voice navigation"
+                  : "Mute voice navigation"
+              }
+              onPress={() => {
+                setVoiceGuidanceMuted((current) => !current);
+              }}
+              style={({ pressed }) => [
+                styles.voiceToggle,
+                {
+                  backgroundColor: voiceGuidanceMuted
+                    ? colors.paper
+                    : colors.blueSoft,
+                  borderColor: colors.border,
+                  opacity: pressed ? 0.7 : 1,
+                },
+              ]}
+            >
+              <Ionicons
+                name={
+                  voiceGuidanceMuted
+                    ? "volume-mute-outline"
+                    : "volume-high-outline"
+                }
+                size={21}
+                color={
+                  voiceGuidanceMuted
+                    ? colors.textMuted
+                    : colors.blue
+                }
+              />
+            </Pressable>
+          </View>
+
+          {routeState.status === "active" ? (
+            <View
+              style={[
+                styles.maneuverMetrics,
+                { borderTopColor: colors.border },
+              ]}
+            >
+              <View style={styles.maneuverMetric}>
+                <Text
+                  style={[
+                    styles.maneuverMetricLabel,
+                    { color: colors.textMuted },
+                  ]}
+                >
+                  NEXT TURN
+                </Text>
+
+                <Text
+                  style={[
+                    styles.maneuverMetricValue,
+                    { color: colors.text },
+                  ]}
+                >
+                  {nextManeuverDistance
+                    ? `In ${nextManeuverDistance}`
+                    : "Following route"}
+                </Text>
+              </View>
+
+              <View style={styles.maneuverMetric}>
+                <Text
+                  style={[
+                    styles.maneuverMetricLabel,
+                    { color: colors.textMuted },
+                  ]}
+                >
+                  REMAINING
+                </Text>
+
+                <Text
+                  style={[
+                    styles.maneuverMetricValue,
+                    { color: colors.text },
+                  ]}
+                >
+                  {routeRemainingDistance ?? "Calculating"}
+                </Text>
+              </View>
+
+              <View style={styles.maneuverMetric}>
+                <Text
+                  style={[
+                    styles.maneuverMetricLabel,
+                    { color: colors.textMuted },
+                  ]}
+                >
+                  ETA
+                </Text>
+
+                <Text
+                  style={[
+                    styles.maneuverMetricValue,
+                    { color: colors.text },
+                  ]}
+                >
+                  {routeRemainingTime ?? "Calculating"}
+                </Text>
+              </View>
+            </View>
+          ) : null}
+
+          {voiceGuidanceMuted ? (
+            <Text
+              style={[
+                styles.mutedGuidanceText,
+                { color: colors.textMuted },
+              ]}
+            >
+              Voice guidance is muted. Visual directions remain active.
+            </Text>
+          ) : null}
+        </View>
+      ) : null}
+
+      {/* MAP CONTROLS */}
+
+      <View
+        style={[
+          styles.mapControls,
+          {
+            right: 16,
+            bottom: insets.bottom + (workspaceExpanded ? 410 : 134),
+            display: workspaceExpanded ? "none" : "flex",
+          },
+        ]}
+      >
+        <IconButton
+          icon="locate"
+          label="Center map on my location"
+          onPress={() => {
+            setCameraFollowing(true);
+            void locateMe();
+          }}
+          busy={locationBusy}
+          color={colors.navy}
+          backgroundColor={colors.surface}
+          borderColor={colors.border}
+        />
+      </View>
+
+      {/* LOCATION QUALITY */}
+
+      <View
+        style={[
+          styles.locationIndicator,
+          {
+            top: insets.top + (activeRouteTarget ? 218 : 72),
+            backgroundColor: colors.surface,
+            borderColor: colors.border,
+            display: "none",
+          },
+        ]}
+      >
+        <View
+          style={[
+            styles.locationIndicatorDot,
+            {
+              backgroundColor: location?.enhanced
+                ? colors.success
+                : location
+                  ? colors.blue
+                  : colors.warning,
+            },
+          ]}
+        />
+
+        <View style={styles.locationIndicatorCopy}>
+          <Text
+            style={[
+              styles.locationIndicatorTitle,
+              { color: colors.text },
+            ]}
+          >
+            {locationQualityLabel}
+          </Text>
+
+          <Text
+            style={[
+              styles.locationIndicatorSubtitle,
+              { color: colors.textMuted },
+            ]}
+          >
+            {locationAccuracyLabel}
+          </Text>
+        </View>
+      </View>
+
+      {/* BOTTOM WORKSPACE */}
+
+      <View
+        style={[
+          styles.bottomWorkspace,
+          {
+            backgroundColor: colors.surface,
+            borderColor: colors.border,
+            paddingBottom: Math.max(insets.bottom, 14),
+            height: workspaceExpanded ? "82%" : "36%",
+            maxHeight: workspaceExpanded ? "84%" : "42%",
+            display: authorized && !activeJob ? "none" : "flex",
+          },
+        ]}
+      >
+        <Pressable
+          accessibilityRole="button"
+          accessibilityLabel={
+            workspaceExpanded
+              ? "Collapse runner workspace"
+              : "Expand runner workspace"
+          }
+          accessibilityHint="Show more or less of your runner workspace."
+          accessibilityState={{ expanded: workspaceExpanded }}
+          onPress={() => setWorkspaceExpanded((current) => !current)}
+          style={({ pressed }) => [
+            styles.sheetToggle,
+            { opacity: pressed ? 0.7 : 1 },
+          ]}
+        >
+          <View
+            style={[
+              styles.sheetHandle,
+              { backgroundColor: colors.borderStrong },
+            ]}
+          />
+
+          <Ionicons
+            style={styles.sheetToggleIcon}
+            name={workspaceExpanded ? "chevron-down" : "chevron-up"}
+            size={17}
+            color={colors.textMuted}
+          />
+        </Pressable>
+
+        <ScrollView
+          style={styles.sheetScrollView}
+          showsVerticalScrollIndicator={false}
+          contentContainerStyle={styles.sheetContent}
+          refreshControl={
+            <RefreshControl
+              refreshing={refreshing}
+              onRefresh={() => void loadDashboard(true)}
+              tintColor={colors.blue}
+            />
+          }
+        >
+          {/* ACCOUNT HEADER */}
+
+          <View style={styles.workspaceHeader}>
+            <View style={styles.workspaceGreeting}>
+              <Text
+                style={[
+                  styles.workspaceEyebrow,
+                  { color: colors.textMuted },
+                ]}
+              >
+                {runner?.serviceArea
+                  ? runner.serviceArea.toUpperCase()
+                  : "RUNNER WORKSPACE"}
+              </Text>
+
+              <Text
+                style={[
+                  styles.workspaceTitle,
+                  { color: colors.text },
+                ]}
+              >
+                Hello, {greetingName}
+              </Text>
+
+              <Text
+                style={[
+                  styles.workspaceSubtitle,
+                  { color: colors.textMuted },
+                ]}
+              >
+                {dashboardState === "searching"
+                  ? "You're online. Waiting for an errand."
+                  : dashboardState === "active"
+                    ? "Your active errand is ready."
+                    : dashboardState === "completion"
+                      ? "Your submitted errand is awaiting confirmation."
+                      : dashboardState === "offers"
+                        ? "New errands are available."
+                        : dashboardState === "offline"
+                          ? "Go online when you're ready to work."
+                          : "Your Runner workspace."}
+              </Text>
+            </View>
+
+            <View
+              style={[
+                styles.mapReadyBadge,
+                { backgroundColor: colors.blueSoft },
+              ]}
+            >
+              <Ionicons
+                name="navigate"
+                size={17}
+                color={colors.blue}
+              />
+            </View>
+          </View>
+
+          {/* LOADING */}
+
+          {dashboardState === "loading" ? (
+            <View
+              style={[
+                styles.stateCard,
+                { borderColor: colors.border },
+              ]}
+            >
+              <ActivityIndicator
+                size="large"
+                color={colors.blue}
+              />
+
+              <Text
+                style={[
+                  styles.stateTitle,
+                  { color: colors.text },
+                ]}
+              >
+                Preparing your workspace
+              </Text>
+
+              <Text
+                style={[
+                  styles.stateDescription,
+                  { color: colors.textMuted },
+                ]}
+              >
+                Checking your account and assigned errands.
+              </Text>
+            </View>
+          ) : null}
+
+          {/* DASHBOARD ERROR */}
+
+          {dashboardState === "error" ? (
+            <View
+              style={[
+                styles.stateCard,
+                { borderColor: colors.border },
+              ]}
+            >
+              <View
+                style={[
+                  styles.stateIcon,
+                  { backgroundColor: colors.dangerSoft },
+                ]}
+              >
+                <Ionicons
+                  name="cloud-offline-outline"
+                  size={23}
+                  color={colors.red}
+                />
+              </View>
+
+              <Text
+                style={[
+                  styles.stateTitle,
+                  { color: colors.text },
+                ]}
+              >
+                Dashboard unavailable
+              </Text>
+
+              <Text
+                style={[
+                  styles.stateDescription,
+                  { color: colors.textMuted },
+                ]}
+              >
+                {error || "Your Runner account could not be loaded."}
+              </Text>
+
+              <PrimaryButton
+                label="Try again"
+                icon="refresh"
+                onPress={() => void loadDashboard(true)}
+                backgroundColor={colors.blueAction}
+              />
+            </View>
+          ) : null}
+
+          {/* RESTRICTED */}
+
+          {dashboardState === "restricted" ? (
+            <View
+              style={[
+                styles.noticeCard,
+                {
+                  backgroundColor: colors.dangerSoft,
+                  borderColor: colors.red,
+                },
+              ]}
+            >
+              <Ionicons
+                name="shield-checkmark-outline"
+                size={24}
+                color={colors.red}
+              />
+
+              <View style={styles.noticeCopy}>
+                <Text
+                  style={[
+                    styles.noticeTitle,
+                    { color: colors.red },
+                  ]}
+                >
+                  Account restricted
+                </Text>
+
+                <Text
+                  style={[
+                    styles.noticeDescription,
+                    { color: colors.text },
+                  ]}
+                >
+                  Your Runner account is not currently allowed to
+                  accept errands. Contact SaMi support for assistance.
+                </Text>
+              </View>
+            </View>
+          ) : null}
+
+          {/* VERIFICATION GATE */}
+
+          {dashboardState === "unverified" ? (
+            <View
+              style={[
+                styles.stateCard,
+                { borderColor: colors.border },
+              ]}
+            >
+              <View
+                style={[
+                  styles.stateIcon,
+                  { backgroundColor: colors.warningSoft },
+                ]}
+              >
+                <Ionicons
+                  name="time-outline"
+                  size={24}
+                  color={colors.warning}
+                />
+              </View>
+
+              <SectionHeading
+                eyebrow="Account verification"
+                title="You're not approved yet"
+                subtitle="Your account must be approved before you can go online and receive errands."
+                colors={colors}
+              />
+
+              <PrimaryButton
+                label="View application status"
+                icon="document-text-outline"
+                onPress={goToApplicationStatus}
+                backgroundColor={colors.blueAction}
+              />
+            </View>
+          ) : null}
+
+          {/* ACTIVE ERRAND */}
+
+          {dashboardState === "active" && activeJob ? (
+            <View
+              style={[
+                styles.jobCard,
+                { borderColor: colors.border },
+              ]}
+            >
+              <View style={styles.jobCardHeader}>
+                <View style={styles.jobTypeCopy}>
+                  <Text
+                    style={[
+                      styles.eyebrow,
+                      { color: colors.textMuted },
+                    ]}
+                  >
+                    ACTIVE ERRAND
+                  </Text>
+
+                  <Text
+                    style={[
+                      styles.jobCode,
+                      { color: colors.text },
+                    ]}
+                  >
+                    {activeJob.publicCode}
+                  </Text>
+                </View>
+
+                <View
+                  style={[
+                    styles.jobStatus,
+                    { backgroundColor: colors.blueSoft },
+                  ]}
+                >
+                  <Text
+                    style={[
+                      styles.jobStatusText,
+                      { color: colors.blue },
+                    ]}
+                  >
+                    {activeStatusLabel(activeJob.status)}
+                  </Text>
+                </View>
+              </View>
+
+              <Text
+                style={[
+                  styles.jobTitle,
+                  { color: colors.text },
+                ]}
+              >
+                {activeJob.title}
+              </Text>
+
+              <Text
+                style={[
+                  styles.jobDescription,
+                  { color: colors.textMuted },
+                ]}
+              >
+                {activeJob.description}
+              </Text>
+
+              <View
+                style={[
+                  styles.routeCard,
+                  {
+                    backgroundColor: colors.paper,
+                    borderColor: colors.border,
+                  },
+                ]}
+              >
+                <RoutePoint
+                  icon="radio-button-on"
+                  label="PICKUP"
+                  value={activeJob.pickupLabel}
+                  colors={colors}
+                />
+
+                <RoutePoint
+                  icon="location"
+                  label="DELIVERY"
+                  value={activeJob.destinationLabel}
+                  colors={colors}
+                  last
+                />
+              </View>
+
+              {routeCoordinatesMissing ? (
+                <View
+                  style={[
+                    styles.routeWarning,
+                    {
+                      backgroundColor: colors.warningSoft,
+                      borderColor: colors.border,
+                    },
+                  ]}
+                >
+                  <Ionicons
+                    name="alert-circle-outline"
+                    size={17}
+                    color={colors.warning}
+                  />
+
+                  <Text
+                    style={[
+                      styles.routeWarningText,
+                      { color: colors.text },
+                    ]}
+                  >
+                    Route guidance is unavailable because the active
+                    errand does not have valid coordinates for this stage.
+                  </Text>
+                </View>
+              ) : null}
+
+              <View style={styles.jobMetrics}>
+                <View style={styles.jobMetric}>
+                  <Text
+                    style={[
+                      styles.jobMetricLabel,
+                      { color: colors.textMuted },
+                    ]}
+                  >
+                    YOUR PAYOUT
+                  </Text>
+
+                  <Text
+                    style={[
+                      styles.jobPayout,
+                      { color: colors.success },
+                    ]}
+                  >
+                    {money(
+                      activeJob.runnerPayoutAmount,
+                      activeJob.currency,
+                    )}
+                  </Text>
+                </View>
+
+                <View style={styles.jobMetricRight}>
+                  <Text
+                    style={[
+                      styles.jobMetricLabel,
+                      { color: colors.textMuted },
+                    ]}
+                  >
+                    DISTANCE
+                  </Text>
+
+                  <Text
+                    style={[
+                      styles.jobDistance,
+                      { color: colors.text },
+                    ]}
+                  >
+                    {activeJob.distanceKm == null
+                      ? "Not available"
+                      : `${activeJob.distanceKm.toFixed(1)} km`}
+                  </Text>
+                </View>
+              </View>
+
+              {activeJob.status === "accepted" ? (
+                <PrimaryButton
+                  label="Start errand"
+                  icon="play"
+                  loading={jobBusyId === activeJob.id}
+                  disabled={Boolean(jobBusyId)}
+                  onPress={() => void advanceJob(activeJob)}
+                  backgroundColor={colors.blueAction}
+                />
+              ) : null}
+
+              {activeJob.status === "in_progress" ? (
+                <PrimaryButton
+                  label="Submit completion"
+                  icon="checkmark-circle-outline"
+                  loading={jobBusyId === activeJob.id}
+                  disabled={Boolean(jobBusyId)}
+                  onPress={() => void advanceJob(activeJob)}
+                  backgroundColor={colors.success}
+                />
+              ) : null}
+            </View>
+          ) : null}
+
+          {/* WAITING FOR CUSTOMER */}
+
+          {dashboardState === "completion" && activeJob ? (
+            <View
+              style={[
+                styles.stateCard,
+                { borderColor: colors.border },
+              ]}
+            >
+              <View
+                style={[
+                  styles.stateIcon,
+                  { backgroundColor: colors.successSoft },
+                ]}
+              >
+                <Ionicons
+                  name="checkmark-done-circle-outline"
+                  size={26}
+                  color={colors.success}
+                />
+              </View>
+
+              <SectionHeading
+                eyebrow="Completion submitted"
+                title="Waiting for confirmation"
+                subtitle="Your completion has been submitted. The customer must confirm before this errand is fully closed."
+                colors={colors}
+              />
+
+              <Text
+                style={[
+                  styles.completionCode,
+                  { color: colors.text },
+                ]}
+              >
+                {activeJob.publicCode}
+              </Text>
+
+              <PrimaryButton
+                label="Refresh status"
+                icon="refresh"
+                onPress={() => void loadDashboard(true)}
+                loading={refreshing}
+                backgroundColor={colors.blueAction}
+              />
+            </View>
+          ) : null}
+
+          {/* ERRAND OFFERS */}
+
+          {dashboardState === "offers" ? (
+            <View style={styles.offerSection}>
+              <SectionHeading
+                eyebrow="Available work"
+                title={`${jobs.offers.length} available ${
+                  jobs.offers.length === 1 ? "errand" : "errands"
+                }`}
+                subtitle="Review the details before accepting an errand."
+                colors={colors}
+              />
+
+              {jobs.offers.map((job) => (
+                <View
+                  key={job.id}
+                  style={[
+                    styles.offerCard,
+                    {
+                      borderColor: colors.border,
+                      backgroundColor: colors.surface,
+                    },
+                  ]}
+                >
+                  <View style={styles.offerHeader}>
+                    <View style={styles.offerCodeCopy}>
+                      <Text
+                        style={[
+                          styles.eyebrow,
+                          { color: colors.textMuted },
+                        ]}
+                      >
+                        {job.publicCode}
+                      </Text>
+
+                      <Text
+                        style={[
+                          styles.offerTitle,
+                          { color: colors.text },
+                        ]}
+                      >
+                        {job.title}
+                      </Text>
+                    </View>
+
+                    <Text
+                      style={[
+                        styles.offerPayout,
+                        { color: colors.success },
+                      ]}
+                    >
+                      {money(
+                        job.runnerPayoutAmount,
+                        job.currency,
+                      )}
+                    </Text>
+                  </View>
+
+                  <Text
+                    style={[
+                      styles.offerDescription,
+                      { color: colors.textMuted },
+                    ]}
+                    numberOfLines={3}
+                  >
+                    {job.description}
+                  </Text>
+
+                  <View
+                    style={[
+                      styles.routeCard,
+                      {
+                        backgroundColor: colors.paper,
+                        borderColor: colors.border,
+                      },
+                    ]}
+                  >
+                    <RoutePoint
+                      icon="radio-button-on"
+                      label="PICKUP"
+                      value={job.pickupLabel}
+                      colors={colors}
+                    />
+
+                    <RoutePoint
+                      icon="location"
+                      label="DELIVERY"
+                      value={job.destinationLabel}
+                      colors={colors}
+                      last
+                    />
+                  </View>
+
+                  <View style={styles.offerFooter}>
+                    <View style={styles.distanceChip}>
+                      <Ionicons
+                        name="navigate-outline"
+                        size={15}
+                        color={colors.textMuted}
+                      />
+
+                      <Text
+                        style={[
+                          styles.distanceText,
+                          { color: colors.textMuted },
+                        ]}
+                      >
+                        {job.distanceKm == null
+                          ? "Distance unavailable"
+                          : `${job.distanceKm.toFixed(1)} km`}
+                      </Text>
+                    </View>
+
+                    <Text
+                      style={[
+                        styles.categoryText,
+                        { color: colors.textMuted },
+                      ]}
+                    >
+                      {job.category}
+                    </Text>
+                  </View>
+
+                  <PrimaryButton
+                    label="Accept errand"
+                    icon="checkmark-circle-outline"
+                    loading={jobBusyId === job.id}
+                    disabled={!canAcceptOffers || Boolean(jobBusyId)}
+                    onPress={() => void acceptJob(job)}
+                    backgroundColor={colors.blueAction}
+                  />
+                </View>
+              ))}
+            </View>
+          ) : null}
+
+          {/* ONLINE SEARCHING */}
+
+          {dashboardState === "searching" ? (
+            <View
+              style={[
+                styles.stateCard,
+                { borderColor: colors.border },
+              ]}
+            >
+              <View
+                style={[
+                  styles.searchingIcon,
+                  { backgroundColor: colors.successSoft },
+                ]}
+              >
+                <Ionicons
+                  name="radio"
+                  size={24}
+                  color={colors.success}
+                />
+              </View>
+
+              <SectionHeading
+                eyebrow="Runner active"
+                title="Looking for errands"
+                subtitle="You're available. SaMi will show eligible errands here when they are assigned to you."
+                colors={colors}
+              />
+
+              <View
+                style={[
+                  styles.searchingStatus,
+                  { backgroundColor: colors.successSoft },
+                ]}
+              >
+                <View
+                  style={[
+                    styles.statusDot,
+                    { backgroundColor: colors.success },
+                  ]}
+                />
+
+                <Text
+                  style={[
+                    styles.searchingStatusText,
+                    { color: colors.success },
+                  ]}
+                >
+                  YOU ARE ONLINE
+                </Text>
+              </View>
+            </View>
+          ) : null}
+
+          {/* OFFLINE */}
+
+          {dashboardState === "offline" ? (
+            <View
+              style={[
+                styles.stateCard,
+                { borderColor: colors.border },
+              ]}
+            >
+              <View
+                style={[
+                  styles.stateIcon,
+                  { backgroundColor: colors.blueSoft },
+                ]}
+              >
+                <Ionicons
+                  name="power-outline"
+                  size={25}
+                  color={colors.blue}
+                />
+              </View>
+
+              <SectionHeading
+                eyebrow="Availability"
+                title="Ready to start working?"
+                subtitle="Go online to make yourself available for eligible errands."
+                colors={colors}
+              />
+
+              <PrimaryButton
+                label="Go online"
+                icon="radio"
+                loading={availabilityBusy}
+                disabled={!canChangeAvailability}
+                onPress={() => void toggleAvailability()}
+                backgroundColor={colors.success}
+              />
+            </View>
+          ) : null}
+
+          {/* ERROR NOTICES */}
+
+          {error ? (
+            <View
+              style={[
+                styles.errorNotice,
+                { backgroundColor: colors.dangerSoft },
+              ]}
+            >
+              <Ionicons
+                name="alert-circle-outline"
+                size={19}
+                color={colors.red}
+              />
+
+              <Text
+                style={[
+                  styles.errorNoticeText,
+                  { color: colors.red },
+                ]}
+              >
+                {error}
+              </Text>
+
+              <Pressable
+                accessibilityRole="button"
+                accessibilityLabel="Dismiss error"
+                onPress={() => setError("")}
+                hitSlop={8}
+              >
+                <Ionicons
+                  name="close"
+                  size={19}
+                  color={colors.red}
+                />
+              </Pressable>
+            </View>
+          ) : null}
+
+          {/* MAP ERROR */}
+
+          {mapError ? (
+            <View
+              style={[
+                styles.errorNotice,
+                { backgroundColor: colors.dangerSoft },
+              ]}
+            >
+              <Ionicons
+                name="map-outline"
+                size={19}
+                color={colors.red}
+              />
+
+              <Text
+                style={[
+                  styles.errorNoticeText,
+                  { color: colors.red },
+                ]}
+              >
+                Mapbox: {mapError}
+              </Text>
+
+              <Pressable
+                accessibilityRole="button"
+                accessibilityLabel="Dismiss map error"
+                onPress={() => setMapError("")}
+                hitSlop={8}
+              >
+                <Ionicons
+                  name="close"
+                  size={19}
+                  color={colors.red}
+                />
+              </Pressable>
+            </View>
+          ) : null}
+
+          {/* MAP / LOCATION STATUS */}
+
+          <View
+            style={[
+              styles.mapInformation,
+              { borderColor: colors.border },
+            ]}
+          >
+            <View style={styles.mapInformationRow}>
+              <Ionicons
+                name="map-outline"
+                size={17}
+                color={colors.blue}
+              />
+
+              <Text
+                style={[
+                  styles.mapInformationTitle,
+                  { color: colors.text },
+                ]}
+              >
+                SaMi Mapbox
+              </Text>
+
+              <View style={{ flex: 1 }} />
+
+              <View
+                style={[
+                  styles.mapReadyStatus,
+                  {
+                    backgroundColor: mapReady
+                      ? colors.successSoft
+                      : colors.warningSoft,
+                  },
+                ]}
+              >
+                <View
+                  style={[
+                    styles.statusDot,
+                    {
+                      backgroundColor: mapReady
+                        ? colors.success
+                        : colors.warning,
+                    },
+                  ]}
+                />
+
+                <Text
+                  style={[
+                    styles.mapReadyStatusText,
+                    {
+                      color: mapReady
+                        ? colors.success
+                        : colors.warning,
+                    },
+                  ]}
+                >
+                  {mapReady ? "READY" : "CONNECTING"}
+                </Text>
+              </View>
+            </View>
+
+            <Text
+              style={[
+                styles.mapInformationDescription,
+                { color: colors.textMuted },
+              ]}
+            >
+              {routeCoordinatesMissing
+                ? "Route guidance is unavailable because the active errand's current destination has no valid coordinates."
+                : activeRouteTarget && routeState.status === "active"
+                  ? `Navigating to ${
+                      activeRouteTarget.stage === "pickup"
+                        ? "pickup"
+                        : "delivery"
+                    }${routeRemainingDistance
+                      ? ` • ${routeRemainingDistance} remaining`
+                      : ""}${
+                      routeRemainingTime
+                        ? ` • ${routeRemainingTime} ETA`
+                        : ""
+                    }.`
+                  : activeRouteTarget &&
+                      routeState.status === "requesting"
+                    ? "Calculating your route to the active errand."
+                    : activeRouteTarget &&
+                        routeState.status === "waiting_for_location"
+                      ? "Waiting for an accurate GPS position before calculating your route."
+                      : activeRouteTarget &&
+                          routeState.status === "error"
+                        ? routeState.message ||
+                          "Mapbox could not calculate the active route."
+                        : navigationMode === "free_drive"
+                          ? "Enhanced location matching is active."
+                          : location?.enhanced
+                            ? "Your latest position is map matched."
+                            : "Live positioning quality depends on GPS signal and device conditions."}
+            </Text>
+          </View>
+
+          {/* AVAILABILITY CONTROL */}
+
+          {authorized &&
+          dashboardState !== "completion" &&
+          dashboardState !== "active" ? (
+            <View
+              style={[
+                styles.availabilityFooter,
+                { borderColor: colors.border },
+              ]}
+            >
+              <View style={styles.availabilityCopy}>
+                <Text
+                  style={[
+                    styles.availabilityTitle,
+                    { color: colors.text },
+                  ]}
+                >
+                  {isOnline ? "You're online" : "You're offline"}
+                </Text>
+
+                <Text
+                  style={[
+                    styles.availabilitySubtitle,
+                    { color: colors.textMuted },
+                  ]}
+                >
+                  {isOnline
+                    ? "You can receive eligible errands."
+                    : "You won't receive errand offers while offline."}
+                </Text>
+              </View>
+
+              <Pressable
+                accessibilityRole="switch"
+                accessibilityState={{ checked: isOnline }}
+                accessibilityLabel="Runner availability"
+                disabled={!canChangeAvailability}
+                onPress={() => void toggleAvailability()}
+                style={({ pressed }) => [
+                  styles.availabilitySwitch,
+                  {
+                    backgroundColor: isOnline
+                      ? colors.success
+                      : colors.borderStrong,
+                    opacity: canChangeAvailability
+                      ? pressed
+                        ? 0.75
+                        : 1
+                      : 0.5,
+                  },
+                ]}
+              >
+                {availabilityBusy ? (
+                  <ActivityIndicator color="#FFFFFF" size="small" />
+                ) : (
+                  <View
+                    style={[
+                      styles.availabilitySwitchKnob,
+                      {
+                        alignSelf: isOnline
+                          ? "flex-end"
+                          : "flex-start",
+                      },
+                    ]}
+                  />
+                )}
+              </Pressable>
+            </View>
+          ) : null}
+
+          {/* PROFILE AND SIGN OUT */}
+
+          <View style={styles.accountFooter}>
+            <Pressable
+              accessibilityRole="button"
+              onPress={goToProfile}
+              style={[
+                styles.accountAction,
+                { borderColor: colors.border },
+              ]}
+            >
+              <Ionicons
+                name="person-circle-outline"
+                size={20}
+                color={colors.textMuted}
+              />
+
+              <Text
+                style={[
+                  styles.accountActionText,
+                  { color: colors.text },
+                ]}
+              >
+                Runner profile
+              </Text>
+
+              <Ionicons
+                name="chevron-forward"
+                size={17}
+                color={colors.textMuted}
+              />
+            </Pressable>
+
+            <Pressable
+              accessibilityRole="button"
+              disabled={signingOut}
+              onPress={signOut}
+              style={styles.signOutAction}
+            >
+              {signingOut ? (
+                <ActivityIndicator
+                  size="small"
+                  color={colors.red}
+                />
+              ) : (
+                <Ionicons
+                  name="log-out-outline"
+                  size={18}
+                  color={colors.red}
+                />
+              )}
+
+              <Text
+                style={[
+                  styles.signOutText,
+                  { color: colors.red },
+                ]}
+              >
+                Sign out
+              </Text>
+            </Pressable>
+          </View>
+        </ScrollView>
+      </View>
+      {authorized && !activeJob ? (
+        <SaMiRunnerDashboardChrome
+          topInset={insets.top}
+          bottomInset={insets.bottom}
+          isOnline={isOnline}
+          statusLabel={onlineLabel}
+          authorized={Boolean(authorized)}
+          canChangeAvailability={canChangeAvailability}
+          availabilityBusy={availabilityBusy}
+          locationLabel={currentLocationName || runner?.serviceArea || locationQualityLabel}
+          expanded={workspaceExpanded}
+          onExpandedChange={setWorkspaceExpanded}
+          onToggleAvailability={() => void toggleAvailability()}
+          onOpenSection={(section) => {
+            router.push({
+              pathname: "/(app)/runner-section",
+              params: { section },
+            } as never);
+          }}
+          offersCount={jobs.offers.length}
+          activeErrand={Boolean(activeJob)}
+          hasActiveRoute={Boolean(activeRouteTarget)}
+          error={error}
+          mapError={mapError}
+        />
+      ) : null}
+    </View>
+  );
+}
+
+const styles = StyleSheet.create({
+  root: {
+    flex: 1,
+    backgroundColor: "#F3F6FA",
+  },
+
+  header: {
+    position: "absolute",
+    top: 0,
+    left: 0,
+    right: 0,
+    zIndex: 10,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: 10,
+  },
+
+  brandCard: {
+    minHeight: 55,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 13,
+    paddingHorizontal: 13,
+    paddingVertical: 8,
+    borderRadius: 17,
+    borderWidth: 1,
+    elevation: 5,
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 3 },
+    shadowOpacity: 0.12,
+    shadowRadius: 8,
+  },
+
+  brandCopy: {
+    gap: 2,
+  },
+
+  brandTitle: {
+    fontSize: 17,
+    fontWeight: "900",
+    fontStyle: "italic",
+    letterSpacing: -0.45,
+  },
+
+  brandTagline: {
+    fontSize: 7,
+    fontWeight: "900",
+    letterSpacing: 1.45,
+  },
+
+  statusPill: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+    paddingHorizontal: 9,
+    paddingVertical: 7,
+    borderRadius: 20,
+  },
+
+  statusDot: {
+    width: 7,
+    height: 7,
+    borderRadius: 4,
+  },
+
+  statusPillText: {
+    fontSize: 9,
+    fontWeight: "900",
+    letterSpacing: 0.5,
+  },
+
+  headerActions: {
+    flexDirection: "row",
+    gap: 8,
+  },
+
+  iconButton: {
+    width: 44,
+    height: 44,
+    borderRadius: 15,
+    borderWidth: 1,
+    alignItems: "center",
+    justifyContent: "center",
+    elevation: 4,
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 6,
+  },
+
+  maneuverCard: {
+    position: "absolute",
+    left: 14,
+    right: 14,
+    zIndex: 9,
+    borderRadius: 17,
+    borderWidth: 1,
+    padding: 12,
+    gap: 10,
+    elevation: 8,
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 3 },
+    shadowOpacity: 0.16,
+    shadowRadius: 8,
+  },
+
+  maneuverMainRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 10,
+  },
+
+  maneuverIcon: {
+    width: 43,
+    height: 43,
+    borderRadius: 13,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+
+  maneuverCopy: {
+    flex: 1,
+    gap: 3,
+  },
+
+  maneuverEyebrow: {
+    fontSize: 8,
+    fontWeight: "900",
+    letterSpacing: 0.9,
+    textTransform: "uppercase",
+  },
+
+  maneuverInstruction: {
+    fontSize: 15,
+    lineHeight: 19,
+    fontWeight: "900",
+  },
+
+  maneuverSecondary: {
+    fontSize: 10,
+    lineHeight: 14,
+    fontWeight: "600",
+  },
+
+  voiceToggle: {
+    width: 39,
+    height: 39,
+    borderRadius: 12,
+    borderWidth: 1,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+
+  maneuverMetrics: {
+    borderTopWidth: StyleSheet.hairlineWidth,
+    paddingTop: 9,
+    flexDirection: "row",
+    justifyContent: "space-between",
+    gap: 8,
+  },
+
+  maneuverMetric: {
+    flex: 1,
+    gap: 3,
+  },
+
+  maneuverMetricLabel: {
+    fontSize: 8,
+    fontWeight: "900",
+    letterSpacing: 0.6,
+  },
+
+  maneuverMetricValue: {
+    fontSize: 11,
+    fontWeight: "900",
+  },
+
+  mutedGuidanceText: {
+    fontSize: 9,
+    lineHeight: 13,
+    fontWeight: "600",
+  },
+
+  mapControls: {
+    position: "absolute",
+    zIndex: 8,
+  },
+
+  locationIndicator: {
+    position: "absolute",
+    left: 16,
+    zIndex: 7,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+    paddingHorizontal: 11,
+    paddingVertical: 9,
+    borderRadius: 14,
+    borderWidth: 1,
+    elevation: 3,
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 5,
+  },
+
+  locationIndicatorDot: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+  },
+
+  locationIndicatorCopy: {
+    gap: 1,
+  },
+
+  locationIndicatorTitle: {
+    fontSize: 10,
+    fontWeight: "900",
+  },
+
+  locationIndicatorSubtitle: {
+    fontSize: 9,
+    fontWeight: "700",
+  },
+
+  bottomWorkspace: {
+    position: "absolute",
+    left: 0,
+    right: 0,
+    bottom: 0,
+    borderTopLeftRadius: 27,
+    borderTopRightRadius: 27,
+    borderWidth: 1,
+    borderBottomWidth: 0,
+    overflow: "hidden",
+    elevation: 16,
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: -5 },
+    shadowOpacity: 0.15,
+    shadowRadius: 16,
+  },
+
+  sheetToggle: {
+    minHeight: 38,
+    justifyContent: "center",
+    alignItems: "center",
+    position: "relative",
+  },
+
+  sheetToggleIcon: {
+    position: "absolute",
+    right: 18,
+  },
+
+  sheetScrollView: {
+    flex: 1,
+  },
+
+  sheetHandle: {
+    width: 42,
+    height: 4,
+    borderRadius: 5,
+    alignSelf: "center",
+    marginTop: 0,
+    marginBottom: 0,
+  },
+
+  sheetContent: {
+    paddingHorizontal: 17,
+    paddingTop: 13,
+    paddingBottom: 16,
+    gap: 15,
+  },
+
+  workspaceHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: 12,
+  },
+
+  workspaceGreeting: {
+    flex: 1,
+    gap: 3,
+  },
+
+  workspaceEyebrow: {
+    fontSize: 9,
+    fontWeight: "900",
+    letterSpacing: 1.2,
+  },
+
+  workspaceTitle: {
+    fontSize: 22,
+    lineHeight: 27,
+    fontWeight: "900",
+    letterSpacing: -0.65,
+  },
+
+  workspaceSubtitle: {
+    fontSize: 12,
+    lineHeight: 18,
+    fontWeight: "500",
+  },
+
+  mapReadyBadge: {
+    width: 43,
+    height: 43,
+    borderRadius: 14,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+
+  sectionHeading: {
+    gap: 4,
+  },
+
+  eyebrow: {
+    fontSize: 9,
+    fontWeight: "900",
+    letterSpacing: 1.05,
+  },
+
+  sectionTitle: {
+    fontSize: 18,
+    lineHeight: 23,
+    fontWeight: "900",
+    letterSpacing: -0.35,
+  },
+
+  sectionSubtitle: {
+    fontSize: 12,
+    lineHeight: 18,
+  },
+
+  stateCard: {
+    borderWidth: 1,
+    borderRadius: 19,
+    padding: 16,
+    gap: 14,
+  },
+
+  stateIcon: {
+    width: 46,
+    height: 46,
+    borderRadius: 15,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+
+  stateTitle: {
+    fontSize: 17,
+    fontWeight: "900",
+  },
+
+  stateDescription: {
+    fontSize: 12,
+    lineHeight: 19,
+  },
+
+  primaryButton: {
+    minHeight: 51,
+    borderRadius: 14,
+    paddingHorizontal: 16,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 9,
+  },
+
+  primaryButtonText: {
+    fontSize: 13,
+    fontWeight: "900",
+    letterSpacing: 0.05,
+  },
+
+  noticeCard: {
+    flexDirection: "row",
+    alignItems: "flex-start",
+    gap: 11,
+    padding: 15,
+    borderRadius: 16,
+    borderWidth: 1,
+  },
+
+  noticeCopy: {
+    flex: 1,
+    gap: 4,
+  },
+
+  noticeTitle: {
+    fontSize: 14,
+    fontWeight: "900",
+  },
+
+  noticeDescription: {
+    fontSize: 12,
+    lineHeight: 18,
+  },
+
+  jobCard: {
+    borderWidth: 1,
+    borderRadius: 19,
+    padding: 15,
+    gap: 13,
+  },
+
+  jobCardHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: 10,
+  },
+
+  jobTypeCopy: {
+    gap: 3,
+  },
+
+  jobCode: {
+    fontSize: 12,
+    fontWeight: "900",
+    letterSpacing: 0.5,
+  },
+
+  jobStatus: {
+    borderRadius: 10,
+    paddingHorizontal: 9,
+    paddingVertical: 7,
+  },
+
+  jobStatusText: {
+    fontSize: 9,
+    fontWeight: "900",
+  },
+
+  jobTitle: {
+    fontSize: 19,
+    lineHeight: 25,
+    fontWeight: "900",
+  },
+
+  jobDescription: {
+    fontSize: 12,
+    lineHeight: 18,
+  },
+
+  routeCard: {
+    borderWidth: 1,
+    borderRadius: 15,
+    padding: 12,
+    gap: 0,
+  },
+
+  routeWarning: {
+    flexDirection: "row",
+    alignItems: "flex-start",
+    gap: 8,
+    borderWidth: 1,
+    borderRadius: 12,
+    padding: 10,
+  },
+
+  routeWarningText: {
+    flex: 1,
+    fontSize: 10,
+    lineHeight: 15,
+    fontWeight: "600",
+  },
+
+  routePoint: {
+    flexDirection: "row",
+    alignItems: "stretch",
+    gap: 10,
+  },
+
+  routePointIconColumn: {
+    width: 29,
+    alignItems: "center",
+  },
+
+  routePointIcon: {
+    width: 29,
+    height: 29,
+    borderRadius: 10,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+
+  routeConnector: {
+    width: 1,
+    height: 22,
+    marginVertical: 3,
+  },
+
+  routePointCopy: {
+    flex: 1,
+    paddingTop: 2,
+    paddingBottom: 11,
+    gap: 3,
+  },
+
+  routePointLabel: {
+    fontSize: 8,
+    fontWeight: "900",
+    letterSpacing: 0.9,
+  },
+
+  routePointValue: {
+    fontSize: 12,
+    lineHeight: 17,
+    fontWeight: "700",
+  },
+
+  jobMetrics: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    gap: 12,
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopColor: "#00000020",
+    paddingTop: 12,
+  },
+
+  jobMetric: {
+    flex: 1,
+    gap: 4,
+  },
+
+  jobMetricRight: {
+    alignItems: "flex-end",
+    gap: 4,
+  },
+
+  jobMetricLabel: {
+    fontSize: 9,
+    fontWeight: "900",
+    letterSpacing: 0.6,
+  },
+
+  jobPayout: {
+    fontSize: 18,
+    fontWeight: "900",
+  },
+
+  jobDistance: {
+    fontSize: 15,
+    fontWeight: "900",
+  },
+
+  completionCode: {
+    fontSize: 13,
+    fontWeight: "900",
+  },
+
+  offerSection: {
+    gap: 12,
+  },
+
+  offerCard: {
+    borderWidth: 1,
+    borderRadius: 18,
+    padding: 14,
+    gap: 11,
+  },
+
+  offerHeader: {
+    flexDirection: "row",
+    alignItems: "flex-start",
+    justifyContent: "space-between",
+    gap: 10,
+  },
+
+  offerCodeCopy: {
+    flex: 1,
+    gap: 4,
+  },
+
+  offerTitle: {
+    fontSize: 16,
+    lineHeight: 21,
+    fontWeight: "900",
+  },
+
+  offerPayout: {
+    fontSize: 14,
+    fontWeight: "900",
+  },
+
+  offerDescription: {
+    fontSize: 12,
+    lineHeight: 18,
+  },
+
+  offerFooter: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+  },
+
+  distanceChip: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 5,
+  },
+
+  distanceText: {
+    fontSize: 10,
+    fontWeight: "700",
+  },
+
+  categoryText: {
+    fontSize: 10,
+    fontWeight: "800",
+  },
+
+  searchingIcon: {
+    width: 46,
+    height: 46,
+    borderRadius: 15,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+
+  searchingStatus: {
+    alignSelf: "flex-start",
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 7,
+    borderRadius: 20,
+    paddingHorizontal: 11,
+    paddingVertical: 8,
+  },
+
+  searchingStatusText: {
+    fontSize: 9,
+    fontWeight: "900",
+    letterSpacing: 0.7,
+  },
+
+  errorNotice: {
+    flexDirection: "row",
+    alignItems: "flex-start",
+    gap: 8,
+    padding: 12,
+    borderRadius: 13,
+  },
+
+  errorNoticeText: {
+    flex: 1,
+    fontSize: 11,
+    lineHeight: 17,
+    fontWeight: "700",
+  },
+
+  mapInformation: {
+    borderWidth: 1,
+    borderRadius: 14,
+    padding: 12,
+    gap: 8,
+  },
+
+  mapInformationRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 7,
+  },
+
+  mapInformationTitle: {
+    fontSize: 11,
+    fontWeight: "900",
+  },
+
+  mapInformationDescription: {
+    fontSize: 10,
+    lineHeight: 16,
+  },
+
+  mapReadyStatus: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 5,
+    borderRadius: 10,
+    paddingHorizontal: 8,
+    paddingVertical: 5,
+  },
+
+  mapReadyStatusText: {
+    fontSize: 8,
+    fontWeight: "900",
+    letterSpacing: 0.4,
+  },
+
+  availabilityFooter: {
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    paddingVertical: 13,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: 12,
+  },
+
+  availabilityCopy: {
+    flex: 1,
+    gap: 3,
+  },
+
+  availabilityTitle: {
+    fontSize: 13,
+    fontWeight: "900",
+  },
+
+  availabilitySubtitle: {
+    fontSize: 10,
+    lineHeight: 15,
+  },
+
+  availabilitySwitch: {
+    width: 53,
+    height: 31,
+    borderRadius: 20,
+    padding: 4,
+    justifyContent: "center",
+  },
+
+  availabilitySwitchKnob: {
+    width: 23,
+    height: 23,
+    borderRadius: 12,
+    backgroundColor: "#FFFFFF",
+    elevation: 2,
+  },
+
+  accountFooter: {
+    gap: 8,
+  },
+
+  accountAction: {
+    minHeight: 45,
+    borderWidth: 1,
+    borderRadius: 13,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 9,
+    paddingHorizontal: 12,
+  },
+
+  accountActionText: {
+    flex: 1,
+    fontSize: 11,
+    fontWeight: "800",
+  },
+
+  signOutAction: {
+    minHeight: 42,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 7,
+  },
+
+  signOutText: {
+    fontSize: 11,
+    fontWeight: "900",
+  },
+});

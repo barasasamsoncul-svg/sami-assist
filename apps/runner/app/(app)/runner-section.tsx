@@ -38,6 +38,15 @@ const COLORS = {
 
 type Section = "offers" | "rating" | "acceptance" | "menu" | "help";
 
+function isRunnerSessionError(message: string): boolean {
+  return /\b401\b|session has expired|sign in to continue/i.test(message);
+}
+
+function returnToRunnerSignIn(): void {
+  router.dismissAll();
+  router.replace({ pathname: "/", params: { signedOut: "1" } });
+}
+
 const TITLES: Record<Section, string> = {
   offers: "Offers & Rewards",
   rating: "Your rating",
@@ -83,7 +92,12 @@ export default function RunnerDashboardSectionScreen() {
       setIsOnline(me.runner.availability.isOnline);
       setOffers(Array.isArray(jobs.offers) ? jobs.offers : []);
     } catch (cause) {
-      setError(cause instanceof Error ? cause.message : "Offers could not be loaded.");
+      const message = cause instanceof Error ? cause.message : "Offers could not be loaded.";
+      if (isRunnerSessionError(message)) {
+        returnToRunnerSignIn();
+        return;
+      }
+      setError(message);
     } finally {
       setLoading(false);
       setRefreshing(false);
@@ -110,7 +124,12 @@ export default function RunnerDashboardSectionScreen() {
       ]);
       await loadOffers(true);
     } catch (cause) {
-      setError(cause instanceof Error ? cause.message : "This errand could not be accepted.");
+      const message = cause instanceof Error ? cause.message : "This errand could not be accepted.";
+      if (isRunnerSessionError(message)) {
+        returnToRunnerSignIn();
+        return;
+      }
+      setError(message);
     } finally {
       setBusyJobId("");
     }

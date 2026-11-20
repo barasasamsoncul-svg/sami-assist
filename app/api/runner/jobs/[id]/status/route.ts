@@ -127,6 +127,13 @@ export async function POST(request: Request, context: RouteContext) {
       ],
     );
 
+    if (transition.to === "completion_submitted") {
+      await client.query(
+        "DELETE FROM public.runner_live_locations WHERE runner_id = $1 AND job_id = $2",
+        [auth.runner.id, id],
+      );
+    }
+
     await client.query("COMMIT");
 
     return NextResponse.json(

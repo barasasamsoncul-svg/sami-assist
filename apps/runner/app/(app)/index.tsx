@@ -3,6 +3,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   ActivityIndicator,
   Alert,
+  AppState,
   Pressable,
   RefreshControl,
   ScrollView,
@@ -11,7 +12,7 @@ import {
   Text,
   View,
 } from "react-native";
-import { router, useFocusEffect } from "expo-router";
+import { router, useFocusEffect, useIsFocused } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import * as Location from "expo-location";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
@@ -389,6 +390,7 @@ function RoutePoint({
 }
 
 export default function RunnerDashboardScreen() {
+  const isDashboardFocused = useIsFocused();
   const { colors } = useRunnerTheme();
   const insets = useSafeAreaInsets();
 
@@ -476,7 +478,7 @@ export default function RunnerDashboardScreen() {
     Boolean(authorized) &&
     !availabilityBusy &&
     !signingOut &&
-    (!activeJob || activeJob.status === "completion_submitted");
+    (!activeJob || (activeJob.status === "completion_submitted" && isOnline));
 
   const mapStyleURL = MAPBOX_STANDARD_STYLE;
 
@@ -705,6 +707,72 @@ export default function RunnerDashboardScreen() {
     };
   }, []);
 
+  // Offers and active-trip state must not depend on reopening a screen.
+  // Refresh only while this dashboard is focused and the app is foregrounded.
+  const shouldPollRunnerJobs = Boolean(
+    isDashboardFocused && authorized && (isOnline || activeJob) && !signingOut,
+  );
+
+  useEffect(() => {
+    if (!shouldPollRunnerJobs) return;
+
+    let disposed = false;
+    let requestInFlight = false;
+
+    const refreshRunnerJobs = async () => {
+      if (
+        disposed ||
+        !mountedRef.current ||
+        AppState.currentState !== "active" ||
+        requestInFlight
+      ) {
+        return;
+      }
+
+      requestInFlight = true;
+      try {
+        const result = await getRunnerJobs();
+        if (disposed || !mountedRef.current) return;
+
+        setJobs({
+          offers: Array.isArray(result.offers) ? result.offers : [],
+          active: Array.isArray(result.active) ? result.active : [],
+        });
+      } catch (cause) {
+        if (disposed || !mountedRef.current) return;
+        const message =
+          cause instanceof Error
+            ? cause.message
+            : "Runner errands could not be refreshed.";
+
+        if (isSessionError(message)) {
+          goToSignedOut();
+        }
+        // Transient polling errors are intentionally non-blocking. The next
+        // poll or the user's manual refresh can recover without a modal loop.
+      } finally {
+        requestInFlight = false;
+      }
+    };
+
+    const timer = setInterval(() => {
+      void refreshRunnerJobs();
+    }, 20000);
+
+    const appStateSubscription = AppState.addEventListener(
+      "change",
+      (state) => {
+        if (state === "active") void refreshRunnerJobs();
+      },
+    );
+
+    return () => {
+      disposed = true;
+      clearInterval(timer);
+      appStateSubscription.remove();
+    };
+  }, [shouldPollRunnerJobs, goToSignedOut]);
+
   /* ------------------------------------------------------------------ */
   /* LOCATION                                                            */
   /* ------------------------------------------------------------------ */
@@ -787,14 +855,21 @@ export default function RunnerDashboardScreen() {
 
     try {
       const result = await requestCurrentLocation();
+      const canShareLocation =
+        authorized &&
+        (activeJobIsTrackable || (isOnline && !activeJob));
 
-      await publishRunnerLocation({
-        latitude: result.coords.latitude,
-        longitude: result.coords.longitude,
-        accuracy: result.position.coords.accuracy,
-        heading: result.position.coords.heading,
-        speed: result.position.coords.speed,
-      });
+      // GPS recentering is useful while offline too. Only publish when
+      // the Runner is online and idle, or has an active tracked errand.
+      if (canShareLocation) {
+        await publishRunnerLocation({
+          latitude: result.coords.latitude,
+          longitude: result.coords.longitude,
+          accuracy: result.position.coords.accuracy,
+          heading: result.position.coords.heading,
+          speed: result.position.coords.speed,
+        });
+      }
     } catch (cause) {
       if (mountedRef.current) {
         setError(
@@ -812,6 +887,10 @@ export default function RunnerDashboardScreen() {
     locationBusy,
     signingOut,
     requestCurrentLocation,
+    authorized,
+    activeJobIsTrackable,
+    isOnline,
+    activeJob,
   ]);
 
   /**
@@ -861,11 +940,10 @@ export default function RunnerDashboardScreen() {
         longitude: next.longitude,
       });
 
-      if (
-        !authorized ||
-        (!isOnline && !activeJobIsTrackable) ||
-        signingOut
-      ) {
+      const canShareLocation =
+        activeJobIsTrackable || (isOnline && !activeJob);
+
+      if (!authorized || !canShareLocation || signingOut) {
         return;
       }
 
@@ -900,6 +978,7 @@ export default function RunnerDashboardScreen() {
       authorized,
       isOnline,
       activeJobIsTrackable,
+      activeJob,
       signingOut,
       updateCurrentLocationName,
     ],
@@ -933,19 +1012,25 @@ export default function RunnerDashboardScreen() {
     setError("");
 
     try {
+      let locationForAvailability: Parameters<typeof setRunnerAvailability>[1] = undefined;
+
       if (!isOnline) {
         const result = await requestCurrentLocation();
-
-        await publishRunnerLocation({
+        locationForAvailability = {
           latitude: result.coords.latitude,
           longitude: result.coords.longitude,
           accuracy: result.position.coords.accuracy,
           heading: result.position.coords.heading,
           speed: result.position.coords.speed,
-        });
+        };
       }
 
-      const result = await setRunnerAvailability(!isOnline);
+      // The server writes online status and the initial presence location
+      // in one transaction. Do not call the trip-only location endpoint first.
+      const result = await setRunnerAvailability(
+        !isOnline,
+        locationForAvailability,
+      );
 
       if (!mountedRef.current) return;
 
@@ -959,6 +1044,9 @@ export default function RunnerDashboardScreen() {
       );
 
       setCameraFollowing(!isOnline);
+      if (!isOnline) {
+        await loadDashboard(true);
+      }
     } catch (cause) {
       if (!mountedRef.current) return;
 
@@ -986,6 +1074,7 @@ export default function RunnerDashboardScreen() {
     activeJob,
     isOnline,
     requestCurrentLocation,
+    loadDashboard,
     goToSignedOut,
   ]);
 

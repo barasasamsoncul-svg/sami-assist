@@ -1204,19 +1204,60 @@ export async function submitRunnerOnboarding(): Promise<RunnerOnboardingSubmissi
 /* RUNNER AVAILABILITY                                                        */
 /* -------------------------------------------------------------------------- */
 
+export type RunnerLocationInput = {
+  latitude: number;
+  longitude: number;
+  accuracy?: number | null;
+  heading?: number | null;
+  speed?: number | null;
+};
+
 export async function setRunnerAvailability(
   isOnline: boolean,
+  location?: RunnerLocationInput,
 ): Promise<{
   availability: {
     isOnline: boolean;
     lastHeartbeatAt: string | null;
   };
 }> {
+  if (isOnline && !location) {
+    throw new Error("A current GPS location is required before going online.");
+  }
+
+  if (
+    location &&
+    (!Number.isFinite(location.latitude) ||
+      !Number.isFinite(location.longitude) ||
+      location.latitude < -90 || location.latitude > 90 ||
+      location.longitude < -180 || location.longitude > 180)
+  ) {
+    throw new Error("A valid Runner GPS location is required.");
+  }
+
+  const safeOptional = (value: number | null | undefined, min: number, max: number) =>
+    typeof value === "number" && Number.isFinite(value) && value >= min && value <= max
+      ? value
+      : null;
+
+  const safeLocation = location
+    ? {
+        latitude: location.latitude,
+        longitude: location.longitude,
+        accuracy: safeOptional(location.accuracy, 0, 10000),
+        heading: safeOptional(location.heading, 0, 360),
+        speed: safeOptional(location.speed, 0, 150),
+      }
+    : undefined;
+
   return apiRequest(
     "/api/runner/me/availability",
     {
       method: "POST",
-      body: { isOnline },
+      body: {
+        isOnline,
+        ...(safeLocation ? { location: safeLocation } : {}),
+      },
     },
   );
 }
@@ -1273,13 +1314,9 @@ export async function updateRunnerJobStatus(
 /* RUNNER LIVE LOCATION                                                       */
 /* -------------------------------------------------------------------------- */
 
-export async function publishRunnerLocation(input: {
-  latitude: number;
-  longitude: number;
-  accuracy?: number | null;
-  heading?: number | null;
-  speed?: number | null;
-}): Promise<void> {
+export async function publishRunnerLocation(
+  input: RunnerLocationInput,
+): Promise<void> {
   if (
     !Number.isFinite(input.latitude) ||
     !Number.isFinite(input.longitude) ||

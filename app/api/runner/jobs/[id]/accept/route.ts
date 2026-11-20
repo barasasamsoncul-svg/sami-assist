@@ -52,6 +52,24 @@ export async function POST(request: Request, context: RouteContext) {
       );
     }
 
+    const existingActiveJob = await client.query<{ id: string }>(
+      `SELECT id
+       FROM public.runner_jobs
+       WHERE accepted_runner_id = $1
+         AND status IN ('accepted', 'in_progress', 'completion_submitted')
+       LIMIT 1
+       FOR UPDATE`,
+      [auth.runner.id],
+    );
+
+    if (existingActiveJob.rows[0]) {
+      await client.query("ROLLBACK");
+      return errorResponse(
+        "Complete your current errand and wait for customer confirmation before accepting another.",
+        409,
+      );
+    }
+
     const offerResult = await client.query<{
       customer_errand_ref: string;
       public_code: string;
@@ -122,6 +140,19 @@ export async function POST(request: Request, context: RouteContext) {
           eventType: "runner_job_accepted",
         }),
       ],
+    );
+
+    // A Runner may complete only one errand at a time. Once an offer is
+    // accepted, take the account offline for new work while active-trip
+    // GPS continues through runner_live_locations.
+    await client.query(
+      "UPDATE public.runner_availability SET is_online = false, updated_at = now() WHERE runner_id = $1",
+      [auth.runner.id],
+    );
+
+    await client.query(
+      "DELETE FROM public.runner_presence_locations WHERE runner_id = $1",
+      [auth.runner.id],
     );
 
     await client.query("COMMIT");
