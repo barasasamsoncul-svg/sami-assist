@@ -78,7 +78,8 @@ const TRACKING_STATUSES = [
   "in_progress",
 ];
 
-const MAPBOX_STANDARD_STYLE = "mapbox://styles/mapbox/standard";
+const MAPBOX_DAY_STYLE = "mapbox://styles/mapbox/navigation-day-v1";
+const MAPBOX_NIGHT_STYLE = "mapbox://styles/mapbox/navigation-night-v1";
 
 function money(
   value: number | null,
@@ -390,7 +391,7 @@ function RoutePoint({
 
 export default function RunnerDashboardScreen() {
   const isDashboardFocused = useIsFocused();
-  const { colors } = useRunnerTheme();
+  const { colors, mode } = useRunnerTheme();
   const insets = useSafeAreaInsets();
 
   const [appIsActive, setAppIsActive] = useState(
@@ -483,7 +484,8 @@ export default function RunnerDashboardScreen() {
     !signingOut &&
     (!activeJob || (activeJob.status === "completion_submitted" && isOnline));
 
-  const mapStyleURL = MAPBOX_STANDARD_STYLE;
+  const mapStyleURL =
+    mode === "dark" ? MAPBOX_NIGHT_STYLE : MAPBOX_DAY_STYLE;
 
   /*
    * An accepted errand routes the Runner to pickup.

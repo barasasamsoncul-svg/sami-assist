@@ -2,8 +2,10 @@ export { default as SaMiMapboxView } from "./SaMiMapboxView";
 
 export type {
   SaMiMapboxViewProps,
+  SaMiMapRenderSurface,
   SaMiMapReadyEvent,
   SaMiMapErrorEvent,
+  SaMiMapDiagnosticEvent,
   SaMiCameraEvent,
   SaMiMapTapEvent,
   SaMiMapLocationEvent,

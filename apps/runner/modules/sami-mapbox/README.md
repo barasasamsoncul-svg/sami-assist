@@ -1,41 +1,62 @@
-# SaMi native Mapbox module
+# SaMi Maps — Stage 1: Native renderer
 
-This is a SaMi-owned Expo native module. It integrates Mapbox's official Android and iOS SDKs directly. It does not use `@rnmapbox/maps` or another community Mapbox wrapper.
+This module is SaMi-owned and uses the official Mapbox Maps SDK for Android. It does not use `@rnmapbox/maps`.
 
-## SDK versions
+## Stage 1 boundary
 
-| Platform | SDK | Version |
-|---|---|---:|
-| Android | Mapbox Maps SDK | 11.35.0 |
-| Android | Navigation SDK Core | 3.35.0 |
-| Android | Navigation session API | 3.35.0 |
-| Android | Navigation UI Maps utilities | 3.35.0 |
-| Android | Navigation Trip Data | 3.35.0 |
-| Android | Navigation Voice | 3.35.0 |
-| iOS | Mapbox Maps SDK | 11.35.0 |
-| iOS | Mapbox Navigation SDK Core | 3.35.0 |
-| iOS | Mapbox Navigation Native | 324.35.0 |
-| iOS | Mapbox Common | 24.35.0 |
-| iOS | Mapbox Core Maps | 11.35.0 |
-| iOS | Turf | 4.1.0 |
+The Android implementation in this stage owns only:
 
-Android uses official NDK 27 artifacts and pins NDK 27.1.12297006 for 16 KB page-size compatibility.
+- Native `MapView` creation and destruction.
+- Single-owner Activity lifecycle forwarding and native view attach/detach handling. The default Mapbox lifecycle plugin is excluded so it cannot duplicate SaMi's forwarding.
+- 2D camera initialization and gesture policy.
+- Map style changes.
+- Map loading errors, renderer setup errors and render-frame diagnostics.
+- A readiness event that requires all of the following: Mapbox reports the map loaded, at least one render frame has finished, and the native map view has non-zero dimensions while attached to the window.
 
-iOS uses the official Mapbox Swift Package Manager repositories through React Native 0.88.1's `spm_dependency` CocoaPods integration. The SaMi config plugin makes the SaMi Mapbox pod dynamic and adds an app build phase to embed Mapbox's transitive dynamic runtime frameworks. SaMi owns the presentation and interaction UI; Mapbox's prebuilt UIKit navigation interface is not installed.
+The Stage 1 MapInitOptions plugin list is explicit: camera, gestures, logo and attribution only. It excludes the default Mapbox lifecycle plugin and the Mapbox location component. SaMiMapboxLifecycle is the one lifecycle owner. No Expo Location API, device-location request, location permission prompt, location puck, Navigation SDK trip session, route calculation or voice guidance is started in Stage 1.
 
-## Credentials
+## Public component
 
-Two different Mapbox tokens are required:
+Import `SaMiMapboxView` from this module's `src` entry point. The native view accepts:
 
-- `EXPO_PUBLIC_MAPBOX_ACCESS_TOKEN`: public runtime token used by the app. Configure it in each EAS environment.
-- `MAPBOX_DOWNLOADS_TOKEN`: secret token with the `Downloads:Read` scope. Configure it as an EAS environment secret for development, preview, and production.
+- `accessToken`
+- `mapStyleURL`
+- `initialLatitude`
+- `initialLongitude`
+- `initialZoom`
+- `initialBearing`
+- `renderSurface` (`texture` or `surface`)
 
-Never commit either real token. Never prefix the downloads token with `EXPO_PUBLIC_`.
+`renderSurface` is a creation-time setting. Changing it recreates the native MapView so the two Android rendering surfaces can be tested independently.
 
-The EAS `eas-build-pre-install` hook validates the downloads token. On iOS it also writes the required Mapbox entry to the build worker's `~/.netrc` with owner-only permissions before CocoaPods resolves the Swift packages.
+## Isolated Android verification screen
 
-For local Android Gradle builds, provide `MAPBOX_DOWNLOADS_TOKEN` in the shell environment. For local iOS pod installation, run `scripts/configure-mapbox-credentials.js` with `EAS_BUILD_PLATFORM=ios` after setting the token.
+The temporary route `apps/runner/app/mapbox-lab.tsx` renders only the SaMi Maps component plus a small diagnostic panel. It does not call Expo Location, request permissions, start Navigation SDK, or import the Runner dashboard.
 
-## Native module status
+Open the default SurfaceView test (Mapbox SDK default):
 
-The module is registered on Android and iOS and the native SDK dependencies are connected. The native MapView, camera, route, and navigation-session APIs will be implemented in the next integration stage. The existing Runner dashboard remains untouched until that native view is ready to replace the legacy map.
+```powershell
+adb shell am start -a android.intent.action.VIEW -d "samirunner://mapbox-lab?surface=surface" com.sami.runner
+```
+
+Open the TextureView comparison test:
+
+```powershell
+adb shell am start -a android.intent.action.VIEW -d "samirunner://mapbox-lab?surface=texture" com.sami.runner
+```
+
+Open the night-style test:
+
+```powershell
+adb shell am start -a android.intent.action.VIEW -d "samirunner://mapbox-lab?surface=surface&style=night" com.sami.runner
+```
+
+The app must be built as a native Android binary after native module changes. An OTA update cannot add or replace Kotlin native code. The first run tests SurfaceView because this is Mapbox 11.35.0's documented default (`textureView = false`); the second run compares TextureView without changing any dashboard code.
+
+## Important compatibility note
+
+The legacy location and navigation props/events remain typed and registered temporarily so the existing Runner dashboard source is not broken while the standalone renderer is tested. In Stage 1 those setters are intentionally inert. The dashboard must not be used to judge Stage 1 location or navigation behaviour.
+
+## Build dependencies
+
+This Stage 1 patch intentionally leaves the currently pinned Android Maps SDK `11.35.0`, Navigation SDK `3.35.0`, `app.config.ts`, the Mapbox config plugin and the Expo module registration file unchanged. Dependency upgrades are a separate, explicit decision after the renderer baseline is verified.
