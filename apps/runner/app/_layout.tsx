@@ -5,6 +5,7 @@ import { StatusBar, StyleSheet, View } from "react-native";
 import { SafeAreaProvider } from "react-native-safe-area-context";
 import * as SplashScreen from "expo-splash-screen";
 
+import "@/location/runner-location-service";
 import { RunnerThemeProvider } from "@/theme";
 
 const BRAND_NAVY = "#000535";

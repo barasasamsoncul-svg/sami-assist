@@ -51,11 +51,28 @@ class SaMiMapboxModule : Module() {
                 view.setRenderSurface(value)
             }
 
-            // The following props are retained for source compatibility while
-            // location and navigation are rebuilt as separate feature layers.
-            // They intentionally do not start any location or trip-session work.
+            // Location props inject fixes from SaMi Location into the Mapbox
+            // puck. They do not start another device-location source or trip session.
             Prop("showUserLocation", false) { view: SaMiMapboxView, value: Boolean ->
                 view.setShowUserLocation(value)
+            }
+            Prop("hasUserLocation", false) { view: SaMiMapboxView, value: Boolean ->
+                view.setHasUserLocation(value)
+            }
+            Prop("userLatitude", -1.2921) { view: SaMiMapboxView, value: Double ->
+                view.setUserLatitude(value)
+            }
+            Prop("userLongitude", 36.8219) { view: SaMiMapboxView, value: Double ->
+                view.setUserLongitude(value)
+            }
+            Prop("userBearing", 0.0) { view: SaMiMapboxView, value: Double ->
+                view.setUserBearing(value)
+            }
+            Prop("hasUserBearing", false) { view: SaMiMapboxView, value: Boolean ->
+                view.setHasUserBearing(value)
+            }
+            Prop("recenterRequestId", 0) { view: SaMiMapboxView, value: Int ->
+                view.setRecenterRequestId(value)
             }
             Prop("showCompass", true) { view: SaMiMapboxView, value: Boolean ->
                 view.setShowCompass(value)

@@ -19,7 +19,16 @@ function SaMiMapboxView(props: SaMiMapboxViewProps) {
       initialLongitude={props.initialLongitude ?? 36.8219}
       initialZoom={props.initialZoom ?? 14.5}
       initialBearing={props.initialBearing ?? 0}
-      renderSurface={props.renderSurface ?? "surface"}
+      renderSurface="surface"
+      showUserLocation={props.showUserLocation ?? false}
+      hasUserLocation={props.hasUserLocation ?? false}
+      userLatitude={props.userLatitude ?? props.initialLatitude ?? -1.2921}
+      userLongitude={props.userLongitude ?? props.initialLongitude ?? 36.8219}
+      userBearing={props.userBearing ?? 0}
+      hasUserBearing={props.hasUserBearing ?? false}
+      locationPulsingEnabled={props.locationPulsingEnabled ?? false}
+      cameraMode={props.cameraMode ?? "free"}
+      recenterRequestId={props.recenterRequestId ?? 0}
     />
   );
 }

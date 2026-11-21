@@ -9,17 +9,12 @@ import {
 } from "react-native";
 import { useLocalSearchParams } from "expo-router";
 
-import {
-  SaMiMapboxView,
-  type SaMiMapDiagnosticEvent,
-  type SaMiMapRenderSurface,
-} from "../modules/sami-mapbox/src";
+import { SaMiMapboxView, type SaMiMapDiagnosticEvent } from "../modules/sami-mapbox/src";
 
 const DAY_STYLE = "mapbox://styles/mapbox/navigation-day-v1";
 const NIGHT_STYLE = "mapbox://styles/mapbox/navigation-night-v1";
 
 type SearchParams = {
-  surface?: string | string[];
   style?: string | string[];
 };
 
@@ -29,16 +24,9 @@ function firstParam(value: string | string[] | undefined): string | undefined {
 
 export default function SaMiMapboxLabScreen() {
   const params = useLocalSearchParams<SearchParams>();
-  const requestedSurface = firstParam(params.surface);
   const requestedStyle = firstParam(params.style);
-
-  const initialSurface: SaMiMapRenderSurface =
-    requestedSurface === "texture" ? "texture" : "surface";
-
+  const renderSurface = "surface" as const;
   const initialStyle = requestedStyle === "night" ? NIGHT_STYLE : DAY_STYLE;
-
-  const [renderSurface, setRenderSurface] =
-    useState<SaMiMapRenderSurface>(initialSurface);
   const [mapStyleURL, setMapStyleURL] = useState(initialStyle);
   const [status, setStatus] = useState("WAITING FOR NATIVE MAPBOX");
   const [errorMessage, setErrorMessage] = useState("");
@@ -58,7 +46,7 @@ export default function SaMiMapboxLabScreen() {
 
   return (
     <View style={styles.root}>
-      <StatusBar barStyle="light-content" backgroundColor="#000535" />
+    <StatusBar barStyle="light-content" />
 
       <SaMiMapboxView
         style={StyleSheet.absoluteFill}
@@ -107,17 +95,6 @@ export default function SaMiMapboxLabScreen() {
       </View>
 
       <View style={styles.controls}>
-        <Pressable
-          accessibilityRole="button"
-          onPress={() => {
-            setStatus("RECREATING MAP VIEW");
-            setErrorMessage("");
-            setRenderSurface((current) => current === "texture" ? "surface" : "texture");
-          }}
-          style={styles.controlButton}
-        >
-          <Text style={styles.controlText}>Test {renderSurface === "texture" ? "SurfaceView" : "TextureView"}</Text>
-        </Pressable>
         <Pressable
           accessibilityRole="button"
           onPress={() => {

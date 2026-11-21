@@ -1,6 +1,6 @@
 import type { StyleProp, ViewStyle } from "react-native";
 
-export type SaMiMapRenderSurface = "surface" | "texture";
+export type SaMiMapRenderSurface = "surface";
 
 export type SaMiMapCameraMode = "free" | "follow" | "navigation";
 export type SaMiPuckBearing = "course" | "heading";
@@ -104,10 +104,18 @@ export type SaMiMapboxViewProps = {
   initialBearing?: number;
   renderSurface?: SaMiMapRenderSurface;
 
-  /** @deprecated Dashboard visibility does not control the native MapView lifecycle. */
+  /** Dashboard focus gates follow-camera movement; it does not stop the location task. */
   screenActive?: boolean;
 
-  /** @deprecated Location will be implemented as a separate SaMi Maps layer. */
+  /** Feed the live fix from SaMi Location into Mapbox's puck. */
+  hasUserLocation?: boolean;
+  userLatitude?: number;
+  userLongitude?: number;
+  userBearing?: number;
+  hasUserBearing?: boolean;
+  recenterRequestId?: number;
+
+  /** Enables the location puck when a valid SaMi Location fix is available. */
   showUserLocation?: boolean;
   /** @deprecated Location UI will be implemented after the base renderer is verified. */
   showCompass?: boolean;
@@ -115,11 +123,11 @@ export type SaMiMapboxViewProps = {
   showScaleBar?: boolean;
   /** @deprecated Navigation will be implemented as a separate SaMi Maps layer. */
   navigationActive?: boolean;
-  /** @deprecated Navigation will be implemented as a separate SaMi Maps layer. */
+  /** Follow the injected SaMi Location fix when set to follow/navigation. */
   cameraMode?: SaMiMapCameraMode;
-  /** @deprecated Location will be implemented as a separate SaMi Maps layer. */
+  /** Location puck orientation supplied by SaMi Location. */
   puckBearing?: SaMiPuckBearing;
-  /** @deprecated Location will be implemented as a separate SaMi Maps layer. */
+  /** Enables the Mapbox puck pulse while the Runner is sharing location. */
   locationPulsingEnabled?: boolean;
   /** @deprecated Route guidance will be implemented as a separate SaMi Maps layer. */
   hasRouteDestination?: boolean;

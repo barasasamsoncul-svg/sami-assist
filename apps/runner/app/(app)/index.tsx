@@ -14,6 +14,13 @@ import {
 import { router, useFocusEffect, useIsFocused } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import * as Location from "expo-location";
+import {
+  requestRunnerCurrentLocation,
+  requestRunnerLocationPermissions,
+  startRunnerLocationTracking,
+  stopRunnerLocationTracking,
+  subscribeToRunnerLocation,
+} from "@/location/runner-location-service";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import {
@@ -21,7 +28,6 @@ import {
   clearRunnerSession,
   getRunnerJobs,
   getRunnerMe,
-  publishRunnerLocation,
   setRunnerAvailability,
   updateRunnerJobStatus,
   type RunnerJob,
@@ -125,33 +131,6 @@ function isSessionError(message: string): boolean {
   );
 }
 
-function distanceBetweenMeters(
-  first: Coordinates,
-  second: Coordinates,
-): number {
-  const earthRadius = 6371000;
-  const radians = (value: number) => (value * Math.PI) / 180;
-
-  const latitudeDifference = radians(
-    second.latitude - first.latitude,
-  );
-
-  const longitudeDifference = radians(
-    second.longitude - first.longitude,
-  );
-
-  const a =
-    Math.sin(latitudeDifference / 2) ** 2 +
-    Math.cos(radians(first.latitude)) *
-      Math.cos(radians(second.latitude)) *
-      Math.sin(longitudeDifference / 2) ** 2;
-
-  return (
-    earthRadius *
-    2 *
-    Math.atan2(Math.sqrt(a), Math.sqrt(1 - a))
-  );
-}
 
 function formatRouteDistance(
   distanceMeters?: number | null,
@@ -418,6 +397,7 @@ export default function RunnerDashboardScreen() {
   const [mapReady, setMapReady] = useState(false);
 
   const [cameraFollowing, setCameraFollowing] = useState(false);
+  const [mapRecenterRequestId, setMapRecenterRequestId] = useState(0);
   const [location, setLocation] = useState<MapLocation | null>(null);
   const [currentLocationName, setCurrentLocationName] = useState("");
   const lastReverseGeocodeAtRef = useRef(0);
@@ -439,8 +419,6 @@ export default function RunnerDashboardScreen() {
   const mountedRef = useRef(true);
   const loadInFlightRef = useRef(false);
   const logoutInFlightRef = useRef(false);
-  const lastPublishedAtRef = useRef(0);
-  const lastPublishedCoordinatesRef = useRef<Coordinates | null>(null);
 
   const activeJob = useMemo(
     () =>
@@ -592,6 +570,41 @@ export default function RunnerDashboardScreen() {
     isDashboardFocused && appIsActive,
   );
 
+  const shouldTrackRunnerLocation = Boolean(
+    runner &&
+      authorized &&
+      (isOnline || activeJobIsTrackable) &&
+      !signingOut,
+  );
+
+  useEffect(() => {
+    // Do not stop a persisted shift while the dashboard is temporarily
+    // unmounted. Explicit offline and sign-out actions stop the task.
+    if (!runner || loading) return;
+
+    if (shouldTrackRunnerLocation) {
+      void startRunnerLocationTracking().catch(async (cause) => {
+        if (isOnline && !activeJobIsTrackable) {
+          const rollback = await setRunnerAvailability(false).catch(() => null);
+          if (rollback?.availability && mountedRef.current) {
+            setRunner((current) => current
+              ? { ...current, availability: rollback.availability }
+              : current);
+          }
+        }
+        if (mountedRef.current) {
+          setError(
+            cause instanceof Error
+              ? cause.message
+              : "Live Runner location could not be started.",
+          );
+        }
+      });
+    } else {
+      void stopRunnerLocationTracking().catch(() => undefined);
+    }
+  }, [runner, loading, shouldTrackRunnerLocation, isOnline, activeJobIsTrackable]);
+
   useEffect(() => {
     const subscription = AppState.addEventListener(
       "change",
@@ -621,6 +634,7 @@ export default function RunnerDashboardScreen() {
   /* ------------------------------------------------------------------ */
 
   const goToSignedOut = useCallback(() => {
+    void stopRunnerLocationTracking().catch(() => undefined);
     router.dismissAll();
 
     router.replace({
@@ -846,41 +860,36 @@ export default function RunnerDashboardScreen() {
     }
   }, []);
 
-  const requestCurrentLocation = useCallback(async () => {
-    const permission =
-      await Location.requestForegroundPermissionsAsync();
-
-    if (!permission.granted) {
-      throw new Error(
-        "Location permission is required to use your live Runner map.",
-      );
-    }
-
-    const position = await Location.getCurrentPositionAsync({
-      accuracy: Location.Accuracy.BestForNavigation,
+  useEffect(() => {
+    return subscribeToRunnerLocation((fix) => {
+      if (!mountedRef.current) return;
+      setLocation(fix);
+      if (isDashboardFocused) {
+        void updateCurrentLocationName({
+          latitude: fix.latitude,
+          longitude: fix.longitude,
+        });
+      }
     });
+  }, [isDashboardFocused, updateCurrentLocationName]);
+
+  const requestCurrentLocation = useCallback(async () => {
+    const fix = await requestRunnerCurrentLocation();
 
     const coords: Coordinates = {
-      latitude: position.coords.latitude,
-      longitude: position.coords.longitude,
+      latitude: fix.latitude,
+      longitude: fix.longitude,
     };
 
     if (mountedRef.current) {
-      setLocation({
-        ...coords,
-        bearing: position.coords.heading,
-        speedMetersPerSecond: position.coords.speed,
-        horizontalAccuracyMeters: position.coords.accuracy,
-        enhanced: false,
-      });
-
+      setLocation(fix);
       setCameraFollowing(true);
       void updateCurrentLocationName(coords);
     }
 
     return {
       coords,
-      position,
+      position: fix,
     };
   }, [updateCurrentLocationName]);
 
@@ -891,22 +900,9 @@ export default function RunnerDashboardScreen() {
     setError("");
 
     try {
-      const result = await requestCurrentLocation();
-      const canShareLocation =
-        authorized &&
-        (activeJobIsTrackable || (isOnline && !activeJob));
-
-      // GPS recentering is useful while offline too. Only publish when
-      // the Runner is online and idle, or has an active tracked errand.
-      if (canShareLocation) {
-        await publishRunnerLocation({
-          latitude: result.coords.latitude,
-          longitude: result.coords.longitude,
-          accuracy: result.position.coords.accuracy,
-          heading: result.position.coords.heading,
-          speed: result.position.coords.speed,
-        });
-      }
+      await requestCurrentLocation();
+      setCameraFollowing(true);
+      setMapRecenterRequestId((current) => current + 1);
     } catch (cause) {
       if (mountedRef.current) {
         setError(
@@ -920,106 +916,7 @@ export default function RunnerDashboardScreen() {
         setLocationBusy(false);
       }
     }
-  }, [
-    locationBusy,
-    signingOut,
-    requestCurrentLocation,
-    authorized,
-    activeJobIsTrackable,
-    isOnline,
-    activeJob,
-  ]);
-
-  /**
-   * The Mapbox native module supplies location updates.
-   *
-   * While the Runner is online or completing an errand,
-   * the Navigation SDK can provide enhanced, map-matched
-   * locations. Updates are throttled before publishing to
-   * the backend to avoid sending redundant GPS events.
-   */
-  const handleMapLocation = useCallback(
-    (event: {
-      nativeEvent: {
-        latitude: number;
-        longitude: number;
-        bearing: number | null;
-        speedMetersPerSecond: number | null;
-        horizontalAccuracyMeters: number | null;
-        timestamp: number;
-        enhanced: boolean;
-      };
-    }) => {
-      const next = event.nativeEvent;
-
-      if (
-        !Number.isFinite(next.latitude) ||
-        !Number.isFinite(next.longitude)
-      ) {
-        return;
-      }
-
-      const nextLocation: MapLocation = {
-        latitude: next.latitude,
-        longitude: next.longitude,
-        bearing: next.bearing,
-        speedMetersPerSecond: next.speedMetersPerSecond,
-        horizontalAccuracyMeters:
-          next.horizontalAccuracyMeters,
-        enhanced: next.enhanced,
-      };
-
-      if (mountedRef.current) {
-        setLocation(nextLocation);
-      }
-      void updateCurrentLocationName({
-        latitude: next.latitude,
-        longitude: next.longitude,
-      });
-
-      const canShareLocation =
-        activeJobIsTrackable || (isOnline && !activeJob);
-
-      if (!authorized || !canShareLocation || signingOut) {
-        return;
-      }
-
-      const now = Date.now();
-      const previous = lastPublishedCoordinatesRef.current;
-
-      const elapsed = now - lastPublishedAtRef.current;
-
-      const movedMeters = previous
-        ? distanceBetweenMeters(previous, nextLocation)
-        : Number.POSITIVE_INFINITY;
-
-      if (elapsed < 5000 && movedMeters < 10) {
-        return;
-      }
-
-      lastPublishedAtRef.current = now;
-      lastPublishedCoordinatesRef.current = {
-        latitude: nextLocation.latitude,
-        longitude: nextLocation.longitude,
-      };
-
-      void publishRunnerLocation({
-        latitude: nextLocation.latitude,
-        longitude: nextLocation.longitude,
-        accuracy: nextLocation.horizontalAccuracyMeters,
-        heading: nextLocation.bearing,
-        speed: nextLocation.speedMetersPerSecond,
-      }).catch(() => undefined);
-    },
-    [
-      authorized,
-      isOnline,
-      activeJobIsTrackable,
-      activeJob,
-      signingOut,
-      updateCurrentLocationName,
-    ],
-  );
+  }, [locationBusy, signingOut, requestCurrentLocation]);
 
   /* ------------------------------------------------------------------ */
   /* AVAILABILITY                                                        */
@@ -1052,13 +949,30 @@ export default function RunnerDashboardScreen() {
       let locationForAvailability: Parameters<typeof setRunnerAvailability>[1] = undefined;
 
       if (!isOnline) {
+        const backgroundPermission = await Location.getBackgroundPermissionsAsync();
+        if (!backgroundPermission.granted) {
+          const continueToSettings = await new Promise<boolean>((resolve) => {
+            Alert.alert(
+              "Allow background location",
+              "While you are online or completing an accepted errand, SaMi Runner needs to keep sharing your location when you switch apps or lock your phone. Android may open Settings so you can choose Allow all the time. Tracking stops when you go offline or finish the errand.",
+              [
+                { text: "Not now", style: "cancel", onPress: () => resolve(false) },
+                { text: "Continue", onPress: () => resolve(true) },
+              ],
+              { cancelable: true, onDismiss: () => resolve(false) },
+            );
+          });
+          if (!continueToSettings) return;
+        }
+
+        await requestRunnerLocationPermissions();
         const result = await requestCurrentLocation();
         locationForAvailability = {
           latitude: result.coords.latitude,
           longitude: result.coords.longitude,
-          accuracy: result.position.coords.accuracy,
-          heading: result.position.coords.heading,
-          speed: result.position.coords.speed,
+          accuracy: result.position.horizontalAccuracyMeters,
+          heading: result.position.bearing,
+          speed: result.position.speedMetersPerSecond,
         };
       }
 
@@ -1081,6 +995,24 @@ export default function RunnerDashboardScreen() {
       );
 
       setCameraFollowing(!isOnline);
+      if (isOnline) {
+        await stopRunnerLocationTracking();
+      } else {
+        setMapRecenterRequestId((current) => current + 1);
+        try {
+          await startRunnerLocationTracking();
+        } catch (trackingCause) {
+          // Do not leave a Runner marked online without a functioning live
+          // location stream. Best-effort server rollback, then surface error.
+          const rollback = await setRunnerAvailability(false).catch(() => null);
+          if (rollback?.availability) {
+            setRunner((current) => current
+              ? { ...current, availability: rollback.availability }
+              : current);
+          }
+          throw trackingCause;
+        }
+      }
       if (!isOnline) {
         await loadDashboard(true);
       }
@@ -1244,6 +1176,7 @@ export default function RunnerDashboardScreen() {
             setSigningOut(true);
 
             try {
+              await stopRunnerLocationTracking().catch(() => undefined);
               await clearRunnerSession();
             } finally {
               if (mountedRef.current) {
@@ -1317,12 +1250,17 @@ export default function RunnerDashboardScreen() {
             process.env.EXPO_PUBLIC_MAPBOX_ACCESS_TOKEN ?? ""
           }
           mapStyleURL={mapStyleURL}
-          initialLatitude={displayCoordinates.latitude}
-          initialLongitude={displayCoordinates.longitude}
+          initialLatitude={DEFAULT_COORDINATES.latitude}
+          initialLongitude={DEFAULT_COORDINATES.longitude}
           initialZoom={15.5}
           initialBearing={0}
-          initialPitch={0}
-          showUserLocation
+          showUserLocation={Boolean(location)}
+          hasUserLocation={Boolean(location)}
+          userLatitude={location?.latitude ?? displayCoordinates.latitude}
+          userLongitude={location?.longitude ?? displayCoordinates.longitude}
+          userBearing={location?.bearing ?? 0}
+          hasUserBearing={location?.bearing != null}
+          recenterRequestId={mapRecenterRequestId}
           showCompass
           showScaleBar={false}
           screenActive={mapScreenActive}
@@ -1330,7 +1268,7 @@ export default function RunnerDashboardScreen() {
           cameraMode={
             activeRouteTarget
               ? "navigation"
-              : cameraFollowing
+              : navigationActive || cameraFollowing
                 ? "follow"
                 : "free"
           }
@@ -1357,7 +1295,6 @@ export default function RunnerDashboardScreen() {
           onMapError={(event) => {
             setMapError(event.nativeEvent.message);
           }}
-          onLocationChanged={handleMapLocation}
           onNavigationStatusChanged={(event) => {
             setNavigationMode(
               event.nativeEvent.mode as NavigationMode,

@@ -81,24 +81,54 @@ class SaMiMapboxView(
         updateConfig { it.copy(initialBearing = value) }
     }
 
-    fun setRenderSurface(value: String) {
-        updateConfig {
-            it.copy(renderSurface = if (value == "texture") "texture" else "surface")
-        }
+    fun setRenderSurface(@Suppress("UNUSED_PARAMETER") value: String) {
+        updateConfig { it.copy(renderSurface = "surface") }
     }
 
     /**
-     * Compatibility setters retained while the Runner dashboard is migrated.
-     * Stage 1 deliberately does not start location or Navigation SDK services.
+     * Receives location fixes from SaMi Location. This view never starts its own
+     * device-location provider or Navigation SDK trip session.
      */
-    fun setShowUserLocation(@Suppress("UNUSED_PARAMETER") value: Boolean) = Unit
+    fun setShowUserLocation(value: Boolean) {
+        updateConfig { it.copy(showUserLocation = value) }
+    }
+
+    fun setHasUserLocation(value: Boolean) {
+        updateConfig { it.copy(hasUserLocation = value) }
+    }
+
+    fun setUserLatitude(value: Double) {
+        updateConfig { it.copy(userLatitude = value) }
+    }
+
+    fun setUserLongitude(value: Double) {
+        updateConfig { it.copy(userLongitude = value) }
+    }
+
+    fun setUserBearing(value: Double) {
+        updateConfig { it.copy(userBearing = value) }
+    }
+
+    fun setHasUserBearing(value: Boolean) {
+        updateConfig { it.copy(hasUserBearing = value) }
+    }
+
+    fun setRecenterRequestId(value: Int) {
+        updateConfig { it.copy(recenterRequestId = value) }
+    }
     fun setShowCompass(@Suppress("UNUSED_PARAMETER") value: Boolean) = Unit
     fun setShowScaleBar(@Suppress("UNUSED_PARAMETER") value: Boolean) = Unit
-    fun setScreenActive(@Suppress("UNUSED_PARAMETER") value: Boolean) = Unit
+    fun setScreenActive(value: Boolean) {
+        updateConfig { it.copy(screenActive = value) }
+    }
     fun setNavigationActive(@Suppress("UNUSED_PARAMETER") value: Boolean) = Unit
-    fun setCameraMode(@Suppress("UNUSED_PARAMETER") value: String) = Unit
+    fun setCameraMode(value: String) {
+        updateConfig { it.copy(cameraMode = value) }
+    }
     fun setPuckBearing(@Suppress("UNUSED_PARAMETER") value: String) = Unit
-    fun setLocationPulsingEnabled(@Suppress("UNUSED_PARAMETER") value: Boolean) = Unit
+    fun setLocationPulsingEnabled(value: Boolean) {
+        updateConfig { it.copy(locationPulsingEnabled = value) }
+    }
     fun setHasRouteDestination(@Suppress("UNUSED_PARAMETER") value: Boolean) = Unit
     fun setRouteDestinationLatitude(@Suppress("UNUSED_PARAMETER") value: Double) = Unit
     fun setRouteDestinationLongitude(@Suppress("UNUSED_PARAMETER") value: Double) = Unit

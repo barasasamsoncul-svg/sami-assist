@@ -22,6 +22,7 @@ import expo.modules.kotlin.AppContext
 private val SA_MI_MAPS_STAGE_ONE_PLUGINS = listOf(
     Plugin.Mapbox(Plugin.MAPBOX_CAMERA_PLUGIN_ID),
     Plugin.Mapbox(Plugin.MAPBOX_GESTURES_PLUGIN_ID),
+    Plugin.Mapbox(Plugin.MAPBOX_LOCATION_COMPONENT_PLUGIN_ID),
     Plugin.Mapbox(Plugin.MAPBOX_LOGO_PLUGIN_ID),
     Plugin.Mapbox(Plugin.MAPBOX_ATTRIBUTION_PLUGIN_ID),
 )
@@ -34,12 +35,22 @@ internal data class SaMiMapboxConfig(
     val initialZoom: Double = 14.5,
     val initialBearing: Double = 0.0,
     val renderSurface: String = "surface",
+    val screenActive: Boolean = true,
+    val showUserLocation: Boolean = false,
+    val hasUserLocation: Boolean = false,
+    val userLatitude: Double = SaMiMapboxDefaults.DEFAULT_LATITUDE,
+    val userLongitude: Double = SaMiMapboxDefaults.DEFAULT_LONGITUDE,
+    val userBearing: Double = 0.0,
+    val hasUserBearing: Boolean = false,
+    val cameraMode: String = "free",
+    val locationPulsingEnabled: Boolean = false,
+    val recenterRequestId: Int = 0,
 )
 
 /**
- * Owns one Mapbox MapView instance and the events required to prove that it
- * has rendered a real frame. This class intentionally contains no location
- * provider, location permission, navigation session, route or voice code.
+ * Owns the native Mapbox surface and rendering lifecycle. SaMi Location
+ * injects position fixes through a custom provider; this renderer never
+ * requests device location or starts a second GPS subscription.
  */
 internal class SaMiMapboxRenderer(
     context: Context,
@@ -59,6 +70,7 @@ internal class SaMiMapboxRenderer(
 
     private var mapView: MapView? = null
     private var styleController: SaMiMapboxStyleController? = null
+    private var locationController: SaMiMapboxLocationController? = null
     private val lifecycle = SaMiMapboxLifecycle(
         activityProvider = {
             appContext.currentActivity as? LifecycleOwner
@@ -177,6 +189,11 @@ internal class SaMiMapboxRenderer(
         ) {
             applyInitialCamera()
         }
+
+        // The same Expo Location fixes update the puck and follow camera.
+        // The Mapbox location component is configured with SaMi's custom
+        // provider, so it never opens a second device GPS subscription.
+        locationController?.update(config)
     }
 
     fun onHostAttached(parent: ViewGroup) {
@@ -254,11 +271,11 @@ internal class SaMiMapboxRenderer(
                 // This explicit plugin set deliberately excludes Mapbox's
                 // default lifecycle plugin. SaMiMapboxLifecycle is the single
                 // owner forwarding Activity and native-host lifecycle events.
-                // It also excludes the location component: Stage 1 must not
-                // request, subscribe to or publish device location.
+                // Location is enabled only through SaMi's custom provider,
+                // which receives the single Expo Location stream.
                 plugins = SA_MI_MAPS_STAGE_ONE_PLUGINS,
                 cameraOptions = SaMiMapboxCameraController.createInitialCamera(config),
-                textureView = config.renderSurface == "texture",
+                textureView = false,
                 styleUri = config.mapStyleURL,
             )
 
@@ -281,6 +298,7 @@ internal class SaMiMapboxRenderer(
             createdMapView.addRendererSetupErrorListener(rendererSetupErrorListener)
             createdMapView.addOnLayoutChangeListener(layoutChangeListener)
             configureMapControls(createdMapView)
+            locationController = SaMiMapboxLocationController(createdMapView, diagnostics)
             subscribeToMapEvents(createdMapView, mapGeneration)
 
             parent.addView(
@@ -298,6 +316,7 @@ internal class SaMiMapboxRenderer(
             )
 
             lifecycle.attach()
+            locationController?.update(config)
         } catch (error: Exception) {
             destroyCurrentMapView()
             reportError(
@@ -501,6 +520,8 @@ internal class SaMiMapboxRenderer(
         val currentMapView = mapView
         mapView = null
         styleController = null
+        locationController?.dispose()
+        locationController = null
 
         if (currentMapView != null) {
             currentMapView.removeOnLayoutChangeListener(layoutChangeListener)
@@ -601,7 +622,11 @@ internal class SaMiMapboxRenderer(
         val zoom = input.initialZoom.takeIf { it.isFinite() } ?: 14.5
         val bearing = input.initialBearing.takeIf { it.isFinite() } ?: 0.0
         val style = input.mapStyleURL.trim().ifBlank { SaMiMapboxDefaults.DAY_STYLE }
-        val surface = if (input.renderSurface == "texture") "texture" else "surface"
+        val surface = "surface"
+        val userLatitude = input.userLatitude.takeIf { it.isFinite() && it in -90.0..90.0 } ?: SaMiMapboxDefaults.DEFAULT_LATITUDE
+        val userLongitude = input.userLongitude.takeIf { it.isFinite() && it in -180.0..180.0 } ?: SaMiMapboxDefaults.DEFAULT_LONGITUDE
+        val userBearing = input.userBearing.takeIf { it.isFinite() && it >= 0.0 && it < 360.0 } ?: 0.0
+        val cameraMode = input.cameraMode.takeIf { it == "free" || it == "follow" || it == "navigation" } ?: "free"
 
         return input.copy(
             accessToken = input.accessToken.trim(),
@@ -611,6 +636,11 @@ internal class SaMiMapboxRenderer(
             initialZoom = zoom.coerceIn(2.0, 20.0),
             initialBearing = bearing,
             renderSurface = surface,
+            screenActive = input.screenActive,
+            userLatitude = userLatitude,
+            userLongitude = userLongitude,
+            userBearing = userBearing,
+            cameraMode = cameraMode,
         )
     }
 }

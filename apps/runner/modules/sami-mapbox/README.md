@@ -1,62 +1,51 @@
-# SaMi Maps — Stage 1: Native renderer
+# SaMi Maps — Native renderer and live location
 
-This module is SaMi-owned and uses the official Mapbox Maps SDK for Android. It does not use `@rnmapbox/maps`.
+SaMi Maps is a SaMi-owned Expo native module backed by the official Mapbox Maps SDK for Android. It does not use `@rnmapbox/maps`.
 
-## Stage 1 boundary
+## Rendering contract
 
-The Android implementation in this stage owns only:
+- Android uses SurfaceView only. TextureView is not exposed as a production option.
+- The native renderer owns MapView lifecycle, the 2D camera, style changes, loading diagnostics and first-frame readiness.
+- SaMi Maps does not request location permissions or open its own Android GPS source.
+- React Native overlays are rendered above the map by the Runner screen; verify their stacking on the target devices.
 
-- Native `MapView` creation and destruction.
-- Single-owner Activity lifecycle forwarding and native view attach/detach handling. The default Mapbox lifecycle plugin is excluded so it cannot duplicate SaMi's forwarding.
-- 2D camera initialization and gesture policy.
-- Map style changes.
-- Map loading errors, renderer setup errors and render-frame diagnostics.
-- A readiness event that requires all of the following: Mapbox reports the map loaded, at least one render frame has finished, and the native map view has non-zero dimensions while attached to the window.
+## Single-source location contract
 
-The Stage 1 MapInitOptions plugin list is explicit: camera, gestures, logo and attribution only. It excludes the default Mapbox lifecycle plugin and the Mapbox location component. SaMiMapboxLifecycle is the one lifecycle owner. No Expo Location API, device-location request, location permission prompt, location puck, Navigation SDK trip session, route calculation or voice guidance is started in Stage 1.
+- `apps/runner/src/location/runner-location-service.ts` is the single device-location source, using Expo Location and Expo TaskManager.
+- The TaskManager task is defined at module scope and imported by the root Expo Router layout before routes mount.
+- Foreground and background fixes use the same task. Eligible fixes are published through the existing authenticated Runner location endpoint.
+- The visible dashboard subscribes to those exact fixes and passes them to the native Mapbox view.
+- Android uses an Expo Location foreground service while the Runner is online or has a trackable active errand. Sharing stops when the Runner goes offline or signs out.
+- Mapbox receives those fixes through `SaMiMapboxLocationProvider`; its default device-location provider is replaced before the puck is enabled. This avoids starting a second GPS stream.
+- Background permission is requested only after an explanatory user action when the Runner goes online. Android may open app Settings for the “Allow all the time” permission.
 
-## Public component
+## Native Mapbox location implementation
 
-Import `SaMiMapboxView` from this module's `src` entry point. The native view accepts:
+- `SaMiMapboxLocationProvider.kt` accepts validated coordinates and bearing from SaMi Location.
+- `SaMiMapboxLocationController.kt` controls the puck, course bearing, optional pulse, recenter requests and follow camera.
+- The camera follows only when the dashboard is active and the camera mode is `follow` or `navigation`; the native puck can still receive new fixes while the dashboard is covered.
+- The Mapbox location component is enabled with the custom provider, never with a separate Mapbox-owned GPS request.
 
-- `accessToken`
-- `mapStyleURL`
-- `initialLatitude`
-- `initialLongitude`
-- `initialZoom`
-- `initialBearing`
-- `renderSurface` (`texture` or `surface`)
+## Verification route
 
-`renderSurface` is a creation-time setting. Changing it recreates the native MapView so the two Android rendering surfaces can be tested independently.
-
-## Isolated Android verification screen
-
-The temporary route `apps/runner/app/mapbox-lab.tsx` renders only the SaMi Maps component plus a small diagnostic panel. It does not call Expo Location, request permissions, start Navigation SDK, or import the Runner dashboard.
-
-Open the default SurfaceView test (Mapbox SDK default):
+The temporary route `apps/runner/app/mapbox-lab.tsx` remains an isolated renderer test without location permissions or Navigation SDK sessions. Open the fixed SurfaceView test:
 
 ```powershell
-adb shell am start -a android.intent.action.VIEW -d "samirunner://mapbox-lab?surface=surface" com.sami.runner
+adb shell am start -a android.intent.action.VIEW -d "samirunner://mapbox-lab" com.sami.runner
 ```
 
-Open the TextureView comparison test:
+The test route keeps the day/night style switch and native diagnostics. It no longer exposes a SurfaceView/TextureView selector.
+
+## Required local dependency installation
+
+From `apps/runner`, run:
 
 ```powershell
-adb shell am start -a android.intent.action.VIEW -d "samirunner://mapbox-lab?surface=texture" com.sami.runner
+npx expo install expo-task-manager
 ```
 
-Open the night-style test:
+The task-manager version is SDK-matched by Expo. Then run the app typecheck and build a new Android Release binary because this stage adds native Kotlin code and a TaskManager dependency. An OTA update cannot install the native module changes.
 
-```powershell
-adb shell am start -a android.intent.action.VIEW -d "samirunner://mapbox-lab?surface=surface&style=night" com.sami.runner
-```
+## Scope remaining after Location
 
-The app must be built as a native Android binary after native module changes. An OTA update cannot add or replace Kotlin native code. The first run tests SurfaceView because this is Mapbox 11.35.0's documented default (`textureView = false`); the second run compares TextureView without changing any dashboard code.
-
-## Important compatibility note
-
-The legacy location and navigation props/events remain typed and registered temporarily so the existing Runner dashboard source is not broken while the standalone renderer is tested. In Stage 1 those setters are intentionally inert. The dashboard must not be used to judge Stage 1 location or navigation behaviour.
-
-## Build dependencies
-
-This Stage 1 patch intentionally leaves the currently pinned Android Maps SDK `11.35.0`, Navigation SDK `3.35.0`, `app.config.ts`, the Mapbox config plugin and the Expo module registration file unchanged. Dependency upgrades are a separate, explicit decision after the renderer baseline is verified.
+Navigation remains a separate phase: route calculation, map matching, trip session, turn-by-turn instructions and voice guidance are not implemented by this Location stage.
