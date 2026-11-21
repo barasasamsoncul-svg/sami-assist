@@ -74,6 +74,7 @@ internal class SaMiMapboxRenderer(
     private var readyDispatched = false
     private var firstUsableLayoutLogged = false
     private var mapGeneration = 0
+    private var recreationSequence = 0L
 
     private val subscriptions = mutableListOf<Cancelable>()
 
@@ -135,7 +136,7 @@ internal class SaMiMapboxRenderer(
                 message = "Recreating MapView after an access token change.",
                 surface = config.renderSurface,
             )
-            recreateMapView()
+            recreateMapView("access_token_changed")
             return
         }
 
@@ -147,10 +148,10 @@ internal class SaMiMapboxRenderer(
         if (previous.renderSurface != config.renderSurface) {
             diagnostics.info(
                 code = "render_surface_change",
-                message = "Recreating MapView to test the ${config.renderSurface} rendering surface.",
+                message = "Recreating MapView to use the ${config.renderSurface} rendering surface.",
                 surface = config.renderSurface,
             )
-            recreateMapView()
+            recreateMapView("render_surface_changed")
             return
         }
 
@@ -219,6 +220,7 @@ internal class SaMiMapboxRenderer(
 
         disposed = true
         hostAttached = false
+        recreationSequence += 1L
         lifecycle.dispose()
         destroyCurrentMapView()
         host = null
@@ -306,10 +308,7 @@ internal class SaMiMapboxRenderer(
     }
 
     private fun configureMapControls(nativeMapView: MapView) {
-        // Basic renderer verification is deliberately location-free and 2D.
         SaMiMapboxCameraController.applyTwoDimensionalGesturePolicy(nativeMapView)
-        // Stage 1 does not create compass, scalebar or location plugins.
-        // Keep Mapbox attribution and logo visible as required by the SDK terms.
         nativeMapView.logo.enabled = true
         nativeMapView.attribution.enabled = true
     }
@@ -354,12 +353,7 @@ internal class SaMiMapboxRenderer(
 
             nativeMapView.post {
                 if (generation != mapGeneration || disposed) return@post
-
-                // Ignore frames emitted before MapLoaded. A blank/loading
-                // frame must not be mistaken for a successfully rendered map.
-                if (!mapLoaded) {
-                    return@post
-                }
+                if (!mapLoaded) return@post
 
                 if (!firstFrameRendered) {
                     firstFrameRendered = true
@@ -442,12 +436,62 @@ internal class SaMiMapboxRenderer(
         }
     }
 
-    private fun recreateMapView() {
+    /**
+     * SurfaceView and TextureView are immutable MapInitOptions choices, so a
+     * surface change requires a new MapView. The old view must be detached
+     * from its parent before onDestroy(), and the replacement must not be
+     * attached in the same UI traversal that tears down the old surface.
+     */
+    private fun recreateMapView(reason: String) {
+        if (disposed || !hostAttached) return
+
+        val targetHost = host ?: return
+        val request = ++recreationSequence
+        val oldGeneration = mapGeneration
+
+        diagnostics.info(
+            code = "map_view_recreation_started",
+            message = "Starting MapView recreation ($reason); current generation=$oldGeneration.",
+            surface = config.renderSurface,
+        )
+
+        // Stop Activity callbacks first. detach() forwards onStop exactly once.
         lifecycle.detach()
+
+        // Detach the old native surface from the Android view tree, then
+        // destroy its Mapbox resources. Never reverse this ordering.
         destroyCurrentMapView()
-        if (hostAttached && !disposed) createMapView()
+
+        diagnostics.info(
+            code = "map_view_recreation_deferred",
+            message = "Old MapView has been detached and destroyed; replacement is scheduled for the next UI frame.",
+            surface = config.renderSurface,
+        )
+
+        targetHost.postOnAnimation {
+            // A newer surface/access-token request supersedes this callback.
+            if (request != recreationSequence) return@postOnAnimation
+            if (disposed || !hostAttached || host !== targetHost) return@postOnAnimation
+            if (mapView != null) return@postOnAnimation
+
+            if (!targetHost.isAttachedToWindow) {
+                diagnostics.warning(
+                    code = "map_view_recreation_host_detached",
+                    message = "Replacement MapView was not created because the native host detached before the next frame.",
+                    surface = config.renderSurface,
+                )
+                return@postOnAnimation
+            }
+
+            createMapView()
+        }
     }
 
+    /**
+     * Cancels callbacks, removes the MapView from its parent, and only then
+     * calls MapView.onDestroy(). Removing first gives Android an opportunity
+     * to deliver native Surface/Texture detachment before Mapbox releases it.
+     */
     private fun destroyCurrentMapView() {
         subscriptions.forEach { cancelable ->
             runCatching { cancelable.cancel() }
@@ -463,6 +507,28 @@ internal class SaMiMapboxRenderer(
             runCatching {
                 currentMapView.removeRendererSetupErrorListener(rendererSetupErrorListener)
             }
+
+            val parent = currentMapView.parent as? ViewGroup
+            if (parent != null) {
+                runCatching {
+                    parent.removeView(currentMapView)
+                }.onFailure { error ->
+                    diagnostics.warning(
+                        code = "map_view_detach_warning",
+                        message = error.message ?: "Android could not detach the previous MapView from its parent.",
+                        surface = config.renderSurface,
+                    )
+                }
+            }
+
+            if (currentMapView.isAttachedToWindow) {
+                diagnostics.warning(
+                    code = "map_view_still_attached_before_destroy",
+                    message = "MapView still reports window attachment after parent removal; destroying defensively.",
+                    surface = config.renderSurface,
+                )
+            }
+
             runCatching {
                 currentMapView.onDestroy()
             }.onFailure { error ->
@@ -472,7 +538,6 @@ internal class SaMiMapboxRenderer(
                     surface = config.renderSurface,
                 )
             }
-            (currentMapView.parent as? ViewGroup)?.removeView(currentMapView)
         }
 
         mapLoaded = false
