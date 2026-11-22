@@ -205,21 +205,15 @@ export default function AdminErrandsPage({ adminName = "SaMi Administrator" }: P
       setErrands(nextErrands);
       setRunners(nextRunners);
       setRunnerError(data.runnerError || "");
+      // Never preselect a Runner. Admin must make an explicit choice
+      // for every initial assignment or reassignment.
       setSelectedRunnerByErrand((current) => {
-        const next = { ...current };
+        const next: Record<string, string> = {};
 
         for (const errand of nextErrands) {
-          if (next[errand.id]) continue;
-
-          const currentAssignment = errand.assignment?.runnerId;
-          const compatible = nextRunners.find(
-            (runner) =>
-              runner.serviceTypes.includes(errand.runnerServiceType) &&
-              runner.isOnline &&
-              !runner.hasActiveJob,
-          );
-
-          next[errand.id] = currentAssignment || compatible?.id || "";
+          if (current[errand.id]) {
+            next[errand.id] = current[errand.id];
+          }
         }
 
         return next;
@@ -560,10 +554,7 @@ export default function AdminErrandsPage({ adminName = "SaMi Administrator" }: P
                           (runner) => runner.isOnline && !runner.hasActiveJob,
                         );
                         const selectedRunnerId =
-                          selectedRunnerByErrand[errand.id] ||
-                          errand.assignment?.runnerId ||
-                          availableRunners[0]?.id ||
-                          "";
+                          selectedRunnerByErrand[errand.id] || "";
                         const assignmentLabel = getAssignmentLabel(errand);
                         const accepted =
                           errand.assignment?.jobStatus === "accepted" ||
@@ -660,7 +651,11 @@ export default function AdminErrandsPage({ adminName = "SaMi Administrator" }: P
                                     ))}
                                   </select>
                                   <small>
-                                    {availableRunners.length} available for this service
+                                    {availableRunners.length > 0
+                                      ? availableRunners.length + " eligible Runner(s) available"
+                                      : serviceRunners.length > 0
+                                        ? "No Runner for this service is currently online and free"
+                                        : "No approved Runner has selected " + serviceLabel(errand.runnerServiceType)}
                                   </small>
                                 </div>
                               ) : (
