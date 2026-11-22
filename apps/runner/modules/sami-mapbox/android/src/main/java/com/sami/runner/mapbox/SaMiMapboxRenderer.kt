@@ -15,7 +15,7 @@ import com.mapbox.common.location.DeviceLocationProviderFactory
 import com.mapbox.navigation.base.options.LocationOptions
 import com.mapbox.navigation.base.options.LocationOptions.LocationProviderType
 import com.mapbox.navigation.core.MapboxNavigation
-import com.mapbox.navigation.core.NavigationOptions
+import com.mapbox.navigation.base.options.NavigationOptions
 import com.mapbox.navigation.core.lifecycle.MapboxNavigationApp
 import com.mapbox.navigation.core.lifecycle.MapboxNavigationObserver
 import com.mapbox.geojson.Point

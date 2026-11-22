@@ -56,8 +56,8 @@ class SaMiMapboxView(
         onCameraChanged = { payload -> onCameraChanged(payload) },
         onMapTap = { payload -> onMapTap(payload) },
         onNavigationStatusChanged = { payload -> onNavigationStatusChanged(payload) },
-        onRouteChanged = { payload -> onRouteChanged(payload) },
-        onVoiceInstructionChanged = { payload -> onVoiceInstructionChanged(payload) },
+        onRouteChanged = { payload -> onRouteChanged(toEventPayload(payload)) },
+        onVoiceInstructionChanged = { payload -> onVoiceInstructionChanged(toEventPayload(payload)) },
     )
 
     init {
@@ -167,6 +167,18 @@ class SaMiMapboxView(
     }
     fun setVoiceGuidanceMuted(value: Boolean) {
         updateConfig { it.copy(voiceGuidanceMuted = value) }
+    }
+
+    /**
+     * Expo EventDispatcher accepts non-null values only. Optional fields from
+     * Mapbox route/voice controllers are omitted when they have no value.
+     */
+    private fun toEventPayload(payload: Map<String, Any?>): Map<String, Any> {
+        val safePayload = mutableMapOf<String, Any>()
+        payload.forEach { (key, value) ->
+            if (value != null) safePayload[key] = value
+        }
+        return safePayload
     }
 
     fun applyUpdatedProps() {

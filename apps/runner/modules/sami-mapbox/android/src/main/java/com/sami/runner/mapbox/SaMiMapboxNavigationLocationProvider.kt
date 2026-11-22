@@ -1,6 +1,6 @@
 package com.sami.runner.mapbox
 
-import android.os.PendingIntent
+import android.app.PendingIntent
 import android.os.SystemClock
 
 import com.mapbox.common.Cancelable
