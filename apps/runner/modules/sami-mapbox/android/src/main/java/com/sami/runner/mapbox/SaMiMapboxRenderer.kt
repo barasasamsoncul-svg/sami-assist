@@ -8,6 +8,7 @@ import android.view.ViewGroup
 import com.mapbox.common.Cancelable
 import com.mapbox.common.MapboxOptions
 import com.mapbox.geojson.Point
+import com.mapbox.maps.CameraOptions
 import com.mapbox.maps.MapInitOptions
 import com.mapbox.maps.MapView
 import com.mapbox.maps.plugin.Plugin
@@ -66,6 +67,9 @@ internal class SaMiMapboxRenderer(
     private var config = SaMiMapboxConfig()
 
     private var mapView: MapView? = null
+    // Retain the last camera state, not the MapView. A MapView belongs to the
+    // ViewTreeLifecycleOwner that created it and must not be reused after detach.
+    private var restoredCamera: CameraOptions? = null
     private var styleController: SaMiMapboxStyleController? = null
     private var locationController: SaMiMapboxLocationController? = null
 
@@ -179,6 +183,9 @@ internal class SaMiMapboxRenderer(
             previous.initialZoom != config.initialZoom ||
             previous.initialBearing != config.initialBearing
         ) {
+            // An explicit new initial-camera prop takes precedence over the
+            // viewport saved from the previous native MapView.
+            restoredCamera = null
             applyInitialCamera()
         }
 
@@ -191,9 +198,10 @@ internal class SaMiMapboxRenderer(
     fun onHostAttached(parent: ViewGroup) {
         if (disposed) return
 
-        // Expo may provide a new native host after remounting. A MapView
-        // belongs to exactly one ExpoView; destroy it before changing owners.
-        if (host != null && host !== parent) {
+        // A MapView is tied to the ViewTreeLifecycleOwner that created it.
+        // Never reuse an instance from an earlier native-window attachment.
+        if (mapView != null) {
+            captureCameraStateForRestore(mapView)
             cancelPendingStyleRetry()
             destroyCurrentMapView()
         }
@@ -203,53 +211,36 @@ internal class SaMiMapboxRenderer(
 
         diagnostics.info(
             code = "native_host_attached",
-            message = "SaMi Maps native ExpoView attached to the Android window.",
+            message = "SaMi Maps native ExpoView attached; creating a fresh MapView for this window lifecycle.",
             surface = config.renderSurface,
         )
 
-        // Create the MapView as soon as the native host and access token are
-        // available. Do not wait for a non-zero Yoga layout: that delays child
-        // insertion until after the ExpoView has already been measured.
-        if (config.accessToken.isNotBlank() && mapView == null) {
+        if (config.accessToken.isNotBlank()) {
             createMapView()
-        } else {
-            val retainedMapView = mapView
-            if (retainedMapView != null) {
-                locationController?.update(config)
-                requestMapRepaint(parent, retainedMapView)
-            }
         }
     }
 
     /**
-     * Mapbox's lifecycle plugin owns resume/pause. Once the retained MapView
-     * is attached again, explicitly request a fresh frame from its renderer
-     * so a stale/white TextureView buffer cannot remain on screen.
+     * Snapshot the camera before the old view-tree lifecycle owner is torn
+     * down. Only camera state survives; the MapView itself is always retired.
      */
-    private fun requestMapRepaint(parent: ViewGroup, retainedMapView: MapView) {
-        parent.postOnAnimation {
-            if (disposed || !hostAttached || host !== parent) return@postOnAnimation
-            if (mapView !== retainedMapView || !retainedMapView.isAttachedToWindow) {
-                return@postOnAnimation
-            }
+    private fun captureCameraStateForRestore(candidate: MapView?) {
+        val currentMapView = candidate ?: return
 
-            try {
-                retainedMapView.mapboxMap.triggerRepaint()
-                retainedMapView.invalidate()
-                retainedMapView.requestLayout()
-                parent.invalidate()
-                diagnostics.info(
-                    code = "map_reattach_repaint_requested",
-                    message = "Requested a fresh Mapbox render frame after the retained Home map reattached.",
-                    surface = config.renderSurface,
-                )
-            } catch (error: Exception) {
-                diagnostics.warning(
-                    code = "map_reattach_repaint_failed",
-                    message = error.message ?: "Mapbox could not request a fresh frame after Home reattached.",
-                    surface = config.renderSurface,
-                )
-            }
+        runCatching {
+            val state = currentMapView.mapboxMap.cameraState
+            restoredCamera = CameraOptions.Builder()
+                .center(state.center)
+                .zoom(state.zoom)
+                .bearing(state.bearing)
+                .pitch(state.pitch)
+                .build()
+        }.onFailure { error ->
+            diagnostics.warning(
+                code = "map_camera_snapshot_failed",
+                message = error.message ?: "Could not snapshot the current camera before replacing MapView.",
+                surface = config.renderSurface,
+            )
         }
     }
 
@@ -257,19 +248,21 @@ internal class SaMiMapboxRenderer(
         if (!hostAttached) return
 
         hostAttached = false
+        recreationSequence += 1L
         cancelPendingStyleRetry()
-
-        // Keep the same MapView and its camera/style state. Mapbox's default
-        // lifecycle plugin observes the MapView's own window attachment and
-        // stops/restarts rendering automatically across screen transitions.
         firstFrameRendered = false
         readyDispatched = false
 
+        // The Mapbox lifecycle observer can destroy a MapView when Android
+        // tears down this host's view-tree lifecycle. Dispose it now rather
+        // than retaining a dead renderer and calling triggerRepaint() after wake.
+        captureCameraStateForRestore(mapView)
         diagnostics.info(
             code = "native_host_detached",
-            message = "SaMi Maps host detached; its existing MapView is retained for Mapbox-managed reattachment.",
+            message = "SaMi Maps host detached; disposing this MapView and preserving its camera for a fresh view on reattachment.",
             surface = config.renderSurface,
         )
+        destroyCurrentMapView()
     }
 
     fun dispose() {
@@ -320,7 +313,8 @@ internal class SaMiMapboxRenderer(
             val initOptions = MapInitOptions(
                 context = context,
                 plugins = pluginsWithoutScaleBar,
-                cameraOptions = SaMiMapboxCameraController.createInitialCamera(config),
+                cameraOptions = restoredCamera
+                    ?: SaMiMapboxCameraController.createInitialCamera(config),
                 textureView = true,
                 styleUri = config.mapStyleURL,
             )
@@ -447,6 +441,7 @@ internal class SaMiMapboxRenderer(
 
             nativeMapView.post {
                 if (generation != mapGeneration || disposed) return@post
+                captureCameraStateForRestore(nativeMapView)
                 onCameraChanged(
                     SaMiMapboxCameraController.cameraPayload(nativeMapView),
                 )

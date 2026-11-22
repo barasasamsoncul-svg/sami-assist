@@ -15,9 +15,10 @@ internal object SaMiMapboxDefaults {
 }
 
 /**
- * Expo native view that hosts one Mapbox MapView directly. The MapView is
- * retained across temporary detach/reattach, with its Android lifecycle owned
- * by Mapbox's default lifecycle plugin, and is destroyed when Expo disposes it.
+ * Expo native view that hosts one Mapbox MapView directly. Each native-window
+ * attachment gets a fresh MapView because the prior view-tree lifecycle owner
+ * may be destroyed when Android sleeps, locks, or replaces the host window.
+ * SaMi preserves camera state across that native view replacement.
  */
 class SaMiMapboxView(
     context: Context,
