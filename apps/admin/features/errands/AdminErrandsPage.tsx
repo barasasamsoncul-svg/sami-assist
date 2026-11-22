@@ -578,7 +578,7 @@ export default function AdminErrandsPage({ adminName = "SaMi Administrator" }: P
                   <h2 id="errands-heading">Errand queue</h2>
                   <p>
                     Assign each request to a Runner, or use Mark complete to
-                    complete an assigned errand directly as Admin.
+                    mark any open errand complete directly as Admin for this test.
                   </p>
                 </div>
                 <span className="soft-count" aria-label={String(visibleErrands.length) + " errands"}>
@@ -632,7 +632,7 @@ export default function AdminErrandsPage({ adminName = "SaMi Administrator" }: P
                         <th scope="col">Runner</th>
                         <th scope="col">Dispatch status</th>
                         <th scope="col">
-                          <span className="sr-only">Assignment action</span>
+                          <span className="sr-only">Errand actions</span>
                         </th>
                       </tr>
                     </thead>
@@ -789,45 +789,49 @@ export default function AdminErrandsPage({ adminName = "SaMi Administrator" }: P
                             </td>
 
                             <td>
-                              {canCompleteAsAdmin ? (
-                                <button
-                                  type="button"
-                                  className="button small"
-                                  onClick={() => void completeErrand(errand)}
-                                  disabled={isBusy || !!assigningId}
-                                  aria-busy={isBusy}
-                                >
-                                  {isBusy ? "Completing…" : "Mark complete"}
-                                </button>
-                              ) : canAssign ? (
-                                <button
-                                  type="button"
-                                  className="button small"
-                                  onClick={() => void assignErrand(errand)}
-                                  disabled={!selectedRunnerId || isBusy || !!assigningId || availableRunners.length === 0}
-                                  aria-busy={isBusy}
-                                >
-                                  {isBusy
-                                    ? "Assigning…"
-                                    : errand.assignment
-                                      ? "Reassign"
-                                      : "Assign"}
-                                </button>
-                              ) : accepted ? (
-                                <span className="timeline-state">
-                                  {errand.status === "cancelled"
-                                    ? "Cancelled by customer"
-                                    : errand.status === "disputed"
-                                      ? "Under dispute"
-                                      : errand.assignment?.jobStatus === "completed" || errand.status === "completed"
-                                        ? "Admin completed"
-                                        : errand.assignment?.jobStatus === "completion_submitted"
-                                          ? "Runner submitted completion"
-                                          : "Runner accepted"}
-                                </span>
-                              ) : (
-                                <span className="timeline-state">View only</span>
-                              )}
+                              <div className="admin-errand-actions">
+                                {canAssign ? (
+                                  <button
+                                    type="button"
+                                    className="button small"
+                                    onClick={() => void assignErrand(errand)}
+                                    disabled={!selectedRunnerId || isBusy || !!assigningId || availableRunners.length === 0}
+                                    aria-busy={isBusy}
+                                  >
+                                    {isBusy
+                                      ? "Assigning…"
+                                      : errand.assignment
+                                        ? "Reassign"
+                                        : "Assign"}
+                                  </button>
+                                ) : null}
+
+                                {canCompleteAsAdmin ? (
+                                  <button
+                                    type="button"
+                                    className="button small"
+                                    onClick={() => void completeErrand(errand)}
+                                    disabled={isBusy || !!assigningId}
+                                    aria-busy={isBusy}
+                                  >
+                                    {isBusy ? "Completing…" : "Mark complete"}
+                                  </button>
+                                ) : accepted ? (
+                                  <span className="timeline-state">
+                                    {errand.status === "cancelled"
+                                      ? "Cancelled by customer"
+                                      : errand.status === "disputed"
+                                        ? "Under dispute"
+                                        : errand.assignment?.jobStatus === "completed" || errand.status === "completed"
+                                          ? "Admin completed"
+                                          : errand.assignment?.jobStatus === "completion_submitted"
+                                            ? "Runner submitted completion"
+                                            : "Runner accepted"}
+                                  </span>
+                                ) : !canAssign ? (
+                                  <span className="timeline-state">View only</span>
+                                ) : null}
+                              </div>
                             </td>
                           </tr>
                         );
