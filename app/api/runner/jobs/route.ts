@@ -111,6 +111,7 @@ export async function GET(request: Request) {
            AND o.expires_at > now()
            AND j.status = 'offered'
            AND j.accepted_runner_id IS NULL
+           AND j.source_projection->>'source' = 'admin_assignment'
 
          ORDER BY o.created_at DESC
          LIMIT 50`,
