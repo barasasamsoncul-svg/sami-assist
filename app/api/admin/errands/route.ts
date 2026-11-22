@@ -6,7 +6,7 @@ import {
 } from "@/apps/admin/server/auth";
 import { databasePool as runnerDatabasePool, query as runnerQuery } from "@/apps/runner/server/db";
 import { ensureErrandLocationSchema } from "@/lib/errand-location-schema";
-import { query as customerQuery } from "@/lib/db";
+import { databasePool as customerDatabasePool, query as customerQuery } from "@/lib/db";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -58,6 +58,8 @@ type AssignmentRow = {
   offered_runner_name: string | null;
   offer_status: string | null;
   offer_expires_at: string | null;
+  completion_submitted_at: string | null;
+  completed_at: string | null;
 };
 
 type AssignableErrandRow = CustomerErrandRow;
@@ -169,6 +171,8 @@ function shapeErrand(
             assignment.accepted_runner_name || assignment.offered_runner_name,
           offerStatus: assignment.offer_status,
           offerExpiresAt: assignment.offer_expires_at,
+          completionSubmittedAt: assignment.completion_submitted_at,
+          completedAt: assignment.completed_at,
         }
       : null,
   };
@@ -283,6 +287,8 @@ async function listErrands(request: Request) {
               `SELECT
                  j.customer_errand_ref,
                  j.status AS job_status,
+                 j.completion_submitted_at::text AS completion_submitted_at,
+                 j.completed_at::text AS completed_at,
                  j.accepted_runner_id::text AS accepted_runner_id,
                  accepted.full_name AS accepted_runner_name,
                  latest_offer.runner_id::text AS offered_runner_id,
@@ -739,10 +745,287 @@ async function assignErrand(request: Request) {
   }
 }
 
+
+async function confirmErrandCompletion(
+  request: Request,
+  input: Record<string, unknown>,
+) {
+  if (!isSameOrigin(request)) {
+    return errorResponse("Cross-origin completion requests are not allowed.", 403);
+  }
+
+  const auth = await authenticateAdmin(request);
+  if (auth.response) return auth.response;
+
+  const errandId = cleanText(input.errandId, 80);
+  const uuidPattern =
+    /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+
+  if (!uuidPattern.test(errandId)) {
+    return errorResponse("A valid errand identifier is required.");
+  }
+
+  let customerClient: import("pg").PoolClient | null = null;
+  let runnerClient: import("pg").PoolClient | null = null;
+  let customerTransactionOpen = false;
+  let runnerTransactionOpen = false;
+  let customerCommitted = false;
+  let runnerCommitted = false;
+
+  try {
+    customerClient = await customerDatabasePool().connect();
+    runnerClient = await runnerDatabasePool().connect();
+
+    await customerClient.query("BEGIN");
+    customerTransactionOpen = true;
+    await runnerClient.query("BEGIN");
+    runnerTransactionOpen = true;
+
+    const jobResult = await runnerClient.query<{
+      id: string;
+      public_code: string;
+      status: string;
+      accepted_runner_id: string | null;
+    }>(
+      `SELECT
+         id::text AS id,
+         public_code,
+         status,
+         accepted_runner_id::text AS accepted_runner_id
+       FROM public.runner_jobs
+       WHERE customer_errand_ref = $1
+         AND source_projection->>'source' = 'admin_assignment'
+       LIMIT 1
+       FOR UPDATE`,
+      [errandId],
+    );
+
+    const job = jobResult.rows[0];
+    if (!job) {
+      throw new AdminErrandError(
+        "No Admin-assigned Runner job was found for this errand.",
+        404,
+      );
+    }
+
+    if (!job.accepted_runner_id) {
+      throw new AdminErrandError(
+        "The Runner has not accepted this errand, so its completion cannot be confirmed.",
+        409,
+      );
+    }
+
+    if (!["completion_submitted", "completed"].includes(job.status)) {
+      throw new AdminErrandError(
+        "The Runner has not submitted this errand for completion review.",
+        409,
+      );
+    }
+
+    const errandResult = await customerClient.query<{
+      id: string;
+      public_code: string;
+      status: string;
+    }>(
+      `SELECT id::text AS id, public_code, status
+       FROM public.errands
+       WHERE id = $1
+       LIMIT 1
+       FOR UPDATE`,
+      [errandId],
+    );
+
+    const errand = errandResult.rows[0];
+    if (!errand) {
+      throw new AdminErrandError("The customer errand was not found.", 404);
+    }
+
+    const alreadyCompleted = errand.status === "completed";
+    const allowedCustomerStatuses = new Set([
+      "requested",
+      "assigned",
+      "accepted",
+      "in_progress",
+      "completion_submitted",
+      "completed",
+    ]);
+
+    if (!allowedCustomerStatuses.has(errand.status)) {
+      throw new AdminErrandError(
+        "This errand is cancelled or disputed and cannot be confirmed as completed.",
+        409,
+      );
+    }
+
+    if (!alreadyCompleted) {
+      await customerClient.query(
+        `UPDATE public.errands
+         SET status = 'completed',
+             completed_at = COALESCE(completed_at, now()),
+             customer_confirmed_at = COALESCE(customer_confirmed_at, now()),
+             version = version + 1,
+             updated_at = now()
+         WHERE id = $1`,
+        [errandId],
+      );
+
+      await customerClient.query(
+        `INSERT INTO public.errand_events (
+           errand_id,
+           actor_id,
+           event_type,
+           from_status,
+           to_status,
+           note,
+           metadata
+         )
+         VALUES ($1, NULL, 'admin_confirmed_completion', $2, 'completed', $3, $4::jsonb)`,
+        [
+          errandId,
+          errand.status,
+          "Admin confirmed the Runner's submitted completion.",
+          JSON.stringify({
+            adminId: auth.user.id,
+            runnerId: job.accepted_runner_id,
+            runnerJobId: job.id,
+            source: "admin_completion_review",
+          }),
+        ],
+      );
+    }
+
+    await customerClient.query(
+      `INSERT INTO public.customer_errand_outbox (
+         errand_id,
+         event_type,
+         payload
+       )
+       VALUES ($1, 'errand.customer_confirmed', $2::jsonb)
+       ON CONFLICT (errand_id, event_type, event_version) DO NOTHING`,
+      [
+        errandId,
+        JSON.stringify({
+          eventType: "errand.customer_confirmed",
+          customerErrandRef: errandId,
+          publicCode: errand.public_code,
+          status: "completed",
+          runnerRef: job.accepted_runner_id,
+          confirmedBy: "admin",
+          adminId: auth.user.id,
+        }),
+      ],
+    );
+
+    if (job.status !== "completed") {
+      await runnerClient.query(
+        `UPDATE public.runner_jobs
+         SET status = 'completed',
+             completed_at = COALESCE(completed_at, now()),
+             updated_at = now()
+         WHERE id = $1 AND status = 'completion_submitted'`,
+        [job.id],
+      );
+
+      await runnerClient.query(
+        `INSERT INTO public.runner_job_events (
+           job_id,
+           runner_id,
+           event_type,
+           from_status,
+           to_status,
+           note,
+           metadata
+         )
+         VALUES ($1, $2, 'admin_confirmed_completion', 'completion_submitted', 'completed', $3, $4::jsonb)`,
+        [
+          job.id,
+          job.accepted_runner_id,
+          "Admin confirmed the submitted errand completion.",
+          JSON.stringify({
+            adminId: auth.user.id,
+            customerErrandRef: errandId,
+          }),
+        ],
+      );
+
+      await runnerClient.query(
+        "DELETE FROM public.runner_live_locations WHERE runner_id = $1 AND job_id = $2",
+        [job.accepted_runner_id, job.id],
+      );
+    }
+
+    // The Customer record is committed first. If the Runner commit fails,
+    // this endpoint is safe to retry: the completed Customer status is
+    // idempotent, while the Runner job can still advance from submitted.
+    await customerClient.query("COMMIT");
+    customerTransactionOpen = false;
+    customerCommitted = true;
+
+    await runnerClient.query("COMMIT");
+    runnerTransactionOpen = false;
+    runnerCommitted = true;
+
+    return NextResponse.json(
+      {
+        ok: true,
+        status: "completed",
+        message:
+          "Errand " + errand.public_code + " is confirmed complete by Admin.",
+        runnerId: job.accepted_runner_id,
+        jobId: job.id,
+      },
+      {
+        headers: { "Cache-Control": "no-store, private" },
+      },
+    );
+  } catch (cause) {
+    if (customerTransactionOpen && customerClient) {
+      await customerClient.query("ROLLBACK").catch(() => undefined);
+    }
+    if (runnerTransactionOpen && runnerClient) {
+      await runnerClient.query("ROLLBACK").catch(() => undefined);
+    }
+
+    if (cause instanceof AdminErrandError) {
+      return errorResponse(cause.message, cause.status);
+    }
+
+    console.error(
+      "[SaMi Admin errands] Completion confirmation failed.",
+      cause instanceof Error ? cause.message : "unknown error",
+    );
+
+    if (customerCommitted && !runnerCommitted) {
+      return errorResponse(
+        "The Customer errand is marked complete, but the Runner record still needs finalizing. Refresh and press Confirm completion again to reconcile it.",
+        503,
+      );
+    }
+
+    return errorResponse(
+      "The errand completion could not be confirmed. No final confirmation was returned.",
+      503,
+    );
+  } finally {
+    customerClient?.release();
+    runnerClient?.release();
+  }
+}
+
 export async function GET(request: Request) {
   return listErrands(request);
 }
 
 export async function POST(request: Request) {
+  const body = await request.clone().json().catch(() => null);
+  if (
+    body &&
+    typeof body === "object" &&
+    !Array.isArray(body) &&
+    (body as Record<string, unknown>).action === "confirm_completion"
+  ) {
+    return confirmErrandCompletion(request, body as Record<string, unknown>);
+  }
+
   return assignErrand(request);
 }

@@ -25,6 +25,8 @@ type ErrandAssignment = {
   runnerName: string | null;
   offerStatus: string | null;
   offerExpiresAt: string | null;
+  completionSubmittedAt: string | null;
+  completedAt: string | null;
 } | null;
 
 type AdminErrand = {
@@ -117,11 +119,11 @@ function getAssignmentLabel(errand: AdminErrand) {
   }
 
   if (assignment?.jobStatus === "completion_submitted") {
-    return { label: "Completion submitted", className: "attention" };
+    return { label: "Awaiting Admin confirmation", className: "attention" };
   }
 
   if (assignment?.jobStatus === "completed") {
-    return { label: "Completed", className: "positive" };
+    return { label: "Completed · Admin confirmed", className: "positive" };
   }
 
   if (assignment?.jobStatus === "cancelled") {
@@ -164,7 +166,7 @@ function getAssignmentLabel(errand: AdminErrand) {
 export default function AdminErrandsPage({ adminName = "SaMi Administrator" }: Props) {
   const [errands, setErrands] = useState<AdminErrand[]>([]);
   const [runners, setRunners] = useState<AdminRunner[]>([]);
-  const [filter, setFilter] = useState<"all" | "unassigned">("all");
+  const [filter, setFilter] = useState<"all" | "unassigned" | "pending_completion">("all");
   const [selectedRunnerByErrand, setSelectedRunnerByErrand] = useState<Record<string, string>>({});
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
@@ -235,6 +237,12 @@ export default function AdminErrandsPage({ adminName = "SaMi Administrator" }: P
   }, [loadErrands]);
 
   const visibleErrands = useMemo(() => {
+    if (filter === "pending_completion") {
+      return errands.filter(
+        (errand) => errand.assignment?.jobStatus === "completion_submitted",
+      );
+    }
+
     if (filter === "unassigned") {
       return errands.filter(
         (errand) =>
@@ -299,6 +307,61 @@ export default function AdminErrandsPage({ adminName = "SaMi Administrator" }: P
         cause instanceof Error
           ? cause.message
           : "Unable to assign this errand.",
+      );
+    } finally {
+      setAssigningId("");
+    }
+  }
+
+
+  async function confirmCompletion(errand: AdminErrand) {
+    if (assigningId) return;
+
+    const accepted = window.confirm(
+      "Confirm that " + errand.publicCode +
+      " has been completed? This will close the errand for the customer and Runner.",
+    );
+    if (!accepted) return;
+
+    setAssigningId(errand.id);
+    setError("");
+    setSuccessMessage("");
+
+    try {
+      const response = await fetch("/api/admin/errands", {
+        method: "POST",
+        credentials: "same-origin",
+        cache: "no-store",
+        headers: {
+          Accept: "application/json",
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          action: "confirm_completion",
+          errandId: errand.id,
+        }),
+      });
+
+      const data = await response.json().catch(() => ({}));
+
+      if (response.status === 401) {
+        window.location.assign("/admin/login");
+        return;
+      }
+
+      if (!response.ok || !data.ok) {
+        throw new Error(data.error || "Errand completion could not be confirmed.");
+      }
+
+      setSuccessMessage(
+        data.message || "The errand has been confirmed complete.",
+      );
+      await loadErrands(true);
+    } catch (cause) {
+      setError(
+        cause instanceof Error
+          ? cause.message
+          : "Unable to confirm this errand completion.",
       );
     } finally {
       setAssigningId("");
@@ -419,8 +482,8 @@ export default function AdminErrandsPage({ adminName = "SaMi Administrator" }: P
               <div className="section-kicker">ERRAND OPERATIONS</div>
               <h1>Customer errands</h1>
               <p>
-                Review incoming customer requests and assign each errand to
-                one eligible Runner.
+                Assign customer requests, monitor Runner progress and review
+                submitted completions before closing errands.
               </p>
             </div>
 
@@ -456,6 +519,12 @@ export default function AdminErrandsPage({ adminName = "SaMi Administrator" }: P
               </strong>
             </section>
             <section className="metric-card">
+              <span>Awaiting completion review</span>
+              <strong>
+                {errands.filter((errand) => errand.assignment?.jobStatus === "completion_submitted").length}
+              </strong>
+            </section>
+            <section className="metric-card">
               <span>Online, no active errand</span>
               <strong>{availableRunnerCount}</strong>
             </section>
@@ -487,8 +556,8 @@ export default function AdminErrandsPage({ adminName = "SaMi Administrator" }: P
                 <div>
                   <h2 id="errands-heading">Errand queue</h2>
                   <p>
-                    Requests are read from the Customer database. Assignment
-                    creates a private offer for the Runner selected below.
+                    Assign each request to one Runner. When a Runner submits
+                    completion, review it here and confirm it before the errand is closed.
                   </p>
                 </div>
                 <span className="soft-count" aria-label={String(visibleErrands.length) + " errands"}>
@@ -504,11 +573,12 @@ export default function AdminErrandsPage({ adminName = "SaMi Administrator" }: P
                   id="admin-errand-filter"
                   value={filter}
                   onChange={(event) =>
-                    setFilter(event.target.value as "all" | "unassigned")
+                    setFilter(event.target.value as "all" | "unassigned" | "pending_completion")
                   }
                 >
                   <option value="all">All recent errands</option>
                   <option value="unassigned">Needs Admin assignment</option>
+                  <option value="pending_completion">Needs completion confirmation</option>
                 </select>
               </div>
 
@@ -566,6 +636,8 @@ export default function AdminErrandsPage({ adminName = "SaMi Administrator" }: P
                           !errand.hasLegacyProviderAssignment &&
                           !accepted;
                         const isBusy = assigningId === errand.id;
+                        const awaitingCompletionReview =
+                          errand.assignment?.jobStatus === "completion_submitted";
 
                         return (
                           <tr key={errand.id}>
@@ -662,9 +734,13 @@ export default function AdminErrandsPage({ adminName = "SaMi Administrator" }: P
                                 <div>
                                   <b>{errand.assignment?.runnerName || "—"}</b>
                                   <small className="date-cell">
-                                    {errand.assignment?.runnerId
-                                      ? "Runner account linked"
-                                      : "No Runner offer"}
+                                    {awaitingCompletionReview
+                                      ? "Runner submitted completion"
+                                      : errand.assignment?.jobStatus === "completed"
+                                        ? "Admin confirmed completion"
+                                        : errand.assignment?.runnerId
+                                          ? "Runner account linked"
+                                          : "No Runner offer"}
                                   </small>
                                 </div>
                               )}
@@ -680,10 +756,30 @@ export default function AdminErrandsPage({ adminName = "SaMi Administrator" }: P
                                   Expires {formatDate(errand.assignment.offerExpiresAt)}
                                 </small>
                               ) : null}
+                              {awaitingCompletionReview && errand.assignment?.completionSubmittedAt ? (
+                                <small className="date-cell">
+                                  Submitted {formatDate(errand.assignment.completionSubmittedAt)}
+                                </small>
+                              ) : null}
+                              {errand.assignment?.jobStatus === "completed" && errand.assignment.completedAt ? (
+                                <small className="date-cell">
+                                  Confirmed {formatDate(errand.assignment.completedAt)}
+                                </small>
+                              ) : null}
                             </td>
 
                             <td>
-                              {canAssign ? (
+                              {awaitingCompletionReview ? (
+                                <button
+                                  type="button"
+                                  className="button small"
+                                  onClick={() => void confirmCompletion(errand)}
+                                  disabled={isBusy || !!assigningId}
+                                  aria-busy={isBusy}
+                                >
+                                  {isBusy ? "Confirming…" : "Confirm completion"}
+                                </button>
+                              ) : canAssign ? (
                                 <button
                                   type="button"
                                   className="button small"
@@ -698,7 +794,11 @@ export default function AdminErrandsPage({ adminName = "SaMi Administrator" }: P
                                       : "Assign"}
                                 </button>
                               ) : accepted ? (
-                                <span className="timeline-state">Runner accepted</span>
+                                <span className="timeline-state">
+                                  {errand.assignment?.jobStatus === "completed"
+                                    ? "Admin confirmed"
+                                    : "Runner accepted"}
+                                </span>
                               ) : (
                                 <span className="timeline-state">View only</span>
                               )}
