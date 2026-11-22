@@ -36,6 +36,7 @@ import {
   isSessionError,
 } from "./utils";
 import type {
+  SaMiCameraEvent,
   SaMiRouteChangedEvent,
   SaMiRouteProfile,
   SaMiVoiceInstructionChangedEvent,
@@ -52,9 +53,9 @@ export function useRunnerDashboard() {
   const { colors, mode } = useRunnerTheme();
   const insets = useSafeAreaInsets();
 
-  const [appIsActive, setAppIsActive] = useState(
-    AppState.currentState === "active",
-  );
+  const initialAppIsActive = AppState.currentState === "active";
+  const [appIsActive, setAppIsActive] = useState(initialAppIsActive);
+  const appIsActiveRef = useRef(initialAppIsActive);
 
   const [runner, setRunner] = useState<RunnerMe | null>(null);
 
@@ -74,6 +75,17 @@ export function useRunnerDashboard() {
   const [error, setError] = useState("");
   const [mapError, setMapError] = useState("");
   const [mapReady, setMapReady] = useState(false);
+  const [mapRenderRevision, setMapRenderRevision] = useState(0);
+  const mapCameraRef = useRef<SaMiCameraEvent>({
+    latitude: DEFAULT_COORDINATES.latitude,
+    longitude: DEFAULT_COORDINATES.longitude,
+    zoom: 15.5,
+    bearing: 0,
+    pitch: 0,
+  });
+  const rememberMapCamera = useCallback((camera: SaMiCameraEvent) => {
+    mapCameraRef.current = camera;
+  }, []);
 
   const [cameraFollowing, setCameraFollowing] = useState(false);
   const [mapRecenterRequestId, setMapRecenterRequestId] = useState(0);
@@ -291,7 +303,19 @@ export function useRunnerDashboard() {
     const subscription = AppState.addEventListener(
       "change",
       (nextState) => {
-        setAppIsActive(nextState === "active");
+        const nextIsActive = nextState === "active";
+        const wasActive = appIsActiveRef.current;
+
+        appIsActiveRef.current = nextIsActive;
+        setAppIsActive(nextIsActive);
+
+        // Recreate only the dashboard's native map view after returning from
+        // another app. Preserve the last camera and keep all map plumbing intact.
+        if (nextIsActive && !wasActive) {
+          setMapReady(false);
+          setMapError("");
+          setMapRenderRevision((current) => current + 1);
+        }
       },
     );
 
@@ -987,8 +1011,9 @@ export function useRunnerDashboard() {
     isDashboardFocused, colors, mode, insets, appIsActive, runner, jobs,
     loading, refreshing, availabilityBusy, jobBusyId, locationBusy, signingOut,
     workspaceExpanded, setWorkspaceExpanded, error, setError, mapError, setMapError,
-    mapReady, setMapReady, cameraFollowing, setCameraFollowing,
-    mapRecenterRequestId, setMapRecenterRequestId, location, currentLocationName,
+    mapReady, setMapReady, mapRenderRevision, mapCameraRef, rememberMapCamera,
+    cameraFollowing, setCameraFollowing, mapRecenterRequestId, setMapRecenterRequestId,
+    location, currentLocationName,
     navigationMode, setNavigationMode, routeState, setRouteState,
     voiceInstruction, setVoiceInstruction, voiceGuidanceMuted, setVoiceGuidanceMuted,
     activeJob, activeJobIsTrackable, approved, restricted, isOnline, authorized,

@@ -16,6 +16,7 @@ export function RunnerDashboardMapLayer({ dashboard }: Props) {
     routeRemainingTime, location, locationQualityLabel, locationAccuracyLabel,
     workspaceExpanded, locationBusy, setCameraFollowing, locateMe,
     mapScreenActive, mapStyleURL, navigationActive, cameraFollowing,
+    mapRenderRevision, mapCameraRef, rememberMapCamera,
     mapRecenterRequestId, displayCoordinates, isOnline, runner,
     setMapReady, setMapError, setNavigationMode, setRouteState, setVoiceInstruction,
     routeProfile,
@@ -26,15 +27,16 @@ export function RunnerDashboardMapLayer({ dashboard }: Props) {
       {/* MAPBOX CANVAS */}
 
       <SaMiMapboxView
+          key={mapRenderRevision}
           style={StyleSheet.absoluteFill}
           accessToken={
             process.env.EXPO_PUBLIC_MAPBOX_ACCESS_TOKEN?.trim() ?? ""
           }
           mapStyleURL={mapStyleURL}
-          initialLatitude={DEFAULT_COORDINATES.latitude}
-          initialLongitude={DEFAULT_COORDINATES.longitude}
-          initialZoom={15.5}
-          initialBearing={0}
+          initialLatitude={mapCameraRef.current.latitude}
+          initialLongitude={mapCameraRef.current.longitude}
+          initialZoom={mapCameraRef.current.zoom}
+          initialBearing={mapCameraRef.current.bearing}
           showUserLocation={Boolean(location)}
           hasUserLocation={Boolean(location)}
           userLatitude={location?.latitude ?? displayCoordinates.latitude}
@@ -72,6 +74,9 @@ export function RunnerDashboardMapLayer({ dashboard }: Props) {
           onMapReady={() => {
             setMapReady(true);
             setMapError("");
+          }}
+          onCameraChanged={(event) => {
+            rememberMapCamera(event.nativeEvent);
           }}
           onMapError={(event) => {
             setMapError(event.nativeEvent.message);

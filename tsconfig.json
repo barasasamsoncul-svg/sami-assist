@@ -40,6 +40,8 @@
                     "apps/mobile",
                     "apps/runner",
                     "apps/shared",
-                    "apps/website/archive/unreferenced"
+                    "apps/website/archive/unreferenced",
+                    "backup-mapbox-lab-type-fix-*/**",
+                    "sami-stage3-stage4-backup-*/**"
                 ]
 }
