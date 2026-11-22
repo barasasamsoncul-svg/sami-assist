@@ -105,16 +105,30 @@ function runnerLabel(runner: AdminRunner) {
 }
 
 function canAdminCompleteErrand(errand: AdminErrand) {
-  return Boolean(
-    errand.assignment &&
-      ["offered", "accepted", "in_progress", "completion_submitted"].includes(
-        errand.assignment.jobStatus,
-      ),
-  );
+  return [
+    "requested",
+    "quoted",
+    "assigned",
+    "accepted",
+    "in_progress",
+    "completion_submitted",
+  ].includes(errand.status);
 }
 
 function getAssignmentLabel(errand: AdminErrand) {
   const assignment = errand.assignment;
+
+  if (errand.status === "completed") {
+    return { label: "Completed by Admin", className: "positive" };
+  }
+
+  if (errand.status === "cancelled") {
+    return { label: "Cancelled", className: "negative" };
+  }
+
+  if (errand.status === "disputed") {
+    return { label: "Disputed", className: "attention" };
+  }
 
   if (assignment?.jobStatus === "accepted") {
     return {
@@ -801,9 +815,15 @@ export default function AdminErrandsPage({ adminName = "SaMi Administrator" }: P
                                 </button>
                               ) : accepted ? (
                                 <span className="timeline-state">
-                                  {errand.assignment?.jobStatus === "completed"
-                                    ? "Admin completed"
-                                    : "Runner accepted"}
+                                  {errand.status === "cancelled"
+                                    ? "Cancelled by customer"
+                                    : errand.status === "disputed"
+                                      ? "Under dispute"
+                                      : errand.assignment?.jobStatus === "completed" || errand.status === "completed"
+                                        ? "Admin completed"
+                                        : errand.assignment?.jobStatus === "completion_submitted"
+                                          ? "Runner submitted completion"
+                                          : "Runner accepted"}
                                 </span>
                               ) : (
                                 <span className="timeline-state">View only</span>

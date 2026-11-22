@@ -766,63 +766,15 @@ async function completeErrandAsAdmin(
   }
 
   let customerClient: import("pg").PoolClient | null = null;
-  let runnerClient: import("pg").PoolClient | null = null;
   let customerTransactionOpen = false;
-  let runnerTransactionOpen = false;
-  let customerCommitted = false;
-  let runnerCommitted = false;
+  let publicCode = "";
 
   try {
     customerClient = await customerDatabasePool().connect();
-    runnerClient = await runnerDatabasePool().connect();
-
     await customerClient.query("BEGIN");
     customerTransactionOpen = true;
-    await runnerClient.query("BEGIN");
-    runnerTransactionOpen = true;
 
-    const jobResult = await runnerClient.query<{
-      id: string;
-      public_code: string;
-      status: string;
-      accepted_runner_id: string | null;
-    }>(
-      `SELECT
-         id::text AS id,
-         public_code,
-         status,
-         accepted_runner_id::text AS accepted_runner_id
-       FROM public.runner_jobs
-       WHERE customer_errand_ref = $1
-         AND source_projection->>'source' = 'admin_assignment'
-       LIMIT 1
-       FOR UPDATE`,
-      [errandId],
-    );
-
-    const job = jobResult.rows[0];
-    if (!job) {
-      throw new AdminErrandError(
-        "No Admin-assigned Runner job was found for this errand.",
-        404,
-      );
-    }
-
-    const completableRunnerStatuses = new Set([
-      "offered",
-      "accepted",
-      "in_progress",
-      "completion_submitted",
-      "completed",
-    ]);
-    if (!completableRunnerStatuses.has(job.status)) {
-      throw new AdminErrandError(
-        "This Runner job is cancelled or cannot be completed.",
-        409,
-      );
-    }
-
-    const errandResult = await customerClient.query<{
+    const result = await customerClient.query<{
       id: string;
       public_code: string;
       status: string;
@@ -835,27 +787,30 @@ async function completeErrandAsAdmin(
       [errandId],
     );
 
-    const errand = errandResult.rows[0];
+    const errand = result.rows[0];
     if (!errand) {
       throw new AdminErrandError("The customer errand was not found.", 404);
     }
 
-    const completableCustomerStatuses = new Set([
+    const allowedStatuses = new Set([
       "requested",
+      "quoted",
       "assigned",
       "accepted",
       "in_progress",
       "completion_submitted",
       "completed",
     ]);
-    if (!completableCustomerStatuses.has(errand.status)) {
+
+    if (!allowedStatuses.has(errand.status)) {
       throw new AdminErrandError(
         "This errand is cancelled or disputed and cannot be marked complete.",
         409,
       );
     }
 
-    // Admin is the temporary completer, not a proxy for customer confirmation.
+    publicCode = errand.public_code;
+
     if (errand.status !== "completed") {
       await customerClient.query(
         `UPDATE public.errands
@@ -884,8 +839,6 @@ async function completeErrandAsAdmin(
           "Admin marked this errand complete as the temporary completion operator.",
           JSON.stringify({
             adminId: auth.user.id,
-            runnerId: job.accepted_runner_id,
-            runnerJobId: job.id,
             source: "admin_manual_completion",
             completedBy: "admin",
           }),
@@ -893,9 +846,60 @@ async function completeErrandAsAdmin(
       );
     }
 
-    // Close the linked job from this Admin operation; no Runner app change
-    // or APK/OTA update is involved.
-    if (job.status !== "completed") {
+    await customerClient.query("COMMIT");
+    customerTransactionOpen = false;
+  } catch (cause) {
+    if (customerTransactionOpen && customerClient) {
+      await customerClient.query("ROLLBACK").catch(() => undefined);
+    }
+
+    if (cause instanceof AdminErrandError) {
+      return errorResponse(cause.message, cause.status);
+    }
+
+    console.error(
+      "[SaMi Admin errands] Customer completion failed.",
+      cause instanceof Error ? cause.message : "unknown error",
+    );
+    return errorResponse("The errand could not be marked complete.", 503);
+  } finally {
+    customerClient?.release();
+  }
+
+  // Runner linkage is optional for this Admin-operated test flow. When a
+  // linked Runner job exists, close it as a best-effort synchronization.
+  // A missing Runner job must never block Admin from completing the errand.
+  let runnerSynced = true;
+  let runnerClient: import("pg").PoolClient | null = null;
+
+  try {
+    runnerClient = await runnerDatabasePool().connect();
+    await runnerClient.query("BEGIN");
+
+    const jobResult = await runnerClient.query<{
+      id: string;
+      status: string;
+      accepted_runner_id: string | null;
+    }>(
+      `SELECT
+         id::text AS id,
+         status,
+         accepted_runner_id::text AS accepted_runner_id
+       FROM public.runner_jobs
+       WHERE customer_errand_ref = $1
+       ORDER BY created_at DESC
+       LIMIT 1
+       FOR UPDATE`,
+      [errandId],
+    );
+
+    const job = jobResult.rows[0];
+    if (
+      job &&
+      ["offered", "accepted", "in_progress", "completion_submitted"].includes(
+        job.status,
+      )
+    ) {
       await runnerClient.query(
         `UPDATE public.runner_jobs
          SET status = 'completed',
@@ -943,58 +947,31 @@ async function completeErrandAsAdmin(
       }
     }
 
-    await customerClient.query("COMMIT");
-    customerTransactionOpen = false;
-    customerCommitted = true;
-
     await runnerClient.query("COMMIT");
-    runnerTransactionOpen = false;
-    runnerCommitted = true;
-
-    return NextResponse.json(
-      {
-        ok: true,
-        status: "completed",
-        message: "Errand " + errand.public_code + " was marked complete by Admin.",
-        runnerId: job.accepted_runner_id,
-        jobId: job.id,
-      },
-      {
-        headers: { "Cache-Control": "no-store, private" },
-      },
-    );
   } catch (cause) {
-    if (customerTransactionOpen && customerClient) {
-      await customerClient.query("ROLLBACK").catch(() => undefined);
-    }
-    if (runnerTransactionOpen && runnerClient) {
+    runnerSynced = false;
+    if (runnerClient) {
       await runnerClient.query("ROLLBACK").catch(() => undefined);
     }
-
-    if (cause instanceof AdminErrandError) {
-      return errorResponse(cause.message, cause.status);
-    }
-
-    console.error(
-      "[SaMi Admin errands] Admin completion failed.",
+    console.warn(
+      "[SaMi Admin errands] Runner sync after Admin completion failed.",
       cause instanceof Error ? cause.message : "unknown error",
     );
-
-    if (customerCommitted && !runnerCommitted) {
-      return errorResponse(
-        "The errand is marked complete for the Customer, but the Runner job still needs closing. Retry Mark complete to reconcile the records.",
-        503,
-      );
-    }
-
-    return errorResponse(
-      "The errand could not be marked complete. No successful completion was returned.",
-      503,
-    );
   } finally {
-    customerClient?.release();
     runnerClient?.release();
   }
+
+  return NextResponse.json(
+    {
+      ok: true,
+      status: "completed",
+      message: "Errand " + publicCode + " was marked complete by Admin.",
+      runnerSynced,
+    },
+    {
+      headers: { "Cache-Control": "no-store, private" },
+    },
+  );
 }
 
 export async function GET(request: Request) {
