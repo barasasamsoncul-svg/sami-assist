@@ -2,7 +2,7 @@ package com.sami.runner.mapbox
 
 import com.mapbox.maps.MapView
 
-/** Owns style changes and prevents duplicate requests for the active style. */
+/** Owns style changes and allows a bounded renderer retry after transient failures. */
 internal class SaMiMapboxStyleController(
     private val diagnostics: SaMiMapboxDiagnostics,
 ) {
@@ -19,10 +19,28 @@ internal class SaMiMapboxStyleController(
         beforeLoad: () -> Unit,
     ) {
         if (styleUri == requestedStyleUri) return
-
         requestedStyleUri = styleUri
-        beforeLoad()
+        loadStyle(mapView, styleUri, surface, beforeLoad)
+    }
 
+    /** Force a retry for the currently requested style after a Mapbox load error. */
+    fun retryStyle(
+        mapView: MapView,
+        styleUri: String,
+        surface: String,
+        beforeLoad: () -> Unit,
+    ) {
+        requestedStyleUri = null
+        applyStyle(mapView, styleUri, surface, beforeLoad)
+    }
+
+    private fun loadStyle(
+        mapView: MapView,
+        styleUri: String,
+        surface: String,
+        beforeLoad: () -> Unit,
+    ) {
+        beforeLoad()
         diagnostics.info(
             code = "style_change_requested",
             message = "Requesting Mapbox style $styleUri",

@@ -1,44 +1,23 @@
 # SaMi Runner
 
-Independent Runner mobile application.
+## Runner Dashboard modules
 
-- Mobile app: apps/runner
-- Runner API routes: app/api/runner (shared SaMi deployment)
-- Neon project: SaMi Runner
-- Neon branch: main
-- Neon database: sami_runner
-- Expo slug: sami-runner
-- Android package: com.sami.runner
-- iOS bundle: com.sami.runner
+The Expo Router dashboard route is intentionally kept small at `app/(app)/index.tsx`. The screen is composed from the feature modules under `src/features/runner-dashboard/`:
 
-The Runner app calls the shared SaMi API deployment. Runner API routes use only the Runner database. They do not share the Customer database. Customer errand references are retained only as opaque integration identifiers when a trusted event is eventually received.
+| File | Responsibility |
+| --- | --- |
+| `useRunnerDashboard.ts` | Session, runner profile, errand loading/polling, availability, location tracking, navigation state, and user actions |
+| `RunnerDashboardView.tsx` | Root screen composition and SaMi dashboard chrome |
+| `components/RunnerDashboardMapLayer.tsx` | Native SaMi Maps view and map overlays |
+| `components/RunnerDashboardWorkspace.tsx` | Runner workspace, account states, offers, active errand actions, and availability UI |
+| `components/RunnerDashboardPrimitives.tsx` | Reusable buttons, section headings, and route points |
+| `styles.ts` | Screen styles |
+| `types.ts`, `utils.ts` | Shared model types and formatting/status helpers |
 
-## Local setup
+## Android map lifecycle
 
-From the repository root:
+The native implementation and its complete rendering contract are documented in [`modules/sami-mapbox/README.md`](modules/sami-mapbox/README.md). In summary, the Mapbox view is rendered as a direct child of the dashboard root; the Android native host must be measured before MapView creation; and detaching from the Android window destroys the old MapView/SurfaceView so a fresh surface is created when the dashboard returns.
 
-    cd apps/runner
-    npm install
-    Copy-Item .env.example .env
-    npx expo start
+## Local verification
 
-Set EXPO_PUBLIC_SAMI_API_URL to the same SaMi production API URL used by Customer mobile.
-
-## Native builds
-
-The app needs its own Expo project link:
-
-    npx eas-cli@latest init
-
-Do not use the Customer EAS project ID or Customer production update channel.
-
-## Initial capabilities
-
-- Runner phone OTP sign-in
-- Runner profile setup
-- Verification-gated availability
-- Errand offer list and accept action
-- Start errand and submit completion
-- Foreground location publishing while an accepted errand is active
-
-Background location, verification document uploads, Operations review tooling and the Customer/Runner integration publisher are follow-on work.
+Run `npm run typecheck` from this directory. For native Mapbox changes, install a newly built Android binary before device testing; OTA updates cannot install new Kotlin code. Keep changes on the local `main` checkout and push only after the build and device tests pass.

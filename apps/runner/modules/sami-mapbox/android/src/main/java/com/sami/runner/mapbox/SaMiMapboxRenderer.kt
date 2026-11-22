@@ -1,6 +1,8 @@
 package com.sami.runner.mapbox
 
 import android.content.Context
+import android.os.Handler
+import android.os.Looper
 import android.view.View
 import android.view.ViewGroup
 
@@ -51,6 +53,12 @@ internal data class SaMiMapboxConfig(
  * Owns the native Mapbox surface and rendering lifecycle. SaMi Location
  * injects position fixes through a custom provider; this renderer never
  * requests device location or starts a second GPS subscription.
+ *
+ * A MapView is created only after the Expo host has a real measured size.
+ * When that host leaves the Android window, the old SurfaceView and MapView
+ * are destroyed. A fresh MapView is created after the host is attached and
+ * measured again; retaining a detached SurfaceView caused blank maps when
+ * React Navigation/Expo Router restored a screen.
  */
 internal class SaMiMapboxRenderer(
     context: Context,
@@ -62,6 +70,7 @@ internal class SaMiMapboxRenderer(
     private val onMapTap: (Map<String, Any>) -> Unit,
 ) {
     private val context = context
+    private val mainHandler = Handler(Looper.getMainLooper())
 
     private var host: ViewGroup? = null
     private var hostAttached = false
@@ -85,10 +94,50 @@ internal class SaMiMapboxRenderer(
     private var firstFrameRendered = false
     private var readyDispatched = false
     private var firstUsableLayoutLogged = false
+    private var hostSizeLogged = false
     private var mapGeneration = 0
     private var recreationSequence = 0L
+    private var styleRetryAttempts = 0
+    private var pendingStyleRetry: Runnable? = null
 
     private val subscriptions = mutableListOf<Cancelable>()
+
+    /**
+     * Android can attach an ExpoView before React Native's first Yoga layout.
+     * Wait for a non-zero host size instead of creating Mapbox against a 0x0
+     * parent and hoping a detached SurfaceView will recover later.
+     */
+    private val hostLayoutChangeListener = View.OnLayoutChangeListener {
+            view,
+            left,
+            top,
+            right,
+            bottom,
+            oldLeft,
+            oldTop,
+            oldRight,
+            oldBottom,
+        ->
+        val width = right - left
+        val height = bottom - top
+
+        if (width > 0 && height > 0) {
+            if (!hostSizeLogged) {
+                hostSizeLogged = true
+                diagnostics.info(
+                    code = "native_host_has_size",
+                    message = "Expo native host has a non-zero layout: ${width}x${height} px.",
+                    surface = config.renderSurface,
+                )
+            }
+
+            if (hostAttached && mapView == null) {
+                view.postOnAnimation {
+                    if (hostAttached && mapView == null) createMapView()
+                }
+            }
+        }
+    }
 
     private val layoutChangeListener = View.OnLayoutChangeListener {
             view,
@@ -168,6 +217,8 @@ internal class SaMiMapboxRenderer(
         }
 
         if (previous.mapStyleURL != config.mapStyleURL) {
+            cancelPendingStyleRetry()
+            styleRetryAttempts = 0
             val currentMapView = mapView ?: return
             styleController?.applyStyle(
                 mapView = currentMapView,
@@ -199,8 +250,20 @@ internal class SaMiMapboxRenderer(
     fun onHostAttached(parent: ViewGroup) {
         if (disposed) return
 
+        // Defensive: if an Expo host instance is replaced without the normal
+        // detach callback, never move a MapView and its SurfaceView between
+        // different ViewGroups.
+        if (host != null && host !== parent) {
+            lifecycle.detach()
+            destroyCurrentMapView()
+            host?.removeOnLayoutChangeListener(hostLayoutChangeListener)
+        }
+
         host = parent
         hostAttached = true
+        hostSizeLogged = false
+        parent.removeOnLayoutChangeListener(hostLayoutChangeListener)
+        parent.addOnLayoutChangeListener(hostLayoutChangeListener)
 
         diagnostics.info(
             code = "native_host_attached",
@@ -208,12 +271,20 @@ internal class SaMiMapboxRenderer(
             surface = config.renderSurface,
         )
 
-        if (config.accessToken.isNotBlank()) {
-            if (mapView == null) {
-                createMapView()
-            } else {
-                lifecycle.attach()
-            }
+        if (parent.width > 0 && parent.height > 0) {
+            hostSizeLogged = true
+            diagnostics.info(
+                code = "native_host_has_size",
+                message = "Expo native host has a non-zero layout: ${parent.width}x${parent.height} px.",
+                surface = config.renderSurface,
+            )
+            if (config.accessToken.isNotBlank()) createMapView()
+        } else {
+            diagnostics.info(
+                code = "native_host_waiting_for_layout",
+                message = "MapView creation is deferred until Expo reports a non-zero native host layout.",
+                surface = config.renderSurface,
+            )
         }
     }
 
@@ -221,13 +292,20 @@ internal class SaMiMapboxRenderer(
         if (!hostAttached) return
 
         hostAttached = false
+        host?.removeOnLayoutChangeListener(hostLayoutChangeListener)
+        cancelPendingStyleRetry()
         lifecycle.detach()
-        firstFrameRendered = false
-        readyDispatched = false
+
+        // A SurfaceView retained across Expo host detach/reattach can hold an
+        // invalid Android surface. Remove it from the view tree and destroy
+        // the MapView; on the next host attach we create a fresh renderer.
+        destroyCurrentMapView()
+        host = null
+        hostSizeLogged = false
 
         diagnostics.info(
             code = "native_host_detached",
-            message = "SaMi Maps native host detached; MapView was stopped and retained for reattachment.",
+            message = "SaMi Maps host detached; the old MapView and SurfaceView were destroyed for safe recreation on return.",
             surface = config.renderSurface,
         )
     }
@@ -238,6 +316,8 @@ internal class SaMiMapboxRenderer(
         disposed = true
         hostAttached = false
         recreationSequence += 1L
+        host?.removeOnLayoutChangeListener(hostLayoutChangeListener)
+        cancelPendingStyleRetry()
         lifecycle.dispose()
         destroyCurrentMapView()
         host = null
@@ -253,7 +333,16 @@ internal class SaMiMapboxRenderer(
         if (disposed || mapView != null) return
 
         val parent = host
-        if (!hostAttached || parent == null) return
+        if (!hostAttached || parent == null || !parent.isAttachedToWindow) return
+
+        if (parent.width <= 0 || parent.height <= 0) {
+            diagnostics.info(
+                code = "map_view_creation_waiting_for_host_size",
+                message = "MapView creation is waiting for a non-zero Expo host size.",
+                surface = config.renderSurface,
+            )
+            return
+        }
 
         if (config.accessToken.isBlank()) {
             reportError(
@@ -291,6 +380,7 @@ internal class SaMiMapboxRenderer(
             firstFrameRendered = false
             readyDispatched = false
             firstUsableLayoutLogged = false
+            styleRetryAttempts = 0
             styleController = SaMiMapboxStyleController(diagnostics).also {
                 it.recordInitialStyle(config.mapStyleURL)
             }
@@ -311,7 +401,7 @@ internal class SaMiMapboxRenderer(
 
             diagnostics.info(
                 code = "map_view_created",
-                message = "Created Mapbox Maps SDK MapView (generation $mapGeneration).",
+                message = "Created Mapbox Maps SDK MapView (generation $mapGeneration) inside a measured Expo host.",
                 surface = config.renderSurface,
             )
 
@@ -343,6 +433,8 @@ internal class SaMiMapboxRenderer(
                 if (generation != mapGeneration || disposed) return@post
 
                 mapLoaded = true
+                styleRetryAttempts = 0
+                cancelPendingStyleRetry()
                 diagnostics.info(
                     code = "map_loaded",
                     message = "Mapbox reported that the style and visible map tiles have loaded.",
@@ -364,6 +456,7 @@ internal class SaMiMapboxRenderer(
                     code = "map_loading_error",
                     message = message,
                 )
+                scheduleStyleRetry(nativeMapView, generation)
             }
         }
 
@@ -412,6 +505,60 @@ internal class SaMiMapboxRenderer(
             }
             true
         }
+    }
+
+    /** Retry transient style/tile request failures without creating duplicate views. */
+    private fun scheduleStyleRetry(nativeMapView: MapView, generation: Int) {
+        if (styleRetryAttempts >= MAX_STYLE_RETRIES) {
+            diagnostics.error(
+                code = "map_style_retry_exhausted",
+                message = "Mapbox style loading failed after $MAX_STYLE_RETRIES automatic retries. Check connectivity and the configured public Mapbox token.",
+                surface = config.renderSurface,
+            )
+            return
+        }
+
+        styleRetryAttempts += 1
+        val attempt = styleRetryAttempts
+        val delayMs = 1_500L * attempt
+        cancelPendingStyleRetry()
+
+        val retry = Runnable {
+            pendingStyleRetry = null
+            if (disposed || !hostAttached || generation != mapGeneration) return@Runnable
+            if (mapView !== nativeMapView || !nativeMapView.isAttachedToWindow) return@Runnable
+            if (nativeMapView.width <= 0 || nativeMapView.height <= 0) return@Runnable
+
+            diagnostics.warning(
+                code = "map_style_retry",
+                message = "Retrying Mapbox style ${config.mapStyleURL} (attempt $attempt of $MAX_STYLE_RETRIES).",
+                surface = config.renderSurface,
+            )
+
+            styleController?.retryStyle(
+                mapView = nativeMapView,
+                styleUri = config.mapStyleURL,
+                surface = config.renderSurface,
+                beforeLoad = {
+                    mapLoaded = false
+                    firstFrameRendered = false
+                    readyDispatched = false
+                },
+            )
+        }
+
+        pendingStyleRetry = retry
+        mainHandler.postDelayed(retry, delayMs)
+        diagnostics.warning(
+            code = "map_style_retry_scheduled",
+            message = "Mapbox style loading failed; retry $attempt of $MAX_STYLE_RETRIES is scheduled in ${delayMs}ms.",
+            surface = config.renderSurface,
+        )
+    }
+
+    private fun cancelPendingStyleRetry() {
+        pendingStyleRetry?.let { mainHandler.removeCallbacks(it) }
+        pendingStyleRetry = null
     }
 
     private fun maybeDispatchReady(candidate: MapView?) {
@@ -474,11 +621,8 @@ internal class SaMiMapboxRenderer(
             surface = config.renderSurface,
         )
 
-        // Stop Activity callbacks first. detach() forwards onStop exactly once.
         lifecycle.detach()
-
-        // Detach the old native surface from the Android view tree, then
-        // destroy its Mapbox resources. Never reverse this ordering.
+        cancelPendingStyleRetry()
         destroyCurrentMapView()
 
         diagnostics.info(
@@ -488,7 +632,6 @@ internal class SaMiMapboxRenderer(
         )
 
         targetHost.postOnAnimation {
-            // A newer surface/access-token request supersedes this callback.
             if (request != recreationSequence) return@postOnAnimation
             if (disposed || !hostAttached || host !== targetHost) return@postOnAnimation
             if (mapView != null) return@postOnAnimation
@@ -509,9 +652,10 @@ internal class SaMiMapboxRenderer(
     /**
      * Cancels callbacks, removes the MapView from its parent, and only then
      * calls MapView.onDestroy(). Removing first gives Android an opportunity
-     * to deliver native Surface/Texture detachment before Mapbox releases it.
+     * to deliver native Surface detachment before Mapbox releases it.
      */
     private fun destroyCurrentMapView() {
+        cancelPendingStyleRetry()
         subscriptions.forEach { cancelable ->
             runCatching { cancelable.cancel() }
         }
@@ -565,6 +709,7 @@ internal class SaMiMapboxRenderer(
         firstFrameRendered = false
         readyDispatched = false
         firstUsableLayoutLogged = false
+        styleRetryAttempts = 0
     }
 
     private fun handleLifecycleStopped() {
@@ -642,5 +787,9 @@ internal class SaMiMapboxRenderer(
             userBearing = userBearing,
             cameraMode = cameraMode,
         )
+    }
+
+    private companion object {
+        const val MAX_STYLE_RETRIES = 3
     }
 }

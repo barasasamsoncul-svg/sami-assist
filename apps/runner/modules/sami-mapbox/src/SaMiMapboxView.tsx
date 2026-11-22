@@ -7,11 +7,13 @@ const NativeSaMiMapboxView =
   requireNativeView<SaMiMapboxViewProps>("SaMiMapbox");
 
 function SaMiMapboxView(props: SaMiMapboxViewProps) {
+  const accessToken = props.accessToken?.trim() ?? "";
+
   return (
     <NativeSaMiMapboxView
       {...props}
       style={props.style}
-      accessToken={props.accessToken}
+      accessToken={accessToken}
       mapStyleURL={
         props.mapStyleURL ?? "mapbox://styles/mapbox/navigation-day-v1"
       }

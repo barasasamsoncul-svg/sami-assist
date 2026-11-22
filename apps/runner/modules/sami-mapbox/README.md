@@ -1,13 +1,16 @@
-# SaMi Maps — Native renderer and live location
+# SaMi Maps — Android native renderer and Runner location
 
-SaMi Maps is a SaMi-owned Expo native module backed by the official Mapbox Maps SDK for Android. It does not use `@rnmapbox/maps`.
+SaMi Maps is a SaMi-owned Expo native module backed by the official Mapbox Maps SDK. It does not use `@rnmapbox/maps`.
 
-## Rendering contract
+## Android rendering contract
 
-- Android uses SurfaceView only. TextureView is not exposed as a production option.
-- The native renderer owns MapView lifecycle, the 2D camera, style changes, loading diagnostics and first-frame readiness.
-- SaMi Maps does not request location permissions or open its own Android GPS source.
-- React Native overlays are rendered above the map by the Runner screen; verify their stacking on the target devices.
+- Android uses **SurfaceView only**. TextureView is not exposed as a production option.
+- `SaMiMapboxRenderer` creates a Mapbox `MapView` only after the Expo native host has a non-zero measured width and height.
+- The Mapbox `MapView` is a direct child of the Expo native host. Do not insert an additional native wrapper around the dashboard map view.
+- The renderer owns Activity lifecycle forwarding, native view creation and destruction, camera policy, style changes, diagnostics, and first-frame readiness.
+- When an Expo host detaches from the Android window, SaMi stops and destroys its old `MapView` and `SurfaceView`. It does not retain a detached SurfaceView. A new MapView is created after the host is attached and measured again. This is intentional: a retained SurfaceView can remain attached to an invalid Android surface after Expo Router navigation.
+- Map style/tile loading failures receive up to three bounded automatic retries. The renderer reports retry and exhaustion diagnostics; it does not silently loop forever.
+- React Native overlays are rendered as siblings above the native map. Keep map overlays `position: absolute` and avoid wrapping the native MapView in another absolute-fill native View.
 
 ## Single-source location contract
 
@@ -19,12 +22,18 @@ SaMi Maps is a SaMi-owned Expo native module backed by the official Mapbox Maps 
 - Mapbox receives those fixes through `SaMiMapboxLocationProvider`; its default device-location provider is replaced before the puck is enabled. This avoids starting a second GPS stream.
 - Background permission is requested only after an explanatory user action when the Runner goes online. Android may open app Settings for the “Allow all the time” permission.
 
-## Native Mapbox location implementation
+## Runner Dashboard structure
 
-- `SaMiMapboxLocationProvider.kt` accepts validated coordinates and bearing from SaMi Location.
-- `SaMiMapboxLocationController.kt` controls the puck, course bearing, optional pulse, recenter requests and follow camera.
-- The camera follows only when the dashboard is active and the camera mode is `follow` or `navigation`; the native puck can still receive new fixes while the dashboard is covered.
-- The Mapbox location component is enabled with the custom provider, never with a separate Mapbox-owned GPS request.
+The route at `app/(app)/index.tsx` is intentionally a small route entry. Dashboard code is separated into:
+
+- `src/features/runner-dashboard/useRunnerDashboard.ts` — authenticated runner state, errands, availability, location subscription, polling, and navigation actions.
+- `src/features/runner-dashboard/components/RunnerDashboardMapLayer.tsx` — direct-child native Mapbox view and map overlays.
+- `src/features/runner-dashboard/components/RunnerDashboardWorkspace.tsx` — account state, active errand, offers, availability, and account actions.
+- `src/features/runner-dashboard/components/RunnerDashboardPrimitives.tsx` — shared dashboard buttons, headings, and route points.
+- `src/features/runner-dashboard/styles.ts` — shared dashboard visual styles.
+- `src/features/runner-dashboard/utils.ts` and `types.ts` — display helpers and shared model types.
+
+The dashboard preserves the existing runner approval gate, account restrictions, errand acceptance and progression, availability rules, location permissions, background tracking, polling, route guidance state, and sign-out flow.
 
 ## Verification route
 
@@ -34,18 +43,20 @@ The temporary route `apps/runner/app/mapbox-lab.tsx` remains an isolated rendere
 adb shell am start -a android.intent.action.VIEW -d "samirunner://mapbox-lab" com.sami.runner
 ```
 
-The test route keeps the day/night style switch and native diagnostics. It no longer exposes a SurfaceView/TextureView selector.
+## Required verification after native changes
 
-## Required local dependency installation
-
-From `apps/runner`, run:
+From `apps/runner`:
 
 ```powershell
-npx expo install expo-task-manager
+npm run typecheck
 ```
 
-The task-manager version is SDK-matched by Expo. Then run the app typecheck and build a new Android Release binary because this stage adds native Kotlin code and a TaskManager dependency. An OTA update cannot install the native module changes.
+Because the Android renderer source changes are native Kotlin, build and install a new Android binary; an OTA update cannot install these changes. After installation verify:
 
-## Scope remaining after Location
+1. Dashboard map loads on a cold launch and reports `native_host_has_size`, `map_view_has_size`, `map_loaded`, and `map_ready_verified`.
+2. Open another Runner page, return to Dashboard, and verify a new `MapView` generation loads instead of a blank surface.
+3. Background and foreground the app, then verify the map becomes ready again.
+4. Switch day/night theme and confirm style changes load without hiding the existing overlays.
+5. Test GPS and active-errand navigation only after the base map lifecycle tests pass.
 
-Navigation remains a separate phase: route calculation, map matching, trip session, turn-by-turn instructions and voice guidance are not implemented by this Location stage.
+Do not commit or push this local refactor until typecheck, native build, and device acceptance tests pass.
