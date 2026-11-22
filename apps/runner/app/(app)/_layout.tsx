@@ -6,6 +6,7 @@ export default function RunnerAppLayout() {
 
   return (
     <Stack
+      activityEnabled
       screenOptions={{
         headerShown: false,
 
@@ -24,6 +25,9 @@ export default function RunnerAppLayout() {
 // becomes the initial focus target.
 statusBarStyle: colors.paper === "#080F1D" ? "light" : "dark",
       }}
-    />
+    >
+      {/* Keep the map-first Home route active under pushed Runner pages. */}
+      <Stack.Screen name="index" activityEnabled={false} />
+    </Stack>
   );
 }

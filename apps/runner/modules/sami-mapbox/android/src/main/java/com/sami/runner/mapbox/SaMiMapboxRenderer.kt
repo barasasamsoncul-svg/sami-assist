@@ -212,8 +212,44 @@ internal class SaMiMapboxRenderer(
         // insertion until after the ExpoView has already been measured.
         if (config.accessToken.isNotBlank() && mapView == null) {
             createMapView()
-        } else if (mapView != null) {
-            locationController?.update(config)
+        } else {
+            val retainedMapView = mapView
+            if (retainedMapView != null) {
+                locationController?.update(config)
+                requestMapRepaint(parent, retainedMapView)
+            }
+        }
+    }
+
+    /**
+     * Mapbox's lifecycle plugin owns resume/pause. Once the retained MapView
+     * is attached again, explicitly request a fresh frame from its renderer
+     * so a stale/white TextureView buffer cannot remain on screen.
+     */
+    private fun requestMapRepaint(parent: ViewGroup, retainedMapView: MapView) {
+        parent.postOnAnimation {
+            if (disposed || !hostAttached || host !== parent) return@postOnAnimation
+            if (mapView !== retainedMapView || !retainedMapView.isAttachedToWindow) {
+                return@postOnAnimation
+            }
+
+            try {
+                retainedMapView.mapboxMap.triggerRepaint()
+                retainedMapView.invalidate()
+                retainedMapView.requestLayout()
+                parent.invalidate()
+                diagnostics.info(
+                    code = "map_reattach_repaint_requested",
+                    message = "Requested a fresh Mapbox render frame after the retained Home map reattached.",
+                    surface = config.renderSurface,
+                )
+            } catch (error: Exception) {
+                diagnostics.warning(
+                    code = "map_reattach_repaint_failed",
+                    message = error.message ?: "Mapbox could not request a fresh frame after Home reattached.",
+                    surface = config.renderSurface,
+                )
+            }
         }
     }
 

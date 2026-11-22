@@ -81,6 +81,10 @@ export function useRunnerDashboard() {
   const [currentLocationName, setCurrentLocationName] = useState("");
   const lastReverseGeocodeAtRef = useRef(0);
   const reverseGeocodeInFlightRef = useRef(false);
+  const initialLocationAttemptedRef = useRef(false);
+  const initialMapCenterSetRef = useRef(false);
+  const dashboardFocusedRef = useRef(isDashboardFocused);
+  dashboardFocusedRef.current = isDashboardFocused;
   const [navigationMode, setNavigationMode] =
     useState<NavigationMode>("idle");
 
@@ -242,12 +246,11 @@ export function useRunnerDashboard() {
   }, [activeJob?.id, activeJob?.status]);
 
   /*
-   * Keep the native map active only when this dashboard is focused
-   * and the application is in the foreground.
+   * The Home route remains mounted underneath pushed Runner pages.
+   * Keep its native map active for as long as the app is foregrounded;
+   * screen focus controls page data refresh, not map lifetime.
    */
-  const mapScreenActive = Boolean(
-    isDashboardFocused && appIsActive,
-  );
+  const mapScreenActive = appIsActive;
 
   const shouldTrackRunnerLocation = Boolean(
     runner &&
@@ -297,16 +300,6 @@ export function useRunnerDashboard() {
     };
   }, []);
 
-  /*
-   * Clear stale readiness as soon as the dashboard loses focus or
-   * the app moves to the background. Native Mapbox emits onMapReady
-   * again after the map is restored.
-   */
-  useEffect(() => {
-    if (!mapScreenActive) {
-      setMapReady(false);
-    }
-  }, [mapScreenActive]);
 
   /* ------------------------------------------------------------------ */
   /* NAVIGATION                                                          */
@@ -422,16 +415,14 @@ export function useRunnerDashboard() {
 
   useFocusEffect(
     useCallback(() => {
-      mountedRef.current = true;
+      // Focus refreshes dashboard data, but does not mark the still-mounted
+      // Home route as unmounted when another page is pushed above it.
       void loadDashboard();
-
-      return () => {
-        mountedRef.current = false;
-      };
     }, [loadDashboard]),
   );
 
   useEffect(() => {
+    mountedRef.current = true;
     return () => {
       mountedRef.current = false;
     };
@@ -543,14 +534,84 @@ export function useRunnerDashboard() {
     return subscribeToRunnerLocation((fix) => {
       if (!mountedRef.current) return;
       setLocation(fix);
-      if (isDashboardFocused) {
+
+      // Use the first fix already emitted by SaMi Location as the initial
+      // camera target; do not start another location watcher.
+      initialLocationAttemptedRef.current = true;
+      if (!initialMapCenterSetRef.current) {
+        initialMapCenterSetRef.current = true;
+        setCameraFollowing(true);
+        setMapRecenterRequestId((current) => current + 1);
+      }
+
+      if (dashboardFocusedRef.current) {
         void updateCurrentLocationName({
           latitude: fix.latitude,
           longitude: fix.longitude,
         });
       }
     });
-  }, [isDashboardFocused, updateCurrentLocationName]);
+  }, [updateCurrentLocationName]);
+
+  /*
+   * Seed the map with one current fix on Home entry when foreground location
+   * permission is already granted. This does not prompt unexpectedly and does
+   * not start a second tracking subscription. The existing SaMi Location
+   * service remains the only provider of map location updates.
+   */
+  useEffect(() => {
+    if (
+      !isDashboardFocused ||
+      !appIsActive ||
+      location ||
+      initialLocationAttemptedRef.current
+    ) {
+      return;
+    }
+
+    initialLocationAttemptedRef.current = true;
+    let cancelled = false;
+
+    const seedInitialLocation = async () => {
+      const permission = await Location.getForegroundPermissionsAsync();
+      if (!permission.granted) {
+        initialLocationAttemptedRef.current = false;
+        return;
+      }
+
+      const fix = await requestRunnerCurrentLocation();
+      if (cancelled || !mountedRef.current) return;
+
+      setLocation(fix);
+      if (!initialMapCenterSetRef.current) {
+        initialMapCenterSetRef.current = true;
+        setCameraFollowing(true);
+        setMapRecenterRequestId((current) => current + 1);
+      }
+      void updateCurrentLocationName({
+        latitude: fix.latitude,
+        longitude: fix.longitude,
+      });
+    };
+
+    void seedInitialLocation().catch(() => {
+      // Keep the default camera if location is unavailable. A later Home
+      // focus can retry after the user grants permission or enables GPS.
+      initialLocationAttemptedRef.current = false;
+    });
+
+    return () => {
+      cancelled = true;
+      if (!initialMapCenterSetRef.current) {
+        initialLocationAttemptedRef.current = false;
+      }
+    };
+  }, [
+    isDashboardFocused,
+    appIsActive,
+    location,
+    updateCurrentLocationName,
+  ]);
 
   const requestCurrentLocation = useCallback(async () => {
     const fix = await requestRunnerCurrentLocation();
@@ -562,7 +623,10 @@ export function useRunnerDashboard() {
 
     if (mountedRef.current) {
       setLocation(fix);
-      setCameraFollowing(true);
+      if (!initialMapCenterSetRef.current) {
+        initialMapCenterSetRef.current = true;
+        setCameraFollowing(true);
+      }
       void updateCurrentLocationName(coords);
     }
 
