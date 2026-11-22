@@ -358,20 +358,32 @@ export function SaMiRunnerDashboardChrome({
 
         {expanded ? (
           <>
+                        <Text
+              style={[styles.quickCardLabel, { color: themeColors.textMuted, alignSelf: "flex-start", marginTop: 4, letterSpacing: 0.8 }]}
+            >
+              PERFORMANCE
+            </Text>
             <View style={styles.quickCardGrid}>
               <QuickCard
                 icon="star"
                 iconColor={themeColors.amber}
                 label="Rating"
-                value="—"
+                value="â€”"
                 onPress={() => onOpenSection("rating")}
               />
               <QuickCard
                 icon="trending-up"
                 label="Acceptance"
-                value="—"
+                value="â€”"
                 onPress={() => onOpenSection("acceptance")}
               />
+            </View>
+            <Text
+              style={[styles.quickCardLabel, { color: themeColors.textMuted, alignSelf: "flex-start", marginTop: 8, letterSpacing: 0.8 }]}
+            >
+              QUICK ACCESS
+            </Text>
+            <View style={styles.quickCardGrid}>
               <QuickCard
                 icon="grid"
                 label="Menu"

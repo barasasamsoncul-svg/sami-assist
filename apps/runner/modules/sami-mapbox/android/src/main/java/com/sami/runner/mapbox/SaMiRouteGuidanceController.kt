@@ -2,6 +2,7 @@
 package com.sami.runner.mapbox
 
 import android.content.Context
+import android.graphics.Color
 
 import com.mapbox.api.directions.v5.DirectionsCriteria
 import com.mapbox.api.directions.v5.models.RouteOptions
@@ -20,6 +21,7 @@ import com.mapbox.navigation.ui.maps.route.line.api.MapboxRouteLineApi
 import com.mapbox.navigation.ui.maps.route.line.api.MapboxRouteLineView
 import com.mapbox.navigation.ui.maps.route.line.model.MapboxRouteLineApiOptions
 import com.mapbox.navigation.ui.maps.route.line.model.MapboxRouteLineViewOptions
+import com.mapbox.navigation.ui.maps.route.line.model.RouteLineColorResources
 
 /**
  * Manages real Mapbox Navigation SDK route guidance for SaMi Runner.
@@ -44,7 +46,33 @@ internal class SaMiRouteGuidanceController(
     )
 
     private val routeLineView = MapboxRouteLineView(
-        MapboxRouteLineViewOptions.Builder(context).build()
+        MapboxRouteLineViewOptions.Builder(context)
+            .routeLineColorResources(
+                RouteLineColorResources.Builder()
+                    // SaMi primary route and casing stay in the brand blue/navy palette.
+                    .routeDefaultColor(Color.parseColor("#287DFF"))
+                    .routeCasingColor(Color.parseColor("#00143D"))
+                    .routeLineTraveledColor(Color.parseColor("#75B5FF"))
+                    // Traffic remains legible without Mapbox's default green/red palette.
+                    .routeLowCongestionColor(Color.parseColor("#4A9BFF"))
+                    .routeModerateCongestionColor(Color.parseColor("#287DFF"))
+                    .routeHeavyCongestionColor(Color.parseColor("#1B60CF"))
+                    .routeSevereCongestionColor(Color.parseColor("#123F91"))
+                    .routeUnknownCongestionColor(Color.parseColor("#287DFF"))
+                    // Alternative routes and their traffic states stay in the SaMi blue family.
+                    .alternativeRouteDefaultColor(Color.parseColor("#8ABEFF"))
+                    .alternativeRouteCasingColor(Color.parseColor("#17345E"))
+                    .alternativeRouteLowCongestionColor(Color.parseColor("#9CCAFF"))
+                    .alternativeRouteModerateCongestionColor(Color.parseColor("#82B9FA"))
+                    .alternativeRouteHeavyCongestionColor(Color.parseColor("#689DE6"))
+                    .alternativeRouteSevereCongestionColor(Color.parseColor("#4B7FC9"))
+                    .alternativeRouteUnknownCongestionColor(Color.parseColor("#8ABEFF"))
+                    .build(),
+            )
+            .displaySoftGradientForTraffic(true)
+            .softGradientTransition(24.0)
+            .routeLineBelowLayerId("road-label-navigation")
+            .build()
     )
 
     private var navigation: MapboxNavigation? = null
@@ -130,6 +158,7 @@ internal class SaMiRouteGuidanceController(
                             style,
                             update
                         )
+                        routeLineView.showTraffic(style)
                     }
                 }
             }
@@ -354,6 +383,8 @@ internal class SaMiRouteGuidanceController(
                         style,
                         drawData
                     )
+                    // Mapbox Navigation 3.35 requires explicit visibility after route redraw.
+                    routeLineView.showTraffic(style)
                 }
             }
         }

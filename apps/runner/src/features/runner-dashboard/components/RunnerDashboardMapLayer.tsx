@@ -42,6 +42,8 @@ export function RunnerDashboardMapLayer({ dashboard }: Props) {
           userLatitude={location?.latitude ?? displayCoordinates.latitude}
           userLongitude={location?.longitude ?? displayCoordinates.longitude}
           userBearing={location?.bearing ?? 0}
+          userSpeedMetersPerSecond={location?.speedMetersPerSecond ?? 0}
+          userHorizontalAccuracyMeters={location?.horizontalAccuracyMeters ?? 0}
           hasUserBearing={location?.bearing != null}
           recenterRequestId={mapRecenterRequestId}
           showCompass

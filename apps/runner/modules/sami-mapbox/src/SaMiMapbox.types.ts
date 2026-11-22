@@ -88,10 +88,8 @@ export type SaMiVoiceInstructionChangedEvent = {
 /**
  * Public SaMi Maps view contract.
  *
- * Stage 1 implements native map rendering, 2D camera gestures, style changes,
- * first-frame readiness and rendering diagnostics. Location and navigation
- * props remain in the public type temporarily so the existing dashboard
- * continues to type-check while those independent layers are rebuilt later.
+ * Stage 5 connects route guidance, maneuver progress and voice instructions
+ * to the single SaMi Location stream. Camera presentation remains strictly 2D.
  */
 export type SaMiMapboxViewProps = {
   style?: StyleProp<ViewStyle>;
@@ -112,6 +110,8 @@ export type SaMiMapboxViewProps = {
   userLatitude?: number;
   userLongitude?: number;
   userBearing?: number;
+  userSpeedMetersPerSecond?: number;
+  userHorizontalAccuracyMeters?: number;
   hasUserBearing?: boolean;
   recenterRequestId?: number;
 
@@ -121,7 +121,7 @@ export type SaMiMapboxViewProps = {
   showCompass?: boolean;
   /** @deprecated Map controls will be implemented after the base renderer is verified. */
   showScaleBar?: boolean;
-  /** @deprecated Navigation will be implemented as a separate SaMi Maps layer. */
+  /** Enables SaMi's Mapbox Navigation session; it consumes SaMi Location fixes only. */
   navigationActive?: boolean;
   /** Follow the injected SaMi Location fix when set to follow/navigation. */
   cameraMode?: SaMiMapCameraMode;
@@ -129,17 +129,13 @@ export type SaMiMapboxViewProps = {
   puckBearing?: SaMiPuckBearing;
   /** Enables the Mapbox puck pulse while the Runner is sharing location. */
   locationPulsingEnabled?: boolean;
-  /** @deprecated Route guidance will be implemented as a separate SaMi Maps layer. */
+  /** Current errand destination; null/false clears the active route. */
   hasRouteDestination?: boolean;
-  /** @deprecated Route guidance will be implemented as a separate SaMi Maps layer. */
   routeDestinationLatitude?: number;
-  /** @deprecated Route guidance will be implemented as a separate SaMi Maps layer. */
   routeDestinationLongitude?: number;
-  /** @deprecated Route guidance will be implemented as a separate SaMi Maps layer. */
   routeDestinationLabel?: string;
-  /** @deprecated Route guidance will be implemented as a separate SaMi Maps layer. */
   routeProfile?: SaMiRouteProfile;
-  /** @deprecated Voice guidance will be implemented as a separate SaMi Maps layer. */
+  /** Mutes spoken instructions while preserving visual guidance. */
   voiceGuidanceMuted?: boolean;
 
   onMapReady?: (event: { nativeEvent: SaMiMapReadyEvent }) => void;
@@ -150,13 +146,10 @@ export type SaMiMapboxViewProps = {
 
   /** @deprecated Emitted after the location layer is implemented. */
   onLocationChanged?: (event: { nativeEvent: SaMiMapLocationEvent }) => void;
-  /** @deprecated Emitted after the navigation layer is implemented. */
   onNavigationStatusChanged?: (event: {
     nativeEvent: SaMiNavigationStatusEvent;
   }) => void;
-  /** @deprecated Emitted after route guidance is implemented. */
   onRouteChanged?: (event: { nativeEvent: SaMiRouteChangedEvent }) => void;
-  /** @deprecated Emitted after voice guidance is implemented. */
   onVoiceInstructionChanged?: (event: {
     nativeEvent: SaMiVoiceInstructionChangedEvent;
   }) => void;

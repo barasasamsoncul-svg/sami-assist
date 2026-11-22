@@ -1,12 +1,23 @@
 package com.sami.runner.mapbox
 
 import android.content.Context
+import android.content.ContextWrapper
 import android.os.Handler
 import android.os.Looper
 import android.view.View
 import android.view.ViewGroup
+import androidx.lifecycle.LifecycleOwner
+import androidx.lifecycle.findViewTreeLifecycleOwner
+import com.mapbox.bindgen.ExpectedFactory
 import com.mapbox.common.Cancelable
 import com.mapbox.common.MapboxOptions
+import com.mapbox.common.location.DeviceLocationProviderFactory
+import com.mapbox.navigation.base.options.LocationOptions
+import com.mapbox.navigation.base.options.LocationOptions.LocationProviderType
+import com.mapbox.navigation.core.MapboxNavigation
+import com.mapbox.navigation.core.NavigationOptions
+import com.mapbox.navigation.core.lifecycle.MapboxNavigationApp
+import com.mapbox.navigation.core.lifecycle.MapboxNavigationObserver
 import com.mapbox.geojson.Point
 import com.mapbox.maps.CameraOptions
 import com.mapbox.maps.MapInitOptions
@@ -35,6 +46,15 @@ internal data class SaMiMapboxConfig(
     val cameraMode: String = "free",
     val locationPulsingEnabled: Boolean = false,
     val recenterRequestId: Int = 0,
+    val userSpeedMetersPerSecond: Double = 0.0,
+    val userHorizontalAccuracyMeters: Double = 0.0,
+    val navigationActive: Boolean = false,
+    val hasRouteDestination: Boolean = false,
+    val routeDestinationLatitude: Double = 0.0,
+    val routeDestinationLongitude: Double = 0.0,
+    val routeDestinationLabel: String = "",
+    val routeProfile: String = "driving-traffic",
+    val voiceGuidanceMuted: Boolean = false,
 )
 
 /**
@@ -57,6 +77,9 @@ internal class SaMiMapboxRenderer(
     private val onError: (String) -> Unit,
     private val onCameraChanged: (Map<String, Any>) -> Unit,
     private val onMapTap: (Map<String, Any>) -> Unit,
+    private val onNavigationStatusChanged: (Map<String, Any>) -> Unit,
+    private val onRouteChanged: (Map<String, Any?>) -> Unit,
+    private val onVoiceInstructionChanged: (Map<String, Any?>) -> Unit,
 ) {
     private val context = context
     private val mainHandler = Handler(Looper.getMainLooper())
@@ -72,6 +95,36 @@ internal class SaMiMapboxRenderer(
     private var restoredCamera: CameraOptions? = null
     private var styleController: SaMiMapboxStyleController? = null
     private var locationController: SaMiMapboxLocationController? = null
+    private var routeGuidanceController: SaMiRouteGuidanceController? = null
+    private val voiceGuidanceController = SaMiVoiceGuidanceController(context) { payload ->
+        onVoiceInstructionChanged(payload)
+    }
+
+    private var mapboxNavigation: MapboxNavigation? = null
+    private var navigationLifecycleOwner: LifecycleOwner? = null
+    private var navigationOwnerAttached = false
+    private var navigationObserverRegistered = false
+    private var tripSessionStarted = false
+    private var lastDestinationKey: String? = null
+
+    private val navigationObserver = object : MapboxNavigationObserver {
+        override fun onAttached(mapboxNavigation: MapboxNavigation) {
+            this@SaMiMapboxRenderer.mapboxNavigation = mapboxNavigation
+            routeGuidanceController?.attach(mapboxNavigation)
+            voiceGuidanceController.attach(mapboxNavigation)
+            syncNavigationState()
+        }
+
+        override fun onDetached(mapboxNavigation: MapboxNavigation) {
+            if (this@SaMiMapboxRenderer.mapboxNavigation !== mapboxNavigation) return
+            runCatching { mapboxNavigation.stopTripSession() }
+            tripSessionStarted = false
+            routeGuidanceController?.detach()
+            voiceGuidanceController.detach()
+            this@SaMiMapboxRenderer.mapboxNavigation = null
+            onNavigationStatusChanged(mapOf("active" to false, "mode" to "idle"))
+        }
+    }
 
     private var mapLoaded = false
     private var firstFrameRendered = false
@@ -136,6 +189,10 @@ internal class SaMiMapboxRenderer(
             return
         }
 
+        // The first Android attach can precede prop delivery. Retry lifecycle
+        // attachment now that the access token and final props are available.
+        host?.let { ensureNavigationAttached(it) }
+
         if (mapView != null && previous.accessToken != config.accessToken) {
             diagnostics.info(
                 code = "access_token_changed",
@@ -189,10 +246,10 @@ internal class SaMiMapboxRenderer(
             applyInitialCamera()
         }
 
-        // The same Expo Location fixes update the puck and follow camera.
-        // The Mapbox location component is configured with SaMi's custom
-        // provider, so it never opens a second device GPS subscription.
+        // The same Expo Location fixes update both the Maps puck and the
+        // Navigation SDK adapter. Neither SDK is allowed to start a second GPS feed.
         locationController?.update(config)
+        syncNavigationState()
     }
 
     fun onHostAttached(parent: ViewGroup) {
@@ -208,6 +265,7 @@ internal class SaMiMapboxRenderer(
 
         host = parent
         hostAttached = true
+        ensureNavigationAttached(parent)
 
         diagnostics.info(
             code = "native_host_attached",
@@ -233,7 +291,8 @@ internal class SaMiMapboxRenderer(
                 .center(state.center)
                 .zoom(state.zoom)
                 .bearing(state.bearing)
-                .pitch(state.pitch)
+                // Persist bearing/zoom/center, never a tilted camera. SaMi maps stay 2D.
+                .pitch(0.0)
                 .build()
         }.onFailure { error ->
             diagnostics.warning(
@@ -273,12 +332,184 @@ internal class SaMiMapboxRenderer(
         recreationSequence += 1L
         cancelPendingStyleRetry()
         destroyCurrentMapView()
+        voiceGuidanceController.dispose()
+        mapboxNavigation?.let { navigation ->
+            if (tripSessionStarted) runCatching { navigation.stopTripSession() }
+        }
+        tripSessionStarted = false
+        if (navigationObserverRegistered) {
+            runCatching { MapboxNavigationApp.unregisterObserver(navigationObserver) }
+            navigationObserverRegistered = false
+        }
+        if (navigationOwnerAttached) {
+            navigationLifecycleOwner?.let { owner ->
+                runCatching { MapboxNavigationApp.detach(owner) }
+            }
+            navigationOwnerAttached = false
+        }
+        navigationLifecycleOwner = null
+        mapboxNavigation = null
         host = null
 
         diagnostics.info(
             code = "renderer_disposed",
             message = "SaMi Maps renderer disposed.",
             surface = config.renderSurface,
+        )
+    }
+
+    /**
+     * Initializes the one process-wide Navigation SDK instance with SaMi's
+     * provider. If another component has already initialized Mapbox Navigation
+     * with an unknown provider, fail closed rather than silently opening a
+     * second GPS source.
+     */
+    private fun ensureNavigationAttached(parent: ViewGroup) {
+        if (config.accessToken.isBlank()) return
+        val owner = parent.findViewTreeLifecycleOwner() ?: resolveLifecycleOwner(parent.context)
+        if (owner == null) {
+            diagnostics.warning(
+                code = "navigation_lifecycle_owner_missing",
+                message = "Mapbox Navigation is waiting for the native Activity lifecycle owner.",
+                surface = config.renderSurface,
+            )
+            return
+        }
+
+        try {
+            MapboxOptions.accessToken = config.accessToken
+            if (!MapboxNavigationApp.isSetup()) {
+                MapboxNavigationApp.setup {
+                    NavigationOptions.Builder(context.applicationContext)
+                        .locationOptions(
+                            LocationOptions.Builder()
+                                .locationProviderFactory(
+                                    DeviceLocationProviderFactory { _ ->
+                                        ExpectedFactory.createValue(
+                                            SaMiMapboxNavigationLocationProviderHolder.shared,
+                                        )
+                                    },
+                                    LocationProviderType.REAL,
+                                )
+                                .build(),
+                        )
+                        .build()
+                }
+                navigationAppConfigured = true
+            } else if (!navigationAppConfigured) {
+                throw IllegalStateException(
+                    "Mapbox Navigation was initialized outside SaMi's single-location provider. Refusing to attach to avoid a second GPS source.",
+                )
+            }
+
+            if (navigationLifecycleOwner !== owner) {
+                if (navigationOwnerAttached) {
+                    navigationLifecycleOwner?.let { previous ->
+                        runCatching { MapboxNavigationApp.detach(previous) }
+                    }
+                }
+                navigationLifecycleOwner = owner
+                navigationOwnerAttached = false
+            }
+
+            if (!navigationOwnerAttached) {
+                MapboxNavigationApp.attach(owner)
+                navigationOwnerAttached = true
+            }
+            if (!navigationObserverRegistered) {
+                MapboxNavigationApp.registerObserver(navigationObserver)
+                navigationObserverRegistered = true
+            }
+            syncNavigationState()
+        } catch (error: Exception) {
+            diagnostics.error(
+                code = "navigation_sdk_initialization_failed",
+                message = error.message ?: "SaMi turn-by-turn navigation could not be initialized.",
+                surface = config.renderSurface,
+            )
+            onError(error.message ?: "SaMi turn-by-turn navigation could not be initialized.")
+        }
+    }
+
+    private fun resolveLifecycleOwner(candidate: Context): LifecycleOwner? {
+        var current: Context? = candidate
+        while (current != null) {
+            if (current is LifecycleOwner) return current
+            current = (current as? ContextWrapper)?.baseContext
+        }
+        return null
+    }
+
+    /** Applies only SaMi Location fixes and the current errand destination. */
+    private fun syncNavigationState() {
+        val navigation = mapboxNavigation ?: return
+
+        if (config.hasUserLocation) {
+            SaMiMapboxNavigationLocationProviderHolder.shared.updateFromSaMiLocation(
+                latitude = config.userLatitude,
+                longitude = config.userLongitude,
+                bearing = if (config.hasUserBearing) config.userBearing else null,
+                speedMetersPerSecond = config.userSpeedMetersPerSecond,
+                horizontalAccuracyMeters = config.userHorizontalAccuracyMeters,
+            )
+        }
+
+        if (config.navigationActive && !tripSessionStarted) {
+            runCatching { navigation.startTripSession() }
+                .onSuccess { tripSessionStarted = true }
+                .onFailure { error ->
+                    diagnostics.error(
+                        code = "navigation_trip_session_start_failed",
+                        message = error.message ?: "Navigation tracking could not be started.",
+                        surface = config.renderSurface,
+                    )
+                    onError(error.message ?: "Navigation tracking could not be started.")
+                }
+        } else if (!config.navigationActive && tripSessionStarted) {
+            runCatching { navigation.stopTripSession() }
+            tripSessionStarted = false
+        }
+
+        val destination = if (
+            config.hasRouteDestination &&
+            config.routeDestinationLatitude.isFinite() &&
+            config.routeDestinationLatitude in -90.0..90.0 &&
+            config.routeDestinationLongitude.isFinite() &&
+            config.routeDestinationLongitude in -180.0..180.0
+        ) {
+            Point.fromLngLat(config.routeDestinationLongitude, config.routeDestinationLatitude)
+        } else {
+            null
+        }
+
+        val destinationKey = destination?.let {
+            "${it.latitude()},${it.longitude()},${config.routeProfile}"
+        }
+        if (destinationKey != lastDestinationKey) {
+            voiceGuidanceController.onRouteChanged()
+            lastDestinationKey = destinationKey
+        }
+        routeGuidanceController?.setDestination(
+            point = destination,
+            label = config.routeDestinationLabel,
+            profile = config.routeProfile,
+        )
+        if (config.hasUserLocation) {
+            routeGuidanceController?.updateOrigin(
+                Point.fromLngLat(config.userLongitude, config.userLatitude),
+            )
+        }
+        voiceGuidanceController.setMuted(config.voiceGuidanceMuted)
+
+        onNavigationStatusChanged(
+            mapOf(
+                "active" to config.navigationActive,
+                "mode" to when {
+                    destination != null -> "active_guidance"
+                    config.navigationActive -> "free_drive"
+                    else -> "idle"
+                },
+            ),
         )
     }
 
@@ -340,6 +571,13 @@ internal class SaMiMapboxRenderer(
             createdMapView.addOnLayoutChangeListener(layoutChangeListener)
             configureMapControls(createdMapView)
             locationController = SaMiMapboxLocationController(createdMapView, diagnostics)
+            routeGuidanceController = SaMiRouteGuidanceController(
+                context = context,
+                mapView = createdMapView,
+                onRouteEvent = onRouteChanged,
+            )
+            mapboxNavigation?.let { routeGuidanceController?.attach(it) }
+            voiceGuidanceController.let { controller -> mapboxNavigation?.let(controller::attach) }
             subscribeToMapEvents(createdMapView, mapGeneration)
 
             // Restore the original native hierarchy: MapView is a direct
@@ -363,6 +601,7 @@ internal class SaMiMapboxRenderer(
             )
 
             locationController?.update(config)
+            syncNavigationState()
         } catch (error: Exception) {
             destroyCurrentMapView()
             reportError(
@@ -389,6 +628,7 @@ internal class SaMiMapboxRenderer(
                 if (generation != mapGeneration || disposed) return@post
 
                 mapLoaded = true
+                routeGuidanceController?.onStyleLoaded()
                 styleRetryAttempts = 0
                 cancelPendingStyleRetry()
                 diagnostics.info(
@@ -622,6 +862,8 @@ internal class SaMiMapboxRenderer(
         styleController = null
         locationController?.dispose()
         locationController = null
+        routeGuidanceController?.dispose()
+        routeGuidanceController = null
 
         if (currentMapView != null) {
             currentMapView.removeOnLayoutChangeListener(layoutChangeListener)
@@ -713,5 +955,6 @@ internal class SaMiMapboxRenderer(
 
     private companion object {
         const val MAX_STYLE_RETRIES = 3
+        @Volatile var navigationAppConfigured = false
     }
 }

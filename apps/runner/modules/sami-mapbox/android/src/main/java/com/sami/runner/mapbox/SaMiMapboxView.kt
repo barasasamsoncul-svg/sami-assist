@@ -55,6 +55,9 @@ class SaMiMapboxView(
         onError = { message -> onMapError(mapOf("message" to message)) },
         onCameraChanged = { payload -> onCameraChanged(payload) },
         onMapTap = { payload -> onMapTap(payload) },
+        onNavigationStatusChanged = { payload -> onNavigationStatusChanged(payload) },
+        onRouteChanged = { payload -> onRouteChanged(payload) },
+        onVoiceInstructionChanged = { payload -> onVoiceInstructionChanged(payload) },
     )
 
     init {
@@ -117,6 +120,14 @@ class SaMiMapboxView(
         updateConfig { it.copy(userBearing = value) }
     }
 
+    fun setUserSpeedMetersPerSecond(value: Double) {
+        updateConfig { it.copy(userSpeedMetersPerSecond = value) }
+    }
+
+    fun setUserHorizontalAccuracyMeters(value: Double) {
+        updateConfig { it.copy(userHorizontalAccuracyMeters = value) }
+    }
+
     fun setHasUserBearing(value: Boolean) {
         updateConfig { it.copy(hasUserBearing = value) }
     }
@@ -129,7 +140,9 @@ class SaMiMapboxView(
     fun setScreenActive(value: Boolean) {
         updateConfig { it.copy(screenActive = value) }
     }
-    fun setNavigationActive(@Suppress("UNUSED_PARAMETER") value: Boolean) = Unit
+    fun setNavigationActive(value: Boolean) {
+        updateConfig { it.copy(navigationActive = value) }
+    }
     fun setCameraMode(value: String) {
         updateConfig { it.copy(cameraMode = value) }
     }
@@ -137,12 +150,24 @@ class SaMiMapboxView(
     fun setLocationPulsingEnabled(value: Boolean) {
         updateConfig { it.copy(locationPulsingEnabled = value) }
     }
-    fun setHasRouteDestination(@Suppress("UNUSED_PARAMETER") value: Boolean) = Unit
-    fun setRouteDestinationLatitude(@Suppress("UNUSED_PARAMETER") value: Double) = Unit
-    fun setRouteDestinationLongitude(@Suppress("UNUSED_PARAMETER") value: Double) = Unit
-    fun setRouteDestinationLabel(@Suppress("UNUSED_PARAMETER") value: String) = Unit
-    fun setRouteProfile(@Suppress("UNUSED_PARAMETER") value: String) = Unit
-    fun setVoiceGuidanceMuted(@Suppress("UNUSED_PARAMETER") value: Boolean) = Unit
+    fun setHasRouteDestination(value: Boolean) {
+        updateConfig { it.copy(hasRouteDestination = value) }
+    }
+    fun setRouteDestinationLatitude(value: Double) {
+        updateConfig { it.copy(routeDestinationLatitude = value) }
+    }
+    fun setRouteDestinationLongitude(value: Double) {
+        updateConfig { it.copy(routeDestinationLongitude = value) }
+    }
+    fun setRouteDestinationLabel(value: String) {
+        updateConfig { it.copy(routeDestinationLabel = value) }
+    }
+    fun setRouteProfile(value: String) {
+        updateConfig { it.copy(routeProfile = value) }
+    }
+    fun setVoiceGuidanceMuted(value: Boolean) {
+        updateConfig { it.copy(voiceGuidanceMuted = value) }
+    }
 
     fun applyUpdatedProps() {
         renderer.update(config)

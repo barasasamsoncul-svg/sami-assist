@@ -68,6 +68,12 @@ class SaMiMapboxModule : Module() {
             Prop("userBearing", 0.0) { view: SaMiMapboxView, value: Double ->
                 view.setUserBearing(value)
             }
+            Prop("userSpeedMetersPerSecond", 0.0) { view: SaMiMapboxView, value: Double ->
+                view.setUserSpeedMetersPerSecond(value)
+            }
+            Prop("userHorizontalAccuracyMeters", 0.0) { view: SaMiMapboxView, value: Double ->
+                view.setUserHorizontalAccuracyMeters(value)
+            }
             Prop("hasUserBearing", false) { view: SaMiMapboxView, value: Boolean ->
                 view.setHasUserBearing(value)
             }
