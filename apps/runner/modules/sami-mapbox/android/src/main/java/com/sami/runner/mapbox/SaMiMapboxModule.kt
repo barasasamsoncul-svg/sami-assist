@@ -47,7 +47,7 @@ class SaMiMapboxModule : Module() {
                 view.setInitialBearing(value)
             }
 
-            Prop("renderSurface", "surface") { view: SaMiMapboxView, value: String ->
+            Prop("renderSurface", "texture") { view: SaMiMapboxView, value: String ->
                 view.setRenderSurface(value)
             }
 

@@ -5,7 +5,8 @@
 - `SaMiMapboxView` is the Expo native host and owns one native Mapbox `MapView` child.
 - The ExpoView opts into `shouldUseAndroidLayout`, so Android measures and lays out the child when it is inserted or requests layout; React Native/Yoga continues to own the outer ExpoView bounds.
 - The Mapbox `MapView` is inserted directly into the ExpoView. No intermediate native container is used.
-- `MapInitOptions` uses Mapbox's standard default plugin list. The Mapbox lifecycle plugin is the sole owner of Activity and view attach/detach lifecycle transitions. SaMi does not manually forward duplicate `onStart`, `onResume`, or `onStop` calls.
+- `MapInitOptions` uses Mapbox's standard default plugin list except for the ScaleBar plugin. The compass, logo, attribution, and Mapbox lifecycle plugin remain available; the distance scale ornament is intentionally removed.
+- Android rendering uses Mapbox's supported `TextureView` surface. It participates in normal Android view composition and is selected for the Runner's animated screen transitions; this trades some rendering throughput and memory for view-hierarchy compatibility.
 - A temporary React/Expo screen detach retains the same `MapView`, style and camera. Mapbox's view lifecycle handles stopping and resuming rendering as the map view detaches and reattaches. Expo disposal destroys the native map.
 
 ## Location ownership

@@ -21,7 +21,7 @@ function SaMiMapboxView(props: SaMiMapboxViewProps) {
       initialLongitude={props.initialLongitude ?? 36.8219}
       initialZoom={props.initialZoom ?? 14.5}
       initialBearing={props.initialBearing ?? 0}
-      renderSurface="surface"
+      renderSurface="texture"
       showUserLocation={props.showUserLocation ?? false}
       hasUserLocation={props.hasUserLocation ?? false}
       userLatitude={props.userLatitude ?? props.initialLatitude ?? -1.2921}

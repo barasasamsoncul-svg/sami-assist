@@ -10,6 +10,7 @@ import com.mapbox.common.MapboxOptions
 import com.mapbox.geojson.Point
 import com.mapbox.maps.MapInitOptions
 import com.mapbox.maps.MapView
+import com.mapbox.maps.plugin.Plugin
 import com.mapbox.maps.renderer.RendererSetupErrorListener
 import com.mapbox.maps.plugin.attribution.attribution
 import com.mapbox.maps.plugin.gestures.gestures
@@ -22,7 +23,7 @@ internal data class SaMiMapboxConfig(
     val initialLongitude: Double = SaMiMapboxDefaults.DEFAULT_LONGITUDE,
     val initialZoom: Double = 14.5,
     val initialBearing: Double = 0.0,
-    val renderSurface: String = "surface",
+    val renderSurface: String = "texture",
     val screenActive: Boolean = true,
     val showUserLocation: Boolean = false,
     val hasUserLocation: Boolean = false,
@@ -269,14 +270,22 @@ internal class SaMiMapboxRenderer(
         try {
             MapboxOptions.accessToken = config.accessToken
 
-            // Match SaMi's first successful Mapbox integration: let the SDK
-            // install its standard default plugin list and lifecycle plugin.
-            // SaMi's Location controller installs its custom provider before
-            // enabling the puck, so the default location plugin does not start
-            // a second device-location stream.
+            // Keep Mapbox's standard plugins and its built-in view lifecycle,
+            // but omit the ScaleBar ornament. The Runner dashboard is a
+            // full-bleed map and intentionally has no distance scale overlay.
+            // Use TextureView so the map is composited as a normal Android
+            // view during React Native screen fade transitions; this trades
+            // some rendering throughput for view-hierarchy compatibility.
+            // SaMi Location installs its custom provider before enabling the
+            // puck, preserving the single SaMi GPS source.
+            val pluginsWithoutScaleBar = MapInitOptions.defaultPluginList.filterNot { plugin ->
+                plugin.id == Plugin.MAPBOX_SCALEBAR_PLUGIN_ID
+            }
             val initOptions = MapInitOptions(
                 context = context,
+                plugins = pluginsWithoutScaleBar,
                 cameraOptions = SaMiMapboxCameraController.createInitialCamera(config),
+                textureView = true,
                 styleUri = config.mapStyleURL,
             )
 
@@ -649,7 +658,7 @@ internal class SaMiMapboxRenderer(
         val zoom = input.initialZoom.takeIf { it.isFinite() } ?: 14.5
         val bearing = input.initialBearing.takeIf { it.isFinite() } ?: 0.0
         val style = input.mapStyleURL.trim().ifBlank { SaMiMapboxDefaults.DAY_STYLE }
-        val surface = "surface"
+        val surface = "texture"
         val userLatitude = input.userLatitude.takeIf { it.isFinite() && it in -90.0..90.0 } ?: SaMiMapboxDefaults.DEFAULT_LATITUDE
         val userLongitude = input.userLongitude.takeIf { it.isFinite() && it in -180.0..180.0 } ?: SaMiMapboxDefaults.DEFAULT_LONGITUDE
         val userBearing = input.userBearing.takeIf { it.isFinite() && it >= 0.0 && it < 360.0 } ?: 0.0

@@ -25,7 +25,7 @@ function firstParam(value: string | string[] | undefined): string | undefined {
 export default function SaMiMapboxLabScreen() {
   const params = useLocalSearchParams<SearchParams>();
   const requestedStyle = firstParam(params.style);
-  const renderSurface = "surface" as const;
+  const renderSurface = "texture" as const;
   const initialStyle = requestedStyle === "night" ? NIGHT_STYLE : DAY_STYLE;
   const [mapStyleURL, setMapStyleURL] = useState(initialStyle);
   const [status, setStatus] = useState("WAITING FOR NATIVE MAPBOX");

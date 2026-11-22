@@ -1,6 +1,6 @@
 import type { StyleProp, ViewStyle } from "react-native";
 
-export type SaMiMapRenderSurface = "surface";
+export type SaMiMapRenderSurface = "texture";
 
 export type SaMiMapCameraMode = "free" | "follow" | "navigation";
 export type SaMiPuckBearing = "course" | "heading";

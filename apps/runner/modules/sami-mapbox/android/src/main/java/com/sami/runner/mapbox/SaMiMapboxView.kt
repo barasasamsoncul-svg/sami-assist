@@ -89,7 +89,7 @@ class SaMiMapboxView(
     }
 
     fun setRenderSurface(@Suppress("UNUSED_PARAMETER") value: String) {
-        updateConfig { it.copy(renderSurface = "surface") }
+        updateConfig { it.copy(renderSurface = "texture") }
     }
 
     /**
