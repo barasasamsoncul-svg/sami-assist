@@ -34,6 +34,21 @@ const categories = [
   ["local_assistance", "Local assistance"],
   ["other", "Other legitimate task"],
 ] as const;
+
+// Customer-friendly service categories are priced using the closest configured
+// SaMi Errands rate category. Keep the selected category in the UI, but submit
+// the canonical pricing category accepted by the server and database.
+const pricingCategoryByRequestCategory: Record<string, string> = {
+  groceries: "shopping",
+  food_delivery: "shopping",
+  shopping_gifts: "shopping",
+  pharmacy_health: "shopping",
+  bill_payments: "documents_admin",
+  laundry_cleaning: "pickup_delivery",
+  home_services: "local_assistance",
+  pet_care: "local_assistance",
+};
+
 const sizes = [
   ["none", "No item to carry"],
   ["small", "Small item"],
@@ -162,7 +177,9 @@ export default function RequestScreen() {
     return () => { active = false; clearTimeout(timeout); };
   }, [pickup, destination]);
 
-  const rule = rules.find((row) => row.category === category);
+  const pricingCategory =
+    pricingCategoryByRequestCategory[category] ?? category;
+  const rule = rules.find((row) => row.category === pricingCategory);
   const paymentOptions: readonly (readonly [string, string])[] = mpesaInAppAvailable
     ? [["cash", "Cash"], ["in_app", "M-PESA in app"]]
     : [["cash", "Cash"]];
@@ -253,7 +270,7 @@ export default function RequestScreen() {
       if (paymentMethod === "in_app" && !mpesaInAppAvailable) throw new Error("M-PESA in-app payments are temporarily unavailable. Please choose cash.");
       if (paymentMethod === "in_app" && !mpesaPhone.trim()) throw new Error("Enter the Kenyan M-PESA number for the payment prompt.");
       const created = await dispatchPost<{ errand: { id: string; public_code: string; service_fee_amount: number | string } }>("createErrand", {
-        title: title.trim(), description: description.trim(), category, serviceArea: serviceArea.trim(),
+        title: title.trim(), description: description.trim(), category: pricingCategory, serviceArea: serviceArea.trim(),
         pickupLocation: pickupLocation.trim(), destinationLocation: destinationLocation.trim(),
         pickupLatitude: pickup?.lat ?? "", pickupLongitude: pickup?.lng ?? "",
         destinationLatitude: destination?.lat ?? "", destinationLongitude: destination?.lng ?? "",
