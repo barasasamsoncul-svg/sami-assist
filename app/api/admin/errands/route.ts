@@ -746,7 +746,7 @@ async function assignErrand(request: Request) {
 }
 
 
-async function confirmErrandCompletion(
+async function completeErrandAsAdmin(
   request: Request,
   input: Record<string, unknown>,
 ) {
@@ -808,16 +808,16 @@ async function confirmErrandCompletion(
       );
     }
 
-    if (!job.accepted_runner_id) {
+    const completableRunnerStatuses = new Set([
+      "offered",
+      "accepted",
+      "in_progress",
+      "completion_submitted",
+      "completed",
+    ]);
+    if (!completableRunnerStatuses.has(job.status)) {
       throw new AdminErrandError(
-        "The Runner has not accepted this errand, so its completion cannot be confirmed.",
-        409,
-      );
-    }
-
-    if (!["completion_submitted", "completed"].includes(job.status)) {
-      throw new AdminErrandError(
-        "The Runner has not submitted this errand for completion review.",
+        "This Runner job is cancelled or cannot be completed.",
         409,
       );
     }
@@ -840,8 +840,7 @@ async function confirmErrandCompletion(
       throw new AdminErrandError("The customer errand was not found.", 404);
     }
 
-    const alreadyCompleted = errand.status === "completed";
-    const allowedCustomerStatuses = new Set([
+    const completableCustomerStatuses = new Set([
       "requested",
       "assigned",
       "accepted",
@@ -849,20 +848,19 @@ async function confirmErrandCompletion(
       "completion_submitted",
       "completed",
     ]);
-
-    if (!allowedCustomerStatuses.has(errand.status)) {
+    if (!completableCustomerStatuses.has(errand.status)) {
       throw new AdminErrandError(
-        "This errand is cancelled or disputed and cannot be confirmed as completed.",
+        "This errand is cancelled or disputed and cannot be marked complete.",
         409,
       );
     }
 
-    if (!alreadyCompleted) {
+    // Admin is the temporary completer, not a proxy for customer confirmation.
+    if (errand.status !== "completed") {
       await customerClient.query(
         `UPDATE public.errands
          SET status = 'completed',
              completed_at = COALESCE(completed_at, now()),
-             customer_confirmed_at = COALESCE(customer_confirmed_at, now()),
              version = version + 1,
              updated_at = now()
          WHERE id = $1`,
@@ -879,50 +877,37 @@ async function confirmErrandCompletion(
            note,
            metadata
          )
-         VALUES ($1, NULL, 'admin_confirmed_completion', $2, 'completed', $3, $4::jsonb)`,
+         VALUES ($1, NULL, 'admin_completed_errand', $2, 'completed', $3, $4::jsonb)`,
         [
           errandId,
           errand.status,
-          "Admin confirmed the Runner's submitted completion.",
+          "Admin marked this errand complete as the temporary completion operator.",
           JSON.stringify({
             adminId: auth.user.id,
             runnerId: job.accepted_runner_id,
             runnerJobId: job.id,
-            source: "admin_completion_review",
+            source: "admin_manual_completion",
+            completedBy: "admin",
           }),
         ],
       );
     }
 
-    await customerClient.query(
-      `INSERT INTO public.customer_errand_outbox (
-         errand_id,
-         event_type,
-         payload
-       )
-       VALUES ($1, 'errand.customer_confirmed', $2::jsonb)
-       ON CONFLICT (errand_id, event_type, event_version) DO NOTHING`,
-      [
-        errandId,
-        JSON.stringify({
-          eventType: "errand.customer_confirmed",
-          customerErrandRef: errandId,
-          publicCode: errand.public_code,
-          status: "completed",
-          runnerRef: job.accepted_runner_id,
-          confirmedBy: "admin",
-          adminId: auth.user.id,
-        }),
-      ],
-    );
-
+    // Close the linked job from this Admin operation; no Runner app change
+    // or APK/OTA update is involved.
     if (job.status !== "completed") {
       await runnerClient.query(
         `UPDATE public.runner_jobs
          SET status = 'completed',
              completed_at = COALESCE(completed_at, now()),
              updated_at = now()
-         WHERE id = $1 AND status = 'completion_submitted'`,
+         WHERE id = $1
+           AND status IN (
+             'offered',
+             'accepted',
+             'in_progress',
+             'completion_submitted'
+           )`,
         [job.id],
       );
 
@@ -936,27 +921,28 @@ async function confirmErrandCompletion(
            note,
            metadata
          )
-         VALUES ($1, $2, 'admin_confirmed_completion', 'completion_submitted', 'completed', $3, $4::jsonb)`,
+         VALUES ($1, $2, 'admin_completed_errand', $3, 'completed', $4, $5::jsonb)`,
         [
           job.id,
           job.accepted_runner_id,
-          "Admin confirmed the submitted errand completion.",
+          job.status,
+          "Admin completed this errand during the temporary Admin-operated test workflow.",
           JSON.stringify({
             adminId: auth.user.id,
             customerErrandRef: errandId,
+            completedBy: "admin",
           }),
         ],
       );
 
-      await runnerClient.query(
-        "DELETE FROM public.runner_live_locations WHERE runner_id = $1 AND job_id = $2",
-        [job.accepted_runner_id, job.id],
-      );
+      if (job.accepted_runner_id) {
+        await runnerClient.query(
+          "DELETE FROM public.runner_live_locations WHERE runner_id = $1 AND job_id = $2",
+          [job.accepted_runner_id, job.id],
+        );
+      }
     }
 
-    // The Customer record is committed first. If the Runner commit fails,
-    // this endpoint is safe to retry: the completed Customer status is
-    // idempotent, while the Runner job can still advance from submitted.
     await customerClient.query("COMMIT");
     customerTransactionOpen = false;
     customerCommitted = true;
@@ -969,8 +955,7 @@ async function confirmErrandCompletion(
       {
         ok: true,
         status: "completed",
-        message:
-          "Errand " + errand.public_code + " is confirmed complete by Admin.",
+        message: "Errand " + errand.public_code + " was marked complete by Admin.",
         runnerId: job.accepted_runner_id,
         jobId: job.id,
       },
@@ -991,19 +976,19 @@ async function confirmErrandCompletion(
     }
 
     console.error(
-      "[SaMi Admin errands] Completion confirmation failed.",
+      "[SaMi Admin errands] Admin completion failed.",
       cause instanceof Error ? cause.message : "unknown error",
     );
 
     if (customerCommitted && !runnerCommitted) {
       return errorResponse(
-        "The Customer errand is marked complete, but the Runner record still needs finalizing. Refresh and press Confirm completion again to reconcile it.",
+        "The errand is marked complete for the Customer, but the Runner job still needs closing. Retry Mark complete to reconcile the records.",
         503,
       );
     }
 
     return errorResponse(
-      "The errand completion could not be confirmed. No final confirmation was returned.",
+      "The errand could not be marked complete. No successful completion was returned.",
       503,
     );
   } finally {
@@ -1022,9 +1007,9 @@ export async function POST(request: Request) {
     body &&
     typeof body === "object" &&
     !Array.isArray(body) &&
-    (body as Record<string, unknown>).action === "confirm_completion"
+    (body as Record<string, unknown>).action === "complete_as_admin"
   ) {
-    return confirmErrandCompletion(request, body as Record<string, unknown>);
+    return completeErrandAsAdmin(request, body as Record<string, unknown>);
   }
 
   return assignErrand(request);
