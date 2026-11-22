@@ -40,7 +40,7 @@ const categories = [
 // the canonical pricing category accepted by the server and database.
 const pricingCategoryByRequestCategory: Record<string, string> = {
   groceries: "shopping",
-  food_delivery: "shopping",
+  food_delivery: "pickup_delivery",
   shopping_gifts: "shopping",
   pharmacy_health: "shopping",
   bill_payments: "documents_admin",
