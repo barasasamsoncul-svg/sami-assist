@@ -1,62 +1,45 @@
-# Apply SaMi Runner Dashboard + native Mapbox refactor to local `main`
+# SaMi Runner — first Mapbox integration restoration (theme + global shell preserved)
 
-This is an overlay ZIP. Its folders already begin at `apps/runner/`; extract the ZIP into the **repository root** (`C:\\dev\\sami-assist-web`), not into `apps/runner`.
+This overlay replaces complete files on your existing local `main`. It does not create a branch, commit, or push.
 
-## 1. Protect the current local work
+## Before applying
 
-Open PowerShell:
+From `C:\dev\sami-assist-web`:
 
 ```powershell
-cd C:\dev\sami-assist-web
 git status --short
 ```
 
-Review the status and keep your existing local changes. The ZIP replaces only the files listed in `PATCH-MANIFEST.md`; it does not touch `.env` files, tokens, lockfiles, app configuration, or unrelated apps.
+Keep a copy of any uncommitted changes. The ZIP contains complete replacements for five files only.
 
-## 2. Extract over the local `main` checkout
+## Apply
 
-Use Windows File Explorer to extract the ZIP into `C:\dev\sami-assist-web`, accepting replacement only for the listed paths. No Git branch is created, and no commit or push is made by this package.
+Extract this ZIP into the repository root, preserving the relative paths.
 
-Alternatively, with the ZIP saved in Downloads:
+Review the exact changed files:
 
 ```powershell
-Expand-Archive -LiteralPath "$env:USERPROFILE\Downloads\sami-runner-dashboard-map-refactor.zip" -DestinationPath "C:\dev\sami-assist-web" -Force
+git diff -- "apps/runner/modules/sami-mapbox/android/src/main/java/com/sami/runner/mapbox/SaMiMapboxView.kt"
+git diff -- "apps/runner/modules/sami-mapbox/android/src/main/java/com/sami/runner/mapbox/SaMiMapboxRenderer.kt"
+git diff -- "apps/runner/src/features/runner-dashboard/RunnerDashboardView.tsx"
+git diff -- "apps/runner/app/_layout.tsx"
 ```
 
-## 3. Typecheck
+Build and install:
 
 ```powershell
-cd C:\dev\sami-assist-web\apps\runner
-npm run typecheck
-```
-
-Resolve any reported TypeScript errors before building.
-
-## 4. Build and install a new Android binary
-
-The renderer and style-controller changes are native Kotlin. An OTA update cannot deliver these changes; build a new APK:
-
-```powershell
-cd C:\dev\sami-assist-web\apps\runner\android
+cd apps\runner\android
 .\gradlew.bat assembleRelease
-adb install -r .\app\build\outputs\apk\release\app-release.apk
+adb install -r ".\app\build\outputs\apk\release\app-release.apk"
 ```
 
-## 5. Device acceptance tests
+Do not push until the visual and lifecycle acceptance checks in `PATCH-MANIFEST.md` pass.
 
-1. Cold-launch SaMi Runner and verify the Dashboard displays the Mapbox map, not a blank/white surface.
-2. Open another Runner page and return to Dashboard. Verify the map recreates and renders.
-3. Background the app and return. Verify the map renders again.
-4. Switch the user-selected day/night theme and verify the style reloads.
-5. Only after those base map tests pass, test location puck, availability, active errands, route guidance, and voice guidance.
+## Preserved unchanged
 
-The Android logs should show the relevant sequence: `native_host_has_size`, `map_view_created`, `map_view_has_size`, `map_loaded`, and `map_ready_verified`. On a return from another screen, a new MapView generation is expected because the old SurfaceView is intentionally destroyed on host detach.
-
-## 6. Commit/push only after the local tests pass
-
-```powershell
-cd C:\dev\sami-assist-web
-git status --short
-```
-
-Keep working on your existing local `main`. Commit and push only after typecheck, APK build, and device acceptance tests succeed.
+- `apps/runner/src/theme.ts` — single global theme context and the global `SaMiOverlay`.
+- `apps/runner/src/components/SaMiOverlay.tsx` — existing shared overlay implementation.
+- `apps/runner/src/components/RunnerDashboardChrome.tsx` — existing dashboard chrome, theme integration and `showOverlay()` calls.
+- `apps/runner/src/features/runner-dashboard/useRunnerDashboard.ts` — existing selected-theme map style, screen focus, AppState and single location pipeline.
+- `RunnerDashboardMapLayer`, `RunnerDashboardWorkspace`, camera, style, location, route and voice controllers.
+- Package manifests, lockfiles, Expo config, Gradle dependencies, credentials, API and database code.

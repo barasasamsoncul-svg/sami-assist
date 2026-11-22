@@ -1,4 +1,4 @@
-import { StatusBar, View } from "react-native";
+import { View } from "react-native";
 import { SaMiRunnerDashboardChrome } from "@/components/RunnerDashboardChrome";
 import { styles } from "./styles";
 import { useRunnerDashboard } from "./useRunnerDashboard";
@@ -8,15 +8,14 @@ import { RunnerDashboardWorkspace } from "./components/RunnerDashboardWorkspace"
 export default function RunnerDashboardView() {
   const dashboard = useRunnerDashboard();
   const {
-    insets, authorized, isOnline, onlineLabel, canChangeAvailability,
+    colors, insets, authorized, isOnline, onlineLabel, canChangeAvailability,
     availabilityBusy, currentLocationName, runner, locationQualityLabel,
     workspaceExpanded, setWorkspaceExpanded, toggleAvailability, jobs,
     activeJob, activeRouteTarget, error, mapError, openDashboardSection,
   } = dashboard;
 
   return (
-    <View style={styles.root}>
-      <StatusBar barStyle="light-content" />
+    <View style={[styles.root, { backgroundColor: colors.paper }]}>
       <RunnerDashboardMapLayer dashboard={dashboard} />
       <RunnerDashboardWorkspace dashboard={dashboard} />
       {authorized ? (

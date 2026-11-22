@@ -1,62 +1,27 @@
-# SaMi Maps — Android native renderer and Runner location
+# SaMi Mapbox native module — Stage 1 foundation
 
-SaMi Maps is a SaMi-owned Expo native module backed by the official Mapbox Maps SDK. It does not use `@rnmapbox/maps`.
+## Native ownership
 
-## Android rendering contract
+- `SaMiMapboxView` is the Expo native host and owns one native Mapbox `MapView` child.
+- The ExpoView opts into `shouldUseAndroidLayout`, so Android measures and lays out the child when it is inserted or requests layout; React Native/Yoga continues to own the outer ExpoView bounds.
+- The Mapbox `MapView` is inserted directly into the ExpoView. No intermediate native container is used.
+- `MapInitOptions` uses Mapbox's standard default plugin list. The Mapbox lifecycle plugin is the sole owner of Activity and view attach/detach lifecycle transitions. SaMi does not manually forward duplicate `onStart`, `onResume`, or `onStop` calls.
+- A temporary React/Expo screen detach retains the same `MapView`, style and camera. Mapbox's view lifecycle handles stopping and resuming rendering as the map view detaches and reattaches. Expo disposal destroys the native map.
 
-- Android uses **SurfaceView only**. TextureView is not exposed as a production option.
-- `SaMiMapboxRenderer` creates a Mapbox `MapView` only after the Expo native host has a non-zero measured width and height.
-- The Mapbox `MapView` is a direct child of the Expo native host. Do not insert an additional native wrapper around the dashboard map view.
-- The renderer owns Activity lifecycle forwarding, native view creation and destruction, camera policy, style changes, diagnostics, and first-frame readiness.
-- When an Expo host detaches from the Android window, SaMi stops and destroys its old `MapView` and `SurfaceView`. It does not retain a detached SurfaceView. A new MapView is created after the host is attached and measured again. This is intentional: a retained SurfaceView can remain attached to an invalid Android surface after Expo Router navigation.
-- Map style/tile loading failures receive up to three bounded automatic retries. The renderer reports retry and exhaustion diagnostics; it does not silently loop forever.
-- React Native overlays are rendered as siblings above the native map. Keep map overlays `position: absolute` and avoid wrapping the native MapView in another absolute-fill native View.
+## Location ownership
 
-## Single-source location contract
+SaMi Runner's existing `runner-location-service` remains the only device-location source. The native module receives those fixes and configures Mapbox's puck through SaMi's custom location provider. Do not start a second GPS subscription or a Navigation SDK trip session in this module.
 
-- `apps/runner/src/location/runner-location-service.ts` is the single device-location source, using Expo Location and Expo TaskManager.
-- The TaskManager task is defined at module scope and imported by the root Expo Router layout before routes mount.
-- Foreground and background fixes use the same task. Eligible fixes are published through the existing authenticated Runner location endpoint.
-- The visible dashboard subscribes to those exact fixes and passes them to the native Mapbox view.
-- Android uses an Expo Location foreground service while the Runner is online or has a trackable active errand. Sharing stops when the Runner goes offline or signs out.
-- Mapbox receives those fixes through `SaMiMapboxLocationProvider`; its default device-location provider is replaced before the puck is enabled. This avoids starting a second GPS stream.
-- Background permission is requested only after an explanatory user action when the Runner goes online. Android may open app Settings for the “Allow all the time” permission.
+## Stage boundaries
 
-## Runner Dashboard structure
+Stage 1 covers stable native map creation, native child layout, default Mapbox lifecycle ownership, basic rendering readiness and retention across screen transitions. Theme polish, camera/location behavior, routing/voice guidance, network resilience and production performance remain in their later roadmap stages.
 
-The route at `app/(app)/index.tsx` is intentionally a small route entry. Dashboard code is separated into:
+## Acceptance checks
 
-- `src/features/runner-dashboard/useRunnerDashboard.ts` — authenticated runner state, errands, availability, location subscription, polling, and navigation actions.
-- `src/features/runner-dashboard/components/RunnerDashboardMapLayer.tsx` — direct-child native Mapbox view and map overlays.
-- `src/features/runner-dashboard/components/RunnerDashboardWorkspace.tsx` — account state, active errand, offers, availability, and account actions.
-- `src/features/runner-dashboard/components/RunnerDashboardPrimitives.tsx` — shared dashboard buttons, headings, and route points.
-- `src/features/runner-dashboard/styles.ts` — shared dashboard visual styles.
-- `src/features/runner-dashboard/utils.ts` and `types.ts` — display helpers and shared model types.
+1. Cold launch displays a loaded Mapbox style without tapping Locate Me or another control.
+2. Open a different Runner screen and return: the same native `MapView` is reused and renders again without a manual refresh.
+3. Background and foreground the app: Mapbox resumes through its built-in lifecycle handling.
+4. The selected Runner theme still supplies the map's day/night style; the existing global `SaMiOverlay` and `RunnerDashboardChrome` remain unchanged.
+5. SaMi's existing location fixes continue to update the puck; no duplicate device-location source is started.
 
-The dashboard preserves the existing runner approval gate, account restrictions, errand acceptance and progression, availability rules, location permissions, background tracking, polling, route guidance state, and sign-out flow.
-
-## Verification route
-
-The temporary route `apps/runner/app/mapbox-lab.tsx` remains an isolated renderer test without location permissions or Navigation SDK sessions. Open the fixed SurfaceView test:
-
-```powershell
-adb shell am start -a android.intent.action.VIEW -d "samirunner://mapbox-lab" com.sami.runner
-```
-
-## Required verification after native changes
-
-From `apps/runner`:
-
-```powershell
-npm run typecheck
-```
-
-Because the Android renderer source changes are native Kotlin, build and install a new Android binary; an OTA update cannot install these changes. After installation verify:
-
-1. Dashboard map loads on a cold launch and reports `native_host_has_size`, `map_view_has_size`, `map_loaded`, and `map_ready_verified`.
-2. Open another Runner page, return to Dashboard, and verify a new `MapView` generation loads instead of a blank surface.
-3. Background and foreground the app, then verify the map becomes ready again.
-4. Switch day/night theme and confirm style changes load without hiding the existing overlays.
-5. Test GPS and active-errand navigation only after the base map lifecycle tests pass.
-
-Do not commit or push this local refactor until typecheck, native build, and device acceptance tests pass.
+A successful Android build is necessary but does not prove visible rendering. Complete the device acceptance checks above before pushing.

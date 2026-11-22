@@ -5,29 +5,15 @@ import android.os.Handler
 import android.os.Looper
 import android.view.View
 import android.view.ViewGroup
-
-import androidx.lifecycle.LifecycleOwner
-
 import com.mapbox.common.Cancelable
 import com.mapbox.common.MapboxOptions
 import com.mapbox.geojson.Point
 import com.mapbox.maps.MapInitOptions
 import com.mapbox.maps.MapView
 import com.mapbox.maps.renderer.RendererSetupErrorListener
-import com.mapbox.maps.plugin.Plugin
 import com.mapbox.maps.plugin.attribution.attribution
 import com.mapbox.maps.plugin.gestures.gestures
 import com.mapbox.maps.plugin.logo.logo
-
-import expo.modules.kotlin.AppContext
-
-private val SA_MI_MAPS_STAGE_ONE_PLUGINS = listOf(
-    Plugin.Mapbox(Plugin.MAPBOX_CAMERA_PLUGIN_ID),
-    Plugin.Mapbox(Plugin.MAPBOX_GESTURES_PLUGIN_ID),
-    Plugin.Mapbox(Plugin.MAPBOX_LOCATION_COMPONENT_PLUGIN_ID),
-    Plugin.Mapbox(Plugin.MAPBOX_LOGO_PLUGIN_ID),
-    Plugin.Mapbox(Plugin.MAPBOX_ATTRIBUTION_PLUGIN_ID),
-)
 
 internal data class SaMiMapboxConfig(
     val accessToken: String = "",
@@ -54,15 +40,16 @@ internal data class SaMiMapboxConfig(
  * injects position fixes through a custom provider; this renderer never
  * requests device location or starts a second GPS subscription.
  *
- * A MapView is created only after the Expo host has a real measured size.
- * When that host leaves the Android window, the old SurfaceView and MapView
- * are destroyed. A fresh MapView is created after the host is attached and
- * measured again; retaining a detached SurfaceView caused blank maps when
- * React Navigation/Expo Router restored a screen.
+ * Mapbox's first SaMi integration added MapView directly to the ExpoView,
+ * used Mapbox's standard default plugin configuration, and retained the same
+ * MapView when the screen detached. Mapbox's default lifecycle plugin owns
+ * Activity and View attach/detach lifecycle transitions; SaMi does not forward
+ * duplicate onStart/onStop calls. The same MapView is retained when the screen
+ * returns and destroyed only when Expo disposes it. SaMi Location remains the
+ * only source of device fixes.
  */
 internal class SaMiMapboxRenderer(
     context: Context,
-    appContext: AppContext,
     private val diagnostics: SaMiMapboxDiagnostics,
     private val onReady: (Map<String, Any>) -> Unit,
     private val onError: (String) -> Unit,
@@ -80,64 +67,17 @@ internal class SaMiMapboxRenderer(
     private var mapView: MapView? = null
     private var styleController: SaMiMapboxStyleController? = null
     private var locationController: SaMiMapboxLocationController? = null
-    private val lifecycle = SaMiMapboxLifecycle(
-        activityProvider = {
-            appContext.currentActivity as? LifecycleOwner
-        },
-        mapViewProvider = { mapView },
-        diagnostics = diagnostics,
-        onStopped = { handleLifecycleStopped() },
-        onResumed = { handleLifecycleResumed() },
-    )
 
     private var mapLoaded = false
     private var firstFrameRendered = false
     private var readyDispatched = false
     private var firstUsableLayoutLogged = false
-    private var hostSizeLogged = false
     private var mapGeneration = 0
     private var recreationSequence = 0L
     private var styleRetryAttempts = 0
     private var pendingStyleRetry: Runnable? = null
 
     private val subscriptions = mutableListOf<Cancelable>()
-
-    /**
-     * Android can attach an ExpoView before React Native's first Yoga layout.
-     * Wait for a non-zero host size instead of creating Mapbox against a 0x0
-     * parent and hoping a detached SurfaceView will recover later.
-     */
-    private val hostLayoutChangeListener = View.OnLayoutChangeListener {
-            view,
-            left,
-            top,
-            right,
-            bottom,
-            oldLeft,
-            oldTop,
-            oldRight,
-            oldBottom,
-        ->
-        val width = right - left
-        val height = bottom - top
-
-        if (width > 0 && height > 0) {
-            if (!hostSizeLogged) {
-                hostSizeLogged = true
-                diagnostics.info(
-                    code = "native_host_has_size",
-                    message = "Expo native host has a non-zero layout: ${width}x${height} px.",
-                    surface = config.renderSurface,
-                )
-            }
-
-            if (hostAttached && mapView == null) {
-                view.postOnAnimation {
-                    if (hostAttached && mapView == null) createMapView()
-                }
-            }
-        }
-    }
 
     private val layoutChangeListener = View.OnLayoutChangeListener {
             view,
@@ -250,41 +190,29 @@ internal class SaMiMapboxRenderer(
     fun onHostAttached(parent: ViewGroup) {
         if (disposed) return
 
-        // Defensive: if an Expo host instance is replaced without the normal
-        // detach callback, never move a MapView and its SurfaceView between
-        // different ViewGroups.
+        // Expo may provide a new native host after remounting. A MapView
+        // belongs to exactly one ExpoView; destroy it before changing owners.
         if (host != null && host !== parent) {
-            lifecycle.detach()
+            cancelPendingStyleRetry()
             destroyCurrentMapView()
-            host?.removeOnLayoutChangeListener(hostLayoutChangeListener)
         }
 
         host = parent
         hostAttached = true
-        hostSizeLogged = false
-        parent.removeOnLayoutChangeListener(hostLayoutChangeListener)
-        parent.addOnLayoutChangeListener(hostLayoutChangeListener)
 
         diagnostics.info(
             code = "native_host_attached",
-            message = "SaMi Maps native host view attached to the Android window.",
+            message = "SaMi Maps native ExpoView attached to the Android window.",
             surface = config.renderSurface,
         )
 
-        if (parent.width > 0 && parent.height > 0) {
-            hostSizeLogged = true
-            diagnostics.info(
-                code = "native_host_has_size",
-                message = "Expo native host has a non-zero layout: ${parent.width}x${parent.height} px.",
-                surface = config.renderSurface,
-            )
-            if (config.accessToken.isNotBlank()) createMapView()
-        } else {
-            diagnostics.info(
-                code = "native_host_waiting_for_layout",
-                message = "MapView creation is deferred until Expo reports a non-zero native host layout.",
-                surface = config.renderSurface,
-            )
+        // Create the MapView as soon as the native host and access token are
+        // available. Do not wait for a non-zero Yoga layout: that delays child
+        // insertion until after the ExpoView has already been measured.
+        if (config.accessToken.isNotBlank() && mapView == null) {
+            createMapView()
+        } else if (mapView != null) {
+            locationController?.update(config)
         }
     }
 
@@ -292,20 +220,17 @@ internal class SaMiMapboxRenderer(
         if (!hostAttached) return
 
         hostAttached = false
-        host?.removeOnLayoutChangeListener(hostLayoutChangeListener)
         cancelPendingStyleRetry()
-        lifecycle.detach()
 
-        // A SurfaceView retained across Expo host detach/reattach can hold an
-        // invalid Android surface. Remove it from the view tree and destroy
-        // the MapView; on the next host attach we create a fresh renderer.
-        destroyCurrentMapView()
-        host = null
-        hostSizeLogged = false
+        // Keep the same MapView and its camera/style state. Mapbox's default
+        // lifecycle plugin observes the MapView's own window attachment and
+        // stops/restarts rendering automatically across screen transitions.
+        firstFrameRendered = false
+        readyDispatched = false
 
         diagnostics.info(
             code = "native_host_detached",
-            message = "SaMi Maps host detached; the old MapView and SurfaceView were destroyed for safe recreation on return.",
+            message = "SaMi Maps host detached; its existing MapView is retained for Mapbox-managed reattachment.",
             surface = config.renderSurface,
         )
     }
@@ -316,9 +241,7 @@ internal class SaMiMapboxRenderer(
         disposed = true
         hostAttached = false
         recreationSequence += 1L
-        host?.removeOnLayoutChangeListener(hostLayoutChangeListener)
         cancelPendingStyleRetry()
-        lifecycle.dispose()
         destroyCurrentMapView()
         host = null
 
@@ -335,15 +258,6 @@ internal class SaMiMapboxRenderer(
         val parent = host
         if (!hostAttached || parent == null || !parent.isAttachedToWindow) return
 
-        if (parent.width <= 0 || parent.height <= 0) {
-            diagnostics.info(
-                code = "map_view_creation_waiting_for_host_size",
-                message = "MapView creation is waiting for a non-zero Expo host size.",
-                surface = config.renderSurface,
-            )
-            return
-        }
-
         if (config.accessToken.isBlank()) {
             reportError(
                 code = "missing_access_token",
@@ -355,16 +269,14 @@ internal class SaMiMapboxRenderer(
         try {
             MapboxOptions.accessToken = config.accessToken
 
+            // Match SaMi's first successful Mapbox integration: let the SDK
+            // install its standard default plugin list and lifecycle plugin.
+            // SaMi's Location controller installs its custom provider before
+            // enabling the puck, so the default location plugin does not start
+            // a second device-location stream.
             val initOptions = MapInitOptions(
                 context = context,
-                // This explicit plugin set deliberately excludes Mapbox's
-                // default lifecycle plugin. SaMiMapboxLifecycle is the single
-                // owner forwarding Activity and native-host lifecycle events.
-                // Location is enabled only through SaMi's custom provider,
-                // which receives the single Expo Location stream.
-                plugins = SA_MI_MAPS_STAGE_ONE_PLUGINS,
                 cameraOptions = SaMiMapboxCameraController.createInitialCamera(config),
-                textureView = false,
                 styleUri = config.mapStyleURL,
             )
 
@@ -391,6 +303,8 @@ internal class SaMiMapboxRenderer(
             locationController = SaMiMapboxLocationController(createdMapView, diagnostics)
             subscribeToMapEvents(createdMapView, mapGeneration)
 
+            // Restore the original native hierarchy: MapView is a direct
+            // child of the ExpoView supplied by React Native.
             parent.addView(
                 createdMapView,
                 ViewGroup.LayoutParams(
@@ -398,14 +312,17 @@ internal class SaMiMapboxRenderer(
                     ViewGroup.LayoutParams.MATCH_PARENT,
                 ),
             )
+            // ExpoView opts into Android child layout so this request measures
+            // MapView even when its host already completed the first Yoga pass.
+            parent.requestLayout()
+            parent.invalidate()
 
             diagnostics.info(
                 code = "map_view_created",
-                message = "Created Mapbox Maps SDK MapView (generation $mapGeneration) inside a measured Expo host.",
+                message = "Created Mapbox Maps SDK MapView (generation $mapGeneration) directly inside the ExpoView.",
                 surface = config.renderSurface,
             )
 
-            lifecycle.attach()
             locationController?.update(config)
         } catch (error: Exception) {
             destroyCurrentMapView()
@@ -621,7 +538,6 @@ internal class SaMiMapboxRenderer(
             surface = config.renderSurface,
         )
 
-        lifecycle.detach()
         cancelPendingStyleRetry()
         destroyCurrentMapView()
 
@@ -710,40 +626,6 @@ internal class SaMiMapboxRenderer(
         readyDispatched = false
         firstUsableLayoutLogged = false
         styleRetryAttempts = 0
-    }
-
-    private fun handleLifecycleStopped() {
-        firstFrameRendered = false
-        readyDispatched = false
-        diagnostics.info(
-            code = "renderer_waiting_after_stop",
-            message = "Map renderer stopped with the host lifecycle; readiness will be reported again after a new frame.",
-            surface = config.renderSurface,
-        )
-    }
-
-    private fun handleLifecycleResumed() {
-        val currentMapView = mapView
-        if (currentMapView != null) {
-            val hasLoadedStyle = runCatching {
-                currentMapView.mapboxMap.style != null
-            }.getOrDefault(false)
-
-            if (!hasLoadedStyle) {
-                mapLoaded = false
-                diagnostics.warning(
-                    code = "style_not_available_after_resume",
-                    message = "Mapbox has no active style after resume; readiness will wait for a new map-loaded event.",
-                    surface = config.renderSurface,
-                )
-            }
-        }
-
-        diagnostics.info(
-            code = "renderer_host_resumed",
-            message = "Host Activity resumed; readiness is waiting for a completed Mapbox frame and an available style.",
-            surface = config.renderSurface,
-        )
     }
 
     private fun reportError(code: String, message: String) {

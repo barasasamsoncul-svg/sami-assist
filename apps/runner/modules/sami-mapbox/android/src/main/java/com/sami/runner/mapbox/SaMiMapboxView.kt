@@ -15,13 +15,21 @@ internal object SaMiMapboxDefaults {
 }
 
 /**
- * Thin Expo native view. It owns public native props and events; the renderer,
- * Activity lifecycle, style and camera logic live in dedicated classes.
+ * Expo native view that hosts one Mapbox MapView directly. The MapView is
+ * retained across temporary detach/reattach, with its Android lifecycle owned
+ * by Mapbox's default lifecycle plugin, and is destroyed when Expo disposes it.
  */
 class SaMiMapboxView(
     context: Context,
     appContext: AppContext,
 ) : ExpoView(context, appContext) {
+
+    /**
+     * This ExpoView owns a native MapView child. Yoga still controls this
+     * ExpoView's outer bounds, while Android measures and lays out its child
+     * after MapView is inserted or requests layout.
+     */
+    override val shouldUseAndroidLayout: Boolean = true
 
     val onMapReady by EventDispatcher()
     val onMapError by EventDispatcher()
@@ -41,7 +49,6 @@ class SaMiMapboxView(
 
     private val renderer = SaMiMapboxRenderer(
         context = context,
-        appContext = appContext,
         diagnostics = diagnostics,
         onReady = { payload -> onMapReady(payload) },
         onError = { message -> onMapError(mapOf("message" to message)) },
