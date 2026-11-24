@@ -91,9 +91,9 @@ const dark = {
   onBlue: "#FFFFFF",
 
   // Backgrounds
-  paper: "#080F1D",
-  surface: "#111D2E",
-  surfaceRaised: "#17263A",
+  paper: "#00061D",
+  surface: "#00061D",
+  surfaceRaised: "#09142A",
 
   // Borders
   border: "#34465D",
@@ -119,7 +119,7 @@ const dark = {
 
   // Interaction
   focus: "#9CC5FF",
-  overlay: "rgba(0,0,0,0.68)",
+  overlay: "rgba(0,6,29,0.75)",
   shadow: "rgba(0,0,0,0.32)",
 } as const;
 

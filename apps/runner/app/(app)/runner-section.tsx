@@ -12,6 +12,7 @@ import {
 import { router, useLocalSearchParams } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { useRunnerTheme } from "@/theme";
 
 import {
   acceptRunnerJob,
@@ -36,7 +37,7 @@ const COLORS = {
   white: "#FFFFFF",
 };
 
-type Section = "offers" | "rating" | "acceptance" | "menu" | "help";
+type Section = "offers" | "rating" | "acceptance" | "menu" | "help" | "performance" | "earnings" | "settings" | "privacy";
 
 function isRunnerSessionError(message: string): boolean {
   return /\b401\b|session has expired|sign in to continue/i.test(message);
@@ -51,6 +52,10 @@ const TITLES: Record<Section, string> = {
   offers: "Offers & Rewards",
   rating: "Your rating",
   acceptance: "Acceptance rate",
+  performance: "Performance",
+  earnings: "Earnings",
+  settings: "Settings",
+  privacy: "Privacy",
   menu: "Runner menu",
   help: "Help & support",
 };
@@ -66,8 +71,9 @@ function formatMoney(amount: number | null, currency: string) {
 export default function RunnerDashboardSectionScreen() {
   const params = useLocalSearchParams<{ section?: string }>();
   const insets = useSafeAreaInsets();
+  const { colors: themeColors, mode, setMode } = useRunnerTheme();
   const rawSection = String(params.section ?? "offers");
-  const section: Section = (["offers", "rating", "acceptance", "menu", "help"] as string[])
+  const section: Section = (["offers", "rating", "acceptance", "menu", "help", "performance", "earnings", "settings", "privacy"] as string[])
     .includes(rawSection)
     ? (rawSection as Section)
     : "offers";
@@ -169,9 +175,9 @@ export default function RunnerDashboardSectionScreen() {
   }, [section]);
 
   return (
-    <View style={styles.root}>
-      <StatusBar barStyle="light-content" />
-      <View style={[styles.header, { paddingTop: insets.top + 8 }]}>
+    <View style={[styles.root, { backgroundColor: themeColors.paper }]}>
+      <StatusBar barStyle={mode === "dark" ? "light-content" : "dark-content"} />
+      <View style={[styles.header, { paddingTop: insets.top + 8, backgroundColor: themeColors.surface, borderBottomColor: themeColors.border }]}>
         <Pressable
           accessibilityRole="button"
           accessibilityLabel="Go back to dashboard"
@@ -180,7 +186,7 @@ export default function RunnerDashboardSectionScreen() {
         >
           <Ionicons name="arrow-back" size={21} color={COLORS.text} />
         </Pressable>
-        <Text style={styles.headerTitle}>{pageTitle}</Text>
+        <Text style={[styles.headerTitle, { color: themeColors.text }]}>{pageTitle}</Text>
         {section === "offers" ? (
           <Pressable
             accessibilityRole="button"
@@ -229,7 +235,7 @@ export default function RunnerDashboardSectionScreen() {
             {loading ? (
               <View style={styles.loadingCard}>
                 <ActivityIndicator color={COLORS.blue} size="large" />
-                <Text style={styles.mutedCopy}>Loading eligible errands…</Text>
+                <Text style={styles.mutedCopy}>Loading eligible errandsâ€¦</Text>
               </View>
             ) : offers.length === 0 ? (
               <View style={styles.emptyCard}>
@@ -292,6 +298,14 @@ export default function RunnerDashboardSectionScreen() {
               ))
             )}
           </>
+        ) : section === "performance" ? (
+          <PerformanceOverview colors={themeColors} />
+        ) : section === "earnings" ? (
+          <EarningsOverview colors={themeColors} />
+        ) : section === "settings" ? (
+          <SettingsOverview colors={themeColors} mode={mode} setMode={setMode} />
+        ) : section === "privacy" ? (
+          <PrivacyOverview colors={themeColors} />
         ) : section === "menu" ? (
           <>
             <View style={styles.introCard}>
@@ -314,6 +328,15 @@ export default function RunnerDashboardSectionScreen() {
             <Pressable style={styles.menuRow} onPress={() => router.push({ pathname: "/(app)/runner-section" as never, params: { section: "help" } } as never)}>
               <Ionicons name="headset-outline" size={22} color={COLORS.blue} />
               <Text style={styles.menuRowText}>Help & support</Text>
+              <Ionicons name="chevron-forward" size={18} color={COLORS.muted} />
+            </Pressable>            <Pressable style={styles.menuRow} onPress={() => router.push({ pathname: "/(app)/runner-section" as never, params: { section: "settings" } } as never)}>
+              <Ionicons name="settings-outline" size={22} color={COLORS.blue} />
+              <Text style={styles.menuRowText}>Settings</Text>
+              <Ionicons name="chevron-forward" size={18} color={COLORS.muted} />
+            </Pressable>
+            <Pressable style={styles.menuRow} onPress={() => router.push({ pathname: "/(app)/runner-section" as never, params: { section: "privacy" } } as never)}>
+              <Ionicons name="shield-checkmark-outline" size={22} color={COLORS.blue} />
+              <Text style={styles.menuRowText}>Privacy</Text>
               <Ionicons name="chevron-forward" size={18} color={COLORS.muted} />
             </Pressable>
             <Pressable style={[styles.menuRow, styles.signOutRow]} onPress={handleSignOut} disabled={signingOut}>
@@ -349,6 +372,177 @@ export default function RunnerDashboardSectionScreen() {
   );
 }
 
+type RunnerSectionColors = {
+  paper: string;
+  surface: string;
+  surfaceRaised: string;
+  border: string;
+  text: string;
+  textMuted: string;
+  blue: string;
+  blueSoft: string;
+  success: string;
+  successSoft: string;
+  red: string;
+  warning: string;
+  warningSoft: string;
+  amber: string;
+};
+
+function PerformanceOverview({ colors }: { colors: RunnerSectionColors }) {
+  const metrics = [
+    { icon: "star-outline" as const, label: "CUSTOMER RATING", value: "— / 5", color: "#C18B2F" },
+    { icon: "trending-up-outline" as const, label: "ACCEPTANCE RATE", value: "—%", color: colors.blue },
+    { icon: "close-circle-outline" as const, label: "CANCELLATION RATE", value: "—%", color: colors.red },
+  ];
+
+  return (
+    <View style={{ gap: 14 }}>
+      <View style={{ backgroundColor: colors.surface, borderColor: colors.border, borderWidth: 1, borderRadius: 20, padding: 16, gap: 14 }}>
+        <View style={{ flexDirection: "row", alignItems: "center", gap: 11 }}>
+          <View style={{ width: 44, height: 44, borderRadius: 14, backgroundColor: colors.warningSoft, alignItems: "center", justifyContent: "center" }}>
+            <Ionicons name="trophy-outline" size={23} color={colors.warning} />
+          </View>
+          <View style={{ flex: 1, gap: 3 }}>
+            <Text style={{ color: colors.textMuted, fontSize: 9, fontWeight: "900", letterSpacing: 1 }}>SAMI PERFORMANCE TIERS</Text>
+            <Text style={{ color: colors.text, fontSize: 17, fontWeight: "900" }}>Silver tier</Text>
+          </View>
+        </View>
+        <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center" }}>
+          <Text style={{ color: colors.textMuted, fontSize: 11, fontWeight: "700" }}>Points progress</Text>
+          <Text style={{ color: colors.text, fontSize: 13, fontWeight: "900" }}>200 / 1,000 PTS</Text>
+        </View>
+        <View style={{ height: 8, borderRadius: 6, backgroundColor: colors.border, overflow: "hidden" }}>
+          <View style={{ width: "20%", height: "100%", borderRadius: 6, backgroundColor: colors.amber }} />
+        </View>
+        <View style={{ flexDirection: "row", justifyContent: "space-between" }}>
+          <Text style={{ color: colors.textMuted, fontSize: 10, fontWeight: "700" }}>800 points to Gold</Text>
+          <Text style={{ color: colors.textMuted, fontSize: 10, fontWeight: "700" }}>20% complete</Text>
+        </View>
+        <View style={{ flexDirection: "row", justifyContent: "space-between", gap: 4 }}>
+          {(["Silver", "Gold", "Platinum", "Diamond"] as const).map((tier) => (
+            <Text key={tier} style={{ color: colors.textMuted, fontSize: 9, fontWeight: "800" }}>{tier}</Text>
+          ))}
+        </View>
+        <Text style={{ color: colors.textMuted, fontSize: 11, lineHeight: 17 }}>
+          This tier layout is ready for live points and progression from the SaMi performance service.
+        </Text>
+      </View>
+
+      <View style={{ gap: 9 }}>
+        <Text style={{ color: colors.text, fontSize: 14, fontWeight: "900" }}>Performance overview</Text>
+        <View style={{ flexDirection: "row", gap: 8 }}>
+          {metrics.map((metric) => (
+            <View key={metric.label} style={{ flex: 1, minHeight: 111, backgroundColor: colors.surface, borderColor: colors.border, borderWidth: 1, borderRadius: 15, padding: 10, justifyContent: "center", alignItems: "center", gap: 7 }}>
+              <Ionicons name={metric.icon} size={19} color={metric.color} />
+              <Text style={{ color: colors.text, fontSize: 18, fontWeight: "900" }}>{metric.value}</Text>
+              <Text style={{ color: colors.textMuted, fontSize: 8, fontWeight: "900", textAlign: "center" }}>{metric.label}</Text>
+            </View>
+          ))}
+        </View>
+      </View>
+
+      <View style={{ backgroundColor: colors.surface, borderColor: colors.border, borderWidth: 1, borderRadius: 16, padding: 14, flexDirection: "row", alignItems: "flex-start", gap: 9 }}>
+        <Ionicons name="information-circle-outline" size={19} color={colors.blue} />
+        <Text style={{ flex: 1, color: colors.textMuted, fontSize: 11, lineHeight: 17 }}>
+          Live customer ratings, acceptance rate, cancellations and tier points are not currently returned by the Runner API. These values are intentionally shown as unavailable rather than estimated.
+        </Text>
+      </View>
+    </View>
+  );
+}
+
+function EarningsOverview({ colors }: { colors: RunnerSectionColors }) {
+  return (
+    <View style={{ gap: 13 }}>
+      <View style={{ backgroundColor: colors.surface, borderColor: colors.border, borderWidth: 1, borderRadius: 20, padding: 18, gap: 8 }}>
+        <View style={{ width: 46, height: 46, borderRadius: 15, backgroundColor: colors.blueSoft, alignItems: "center", justifyContent: "center" }}>
+          <Ionicons name="wallet-outline" size={23} color={colors.blue} />
+        </View>
+        <Text style={{ color: colors.textMuted, fontSize: 9, fontWeight: "900", letterSpacing: 1 }}>EARNINGS OVERVIEW</Text>
+        <Text style={{ color: colors.text, fontSize: 28, fontWeight: "900" }}>—</Text>
+        <Text style={{ color: colors.textMuted, fontSize: 12, lineHeight: 18 }}>
+          Your earnings total and payout history will appear here when the Runner earnings service is connected.
+        </Text>
+      </View>
+      <View style={{ backgroundColor: colors.surface, borderColor: colors.border, borderWidth: 1, borderRadius: 16, padding: 14, flexDirection: "row", alignItems: "flex-start", gap: 9 }}>
+        <Ionicons name="information-circle-outline" size={19} color={colors.blue} />
+        <Text style={{ flex: 1, color: colors.textMuted, fontSize: 11, lineHeight: 17 }}>
+          No earnings amount or payout history is currently provided by the Runner API. No estimated totals are displayed.
+        </Text>
+      </View>
+    </View>
+  );
+}
+
+function SettingsOverview({
+  colors,
+  mode,
+  setMode,
+}: {
+  colors: RunnerSectionColors;
+  mode: "light" | "dark";
+  setMode: (mode: "light" | "dark") => Promise<void>;
+}) {
+  return (
+    <View style={{ gap: 13 }}>
+      <View style={{ backgroundColor: colors.surface, borderColor: colors.border, borderWidth: 1, borderRadius: 18, padding: 15, gap: 12 }}>
+        <Text style={{ color: colors.text, fontSize: 15, fontWeight: "900" }}>Appearance</Text>
+        <Text style={{ color: colors.textMuted, fontSize: 11, lineHeight: 16 }}>Choose how SaMi Runner looks. Your preference is saved on this device.</Text>
+        <View style={{ flexDirection: "row", gap: 9 }}>
+          {(["light", "dark"] as const).map((choice) => {
+            const selected = mode === choice;
+            return (
+              <Pressable
+                key={choice}
+                accessibilityRole="button"
+                accessibilityState={{ selected }}
+                onPress={() => void setMode(choice)}
+                style={{ flex: 1, minHeight: 48, borderRadius: 13, borderWidth: 1, borderColor: selected ? colors.blue : colors.border, backgroundColor: selected ? colors.blueSoft : colors.surfaceRaised, alignItems: "center", justifyContent: "center", flexDirection: "row", gap: 7 }}
+              >
+                <Ionicons name={choice === "light" ? "sunny-outline" : "moon-outline"} size={17} color={selected ? colors.blue : colors.textMuted} />
+                <Text style={{ color: selected ? colors.blue : colors.text, fontSize: 12, fontWeight: "900", textTransform: "capitalize" }}>{choice}</Text>
+                {selected ? <Ionicons name="checkmark-circle" size={15} color={colors.blue} /> : null}
+              </Pressable>
+            );
+          })}
+        </View>
+      </View>
+      <Pressable onPress={() => router.push("/(app)/profile-setup" as never)} accessibilityRole="button" style={{ backgroundColor: colors.surface, borderColor: colors.border, borderWidth: 1, borderRadius: 16, padding: 14, flexDirection: "row", alignItems: "center", gap: 10 }}>
+        <Ionicons name="person-circle-outline" size={22} color={colors.blue} />
+        <View style={{ flex: 1 }}>
+          <Text style={{ color: colors.text, fontSize: 13, fontWeight: "900" }}>Runner profile</Text>
+          <Text style={{ color: colors.textMuted, fontSize: 10, marginTop: 2 }}>Personal details and documents</Text>
+        </View>
+        <Ionicons name="chevron-forward" size={17} color={colors.textMuted} />
+      </Pressable>
+    </View>
+  );
+}
+
+function PrivacyOverview({ colors }: { colors: RunnerSectionColors }) {
+  return (
+    <View style={{ gap: 13 }}>
+      <View style={{ backgroundColor: colors.surface, borderColor: colors.border, borderWidth: 1, borderRadius: 18, padding: 16, gap: 11 }}>
+        <View style={{ width: 45, height: 45, borderRadius: 14, backgroundColor: colors.blueSoft, alignItems: "center", justifyContent: "center" }}>
+          <Ionicons name="location-outline" size={23} color={colors.blue} />
+        </View>
+        <Text style={{ color: colors.text, fontSize: 16, fontWeight: "900" }}>Location sharing</Text>
+        <Text style={{ color: colors.textMuted, fontSize: 12, lineHeight: 19 }}>
+          SaMi Runner uses your location while you are online or completing an accepted errand. This supports dispatch and live errand progress for customers.
+        </Text>
+        <View style={{ height: 1, backgroundColor: colors.border }} />
+        <Text style={{ color: colors.success, fontSize: 12, fontWeight: "900" }}>Tracking stops when you go offline or finish your errand.</Text>
+      </View>
+      <View style={{ backgroundColor: colors.surface, borderColor: colors.border, borderWidth: 1, borderRadius: 16, padding: 14, flexDirection: "row", alignItems: "flex-start", gap: 9 }}>
+        <Ionicons name="shield-checkmark-outline" size={19} color={colors.success} />
+        <Text style={{ flex: 1, color: colors.textMuted, fontSize: 11, lineHeight: 17 }}>
+          You can review and change location permissions in your Android app settings. SaMi Runner's availability controls determine when work-related location tracking is active.
+        </Text>
+      </View>
+    </View>
+  );
+}
 const styles = StyleSheet.create({
   root: { flex: 1, backgroundColor: COLORS.navy },
   header: {
