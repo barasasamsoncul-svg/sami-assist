@@ -1,4 +1,5 @@
-﻿import type { ConfigContext, ExpoConfig } from "expo/config";
+﻿
+import type { ConfigContext, ExpoConfig } from "expo/config";
 
 const RUNNER_EAS_PROJECT_ID = "8fcd647e-3514-4436-b1ce-c1b417f6c1d3";
 const RUNNER_PRODUCTION_CHANNEL = "runner-production";
@@ -62,6 +63,7 @@ export default ({ config }: ConfigContext): ExpoConfig => {
   const googleMapsIosApiKey =
     process.env.GOOGLE_MAPS_IOS_API_KEY?.trim() ||
     process.env.EXPO_PUBLIC_GOOGLE_MAPS_IOS_API_KEY?.trim();
+
   const mapboxPlugin = "./plugins/withSamiMapboxNative";
 
   if (!plugins.includes(mapboxPlugin)) {
@@ -120,11 +122,16 @@ export default ({ config }: ConfigContext): ExpoConfig => {
     translucent: false,
   };
 
-  const requestHeaders = {
-    ...config.updates?.requestHeaders,
+  // Preserve existing headers and add the requested channel when supplied.
+  // Local production builds receive EXPO_UPDATE_CHANNEL from the shell.
+  // EAS production builds receive it from the production profile.
+  const requestHeaders: Record<string, string> = {
+    ...(config.updates?.requestHeaders ?? {}),
   };
 
-  delete requestHeaders["expo-channel-name"];
+  if (configuredChannel) {
+    requestHeaders["expo-channel-name"] = configuredChannel;
+  }
 
   return {
     ...config,

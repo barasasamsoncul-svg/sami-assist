@@ -5,6 +5,7 @@ on:
     branches:
       - main
     paths:
+      - "apps/runner/app.config.ts"
       - "apps/mobile/app/**"
       - "apps/mobile/components/**"
       - "apps/mobile/src/**"
@@ -110,6 +111,7 @@ jobs:
                   apps/runner/src/*|\
                   apps/runner/assets/*|\
                   apps/runner/app.json|\
+                  apps/runner/app.config.ts|\
                   apps/runner/eas.json|\
                   apps/runner/package.json|\
                   apps/runner/package-lock.json|\
@@ -139,6 +141,7 @@ jobs:
                 esac
 
                 case "$file" in
+                 apps/runner/app.config.ts|\
                   apps/runner/app.json|\
                   apps/runner/eas.json|\
                   apps/runner/package.json|\
