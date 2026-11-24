@@ -469,14 +469,42 @@ jobs:
         run: |
           set -euo pipefail
 
-          # Git's core.autocrlf does not emit CRLF on this Linux runner.
-          # These exact tracked text files were CRLF in the verified Windows
-          # working tree used to generate the installed APK fingerprint.
+          # Recreate the exact tracked CRLF working-tree files identified by
+          # git ls-files --eol on the Windows machine used for the local APK.
           node <<'NODE'
           const fs = require("node:fs");
           const files = [
+            "apps/runner/.env.example",
+            "apps/runner/.gitignore",
             "apps/runner/app.config.ts",
-            "apps/runner/plugins/withSamiMapboxNative.js",
+            "apps/runner/app.config.ts.20261124-233140.bak",
+            "apps/runner/app.json",
+            "apps/runner/app/(app)/_layout.tsx",
+            "apps/runner/app/(app)/index.tsx.before-dashboard-20261120-182258.bak",
+            "apps/runner/app/(app)/index.tsx.before-dashboard-refresh-20261120182510.bak",
+            "apps/runner/app/(app)/index.tsx.before-e2e-fix-20261120155323.bak",
+            "apps/runner/app/(app)/index.tsx.before-focus-poll-fix-20261120191029.bak",
+            "apps/runner/app/(auth)/_layout.tsx",
+            "apps/runner/app/(auth)/document/[key].tsx",
+            "apps/runner/app/(auth)/documents.tsx",
+            "apps/runner/app/(auth)/login.tsx",
+            "apps/runner/app/(auth)/register.tsx",
+            "apps/runner/app/(auth)/tasks.tsx",
+            "apps/runner/app/(auth)/verify.tsx",
+            "apps/runner/app/index.tsx",
+            "apps/runner/app/mapbox-lab.tsx",
+            "apps/runner/database/2026-11-15-runner-unique-vehicle-registration.sql",
+            "apps/runner/database/migrations/2026-11-07-runner-email-auth.sql",
+            "apps/runner/database/migrations/2026-11-07-runner-initial-schema.sql",
+            "apps/runner/database/migrations/2026-11-07-runner-registration-onboarding.sql",
+            "apps/runner/database/migrations/2026-11-08-runner-admin-review-workflow.sql",
+            "apps/runner/database/migrations/2026-11-08-runner-document-storage-cleanup.sql",
+            "apps/runner/database/migrations/2026-11-09-runner-email-otp-ip-rate-limits.sql",
+            "apps/runner/database/migrations/2026-11-13-runner-two-service-types.sql",
+            "apps/runner/database/migrations/2026-11-14-runner-registration-confirmation.sql",
+            "apps/runner/database/migrations/2026-11-14-runner-vehicle-model-and-core-documents.sql",
+            "apps/runner/eas.json",
+            "apps/runner/metro.config.js",
             "apps/runner/modules/sami-mapbox/android/.gradle/buildOutputCleanup/cache.properties",
             "apps/runner/modules/sami-mapbox/android/build.gradle",
             "apps/runner/modules/sami-mapbox/android/src/main/AndroidManifest.xml",
@@ -486,35 +514,54 @@ jobs:
             "apps/runner/modules/sami-mapbox/android/src/main/java/com/sami/runner/mapbox/SaMiMapboxModule.kt.before-dashboard-20261120-182258.bak",
             "apps/runner/modules/sami-mapbox/android/src/main/java/com/sami/runner/mapbox/SaMiMapboxModule.kt.before-dashboard-refresh-20261120182510.bak",
             "apps/runner/modules/sami-mapbox/android/src/main/java/com/sami/runner/mapbox/SaMiRouteGuidanceController.kt",
-            "apps/runner/modules/sami-mapbox/android/src/main/java/com/sami/runner/mapbox/SaMiVoiceGuidanceController.kt"
+            "apps/runner/modules/sami-mapbox/android/src/main/java/com/sami/runner/mapbox/SaMiVoiceGuidanceController.kt",
+            "apps/runner/modules/sami-mapbox/expo-module.config.json",
+            "apps/runner/modules/sami-mapbox/ios/SaMiMapbox.podspec",
+            "apps/runner/modules/sami-mapbox/ios/SaMiMapboxModule.swift",
+            "apps/runner/modules/sami-mapbox/ios/SaMiMapboxModule.swift.before-dashboard-20261120-182258.bak",
+            "apps/runner/modules/sami-mapbox/ios/SaMiMapboxModule.swift.before-dashboard-refresh-20261120182510.bak",
+            "apps/runner/modules/sami-mapbox/ios/SaMiRouteGuidanceController.swift",
+            "apps/runner/modules/sami-mapbox/package.json",
+            "apps/runner/modules/sami-mapbox/src/SaMiMapbox.types.ts",
+            "apps/runner/modules/sami-mapbox/src/index.ts",
+            "apps/runner/runner-api.txt",
+            "apps/runner/runner-crash-full.txt",
+            "apps/runner/scripts/configure-mapbox-credentials.js",
+            "apps/runner/server/.env.example",
+            "apps/runner/server/README.md",
+            "apps/runner/server/auth.ts",
+            "apps/runner/server/compliance.ts",
+            "apps/runner/server/db.ts",
+            "apps/runner/server/document-ocr.ts",
+            "apps/runner/server/http.ts",
+            "apps/runner/server/otp.ts",
+            "apps/runner/src/api.ts",
+            "apps/runner/src/api.ts.before-e2e-fix-20261120155323.bak",
+            "apps/runner/src/branding/SaMiLaunchAnimation.tsx",
+            "apps/runner/src/components/SaMiOverlay.tsx",
+            "apps/runner/src/features/runner-dashboard/components/RunnerDashboardWorkspace.tsx",
+            "apps/runner/src/registration-api.ts",
+            "apps/runner/src/review.ts",
+            "apps/runner/src/screens/WelcomeScreen.tsx",
+            "apps/runner/src/theme.ts",
+            "apps/runner/src/theme.ts.20261125-021110.bak",
+            "apps/runner/tsconfig.json",
+            "apps/runner/verify-screen.txt"
           ];
 
           for (const file of files) {
-            if (!fs.existsSync(file)) {
-              throw new Error("Expected fingerprint input is missing: " + file);
-            }
+            if (!fs.existsSync(file)) throw new Error("Missing Windows CRLF fingerprint input: " + file);
             const original = fs.readFileSync(file, "utf8");
             const windowsText = original.replace(/\r?\n/g, "\r\n");
-            if (windowsText !== original) {
-              fs.writeFileSync(file, windowsText, "utf8");
-            }
-            const verified = fs.readFileSync(file);
-            if (verified.includes(Buffer.from("\n")) &&
-                /(?<!\r)\n/.test(verified.toString("utf8"))) {
-              throw new Error("CRLF normalization failed: " + file);
-            }
+            if (windowsText !== original) fs.writeFileSync(file, windowsText, "utf8");
+            const verified = fs.readFileSync(file, "utf8");
+            if (/(?<!\r)\n/.test(verified)) throw new Error("CRLF normalization failed: " + file);
           }
 
-          console.log("Recreated CRLF for " + files.length + " verified Windows fingerprint inputs.");
+          console.log("Recreated and verified Windows CRLF for " + files.length + " tracked Runner files.");
           NODE
 
-          git ls-files --eol -- \
-            apps/runner/app.config.ts \
-            apps/runner/plugins/withSamiMapboxNative.js \
-            apps/runner/modules/sami-mapbox/android/build.gradle \
-            apps/runner/modules/sami-mapbox/android/src/main/AndroidManifest.xml \
-            apps/runner/modules/sami-mapbox/android/src/main/java/com/sami/runner/mapbox/SaMiMapboxModule.kt
-
+          git ls-files --eol -- apps/runner | grep -E 'w/crlf'
 
       - name: Set up Node.js
         uses: actions/setup-node@v4
