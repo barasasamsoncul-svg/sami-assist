@@ -1,16 +1,17 @@
-import { Pressable, StyleSheet, Text, View } from "react-native";
+﻿import { Pressable, StyleSheet, Text, View } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { SaMiMapboxView } from "../../../../modules/sami-mapbox/src";
 import { styles } from "../styles";
 import { IconButton } from "./RunnerDashboardPrimitives";
 import type { useRunnerDashboard } from "../useRunnerDashboard";
+import { RunnerDashboardGoogleMap } from "./RunnerDashboardGoogleMap";
 import { DEFAULT_COORDINATES, type NavigationMode } from "../types";
 
 type Props = { dashboard: ReturnType<typeof useRunnerDashboard> };
 
 export function RunnerDashboardMapLayer({ dashboard }: Props) {
   const {
-    colors, insets, authorized, activeRouteTarget, routePanelStatusText,
+    colors, insets, authorized, activeRouteTarget, activeJobIsTrackable, routePanelStatusText,
     routeState, routeInstruction, routeSecondaryInstruction, voiceGuidanceMuted,
     setVoiceGuidanceMuted, nextManeuverDistance, routeRemainingDistance,
     routeRemainingTime, location, locationQualityLabel, locationAccuracyLabel,
@@ -24,9 +25,10 @@ export function RunnerDashboardMapLayer({ dashboard }: Props) {
 
   return (
     <>
-      {/* MAPBOX CANVAS */}
-
-      <SaMiMapboxView
+      {activeJobIsTrackable ? (
+        <>
+          {/* MAPBOX NAVIGATION CANVAS — active pickup/delivery only */}
+          <SaMiMapboxView
           key={mapRenderRevision}
           style={StyleSheet.absoluteFill}
           accessToken={
@@ -94,7 +96,23 @@ export function RunnerDashboardMapLayer({ dashboard }: Props) {
           onVoiceInstructionChanged={(event) => {
             setVoiceInstruction(event.nativeEvent);
           }}
-      />
+          />
+        </>
+      ) : (
+        <RunnerDashboardGoogleMap
+          key={mapRenderRevision}
+          location={location}
+          fallbackCoordinates={displayCoordinates}
+          cameraFollowing={cameraFollowing}
+          recenterRequestId={mapRecenterRequestId}
+          screenActive={mapScreenActive}
+          onCameraFollowInterrupted={() => setCameraFollowing(false)}
+          onMapReady={() => {
+            setMapReady(true);
+            setMapError("");
+          }}
+        />
+      )}
 
       {/* TURN-BY-TURN MANEUVER CARD */}
 
@@ -365,3 +383,4 @@ export function RunnerDashboardMapLayer({ dashboard }: Props) {
     </>
   );
 }
+

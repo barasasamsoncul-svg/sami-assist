@@ -1,4 +1,4 @@
-import type { ConfigContext, ExpoConfig } from "expo/config";
+﻿import type { ConfigContext, ExpoConfig } from "expo/config";
 
 const RUNNER_EAS_PROJECT_ID = "8fcd647e-3514-4436-b1ce-c1b417f6c1d3";
 const RUNNER_PRODUCTION_CHANNEL = "runner-production";
@@ -43,10 +43,61 @@ export default ({ config }: ConfigContext): ExpoConfig => {
     ...(config.plugins ?? []),
   ];
 
+  // Google Maps is used only for the idle / online-waiting dashboard map.
+  // Keep the key in EAS Environment Variables; do not hardcode it in source.
+  // Supported Android key names: EXPO_PUBLIC_GOOGLE_MAPS_API_KEY,
+  // EXPO_PUBLIC_GOOGLE_MAPS_ANDROID_API_KEY, GOOGLE_MAPS_ANDROID_API_KEY,
+  // GOOGLE_MAPS_API_KEY, EXPO_PUBLIC_MAPS_API_KEY, or MAPS_API_KEY.
+  const googleMapsAndroidApiKey =
+    process.env.EXPO_PUBLIC_GOOGLE_MAPS_API_KEY?.trim() ||
+    process.env.EXPO_PUBLIC_GOOGLE_MAPS_ANDROID_API_KEY?.trim() ||
+    process.env.GOOGLE_MAPS_ANDROID_API_KEY?.trim() ||
+    process.env.GOOGLE_MAPS_API_KEY?.trim() ||
+    process.env.EXPO_PUBLIC_MAPS_API_KEY?.trim() ||
+    process.env.MAPS_API_KEY?.trim() ||
+    config.android?.config?.googleMaps?.apiKey?.trim();
+
+  // iOS keeps react-native-maps default Apple Maps provider in this patch.
+  // This optional key is stored for a later deliberate Google-on-iOS switch.
+  const googleMapsIosApiKey =
+    process.env.GOOGLE_MAPS_IOS_API_KEY?.trim() ||
+    process.env.EXPO_PUBLIC_GOOGLE_MAPS_IOS_API_KEY?.trim();
   const mapboxPlugin = "./plugins/withSamiMapboxNative";
 
   if (!plugins.includes(mapboxPlugin)) {
     plugins.push(mapboxPlugin);
+  }
+
+  // Replace an existing react-native-maps plugin entry rather than adding
+  // duplicates when this script is re-run.
+  const googleMapsPluginIndex = plugins.findIndex((plugin) =>
+    Array.isArray(plugin)
+      ? plugin[0] === "react-native-maps"
+      : plugin === "react-native-maps",
+  );
+
+  const googleMapsPlugin: [string, Record<string, string>] = [
+    "react-native-maps",
+    {
+      ...(googleMapsAndroidApiKey
+        ? { androidGoogleMapsApiKey: googleMapsAndroidApiKey }
+        : {}),
+      ...(googleMapsIosApiKey
+        ? { iosGoogleMapsApiKey: googleMapsIosApiKey }
+        : {}),
+    },
+  ];
+
+  if (googleMapsPluginIndex >= 0) {
+    plugins[googleMapsPluginIndex] = googleMapsPlugin;
+  } else {
+    plugins.push(googleMapsPlugin);
+  }
+
+  if (process.env.EAS_BUILD_PROFILE && !googleMapsAndroidApiKey) {
+    throw new Error(
+      "SaMi Runner requires an Android Google Maps key for native EAS builds. Add the existing key to EAS as EXPO_PUBLIC_GOOGLE_MAPS_API_KEY, EXPO_PUBLIC_GOOGLE_MAPS_ANDROID_API_KEY, GOOGLE_MAPS_ANDROID_API_KEY, GOOGLE_MAPS_API_KEY, EXPO_PUBLIC_MAPS_API_KEY, or MAPS_API_KEY.",
+    );
   }
 
   const android = {
