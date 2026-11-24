@@ -6,6 +6,7 @@ on:
       - main
     paths:
       - "apps/runner/app.config.ts"
+      - ".github/workflows/sami-production-ota.yml"
       - "apps/mobile/app/**"
       - "apps/mobile/components/**"
       - "apps/mobile/src/**"
@@ -87,6 +88,12 @@ jobs:
 
               while IFS= read -r file; do
                 [[ -n "$file" ]] || continue
+
+                # A change to this release workflow is an explicit request to
+                # re-validate and publish the current Runner JavaScript bundle.
+                if [[ "$file" == ".github/workflows/sami-production-ota.yml" ]]; then
+                  RUNNER_CHANGED=true
+                fi
 
                 case "$file" in
                   apps/mobile/app/*|\
@@ -455,6 +462,524 @@ jobs:
     steps:
       - name: Checkout Runner source
         uses: actions/checkout@v4
+
+      - name: Match the verified Windows local APK fingerprint inputs
+        working-directory: ../..
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          # The locally installed APK was fingerprinted from a Windows
+          # checkout using core.autocrlf=true. Recreate that same working-tree
+          # representation on Linux before Expo computes the Android hash.
+          git config --local core.autocrlf true
+          git checkout-index --force --all
+
+          EOL_REPORT="$(git ls-files --eol -- \\
+            apps/runner/app.config.ts \\
+            apps/runner/modules/sami-mapbox/android/src/main/java/com/sami/runner/mapbox/SaMiMapboxModule.kt)"
+          printf '%s\\n' "$EOL_REPORT"
+
+          grep -Eq 'i/lf[[:space:]]+w/crlf[[:space:]]+attr/.*apps/runner/app.config.ts      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: apps/runner/package-lock.json
+
+      - name: Install Runner dependencies from lockfile
+        run: npm ci --no-audit --no-fund
+
+      - name: Validate Runner production update target
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          test -n "$EXPO_TOKEN" || {
+            echo "EXPO_TOKEN is missing from GitHub Actions secrets." >&2
+            exit 1
+          }
+
+          npx expo config --type public --json \
+            > "$RUNNER_TEMP/sami-runner-expo-config.json"
+
+          node - "$RUNNER_TEMP/sami-runner-expo-config.json" <<'NODE'
+          const fs = require("node:fs");
+
+          const config = JSON.parse(
+            fs.readFileSync(process.argv[2], "utf8")
+          );
+
+          const eas = JSON.parse(
+            fs.readFileSync("eas.json", "utf8")
+          );
+
+          const expectedProjectId =
+            "8fcd647e-3514-4436-b1ce-c1b417f6c1d3";
+
+          if (config.slug !== "sami-runner") {
+            throw new Error("Incorrect Runner Expo slug.");
+          }
+
+          if (config.android?.package !== "com.sami.runner") {
+            throw new Error("Incorrect Runner Android package.");
+          }
+
+          if (config.ios?.bundleIdentifier !== "com.sami.runner") {
+            throw new Error("Incorrect Runner iOS bundle identifier.");
+          }
+
+          if (config.extra?.eas?.projectId !== expectedProjectId) {
+            throw new Error("Runner EAS project ID mismatch.");
+          }
+
+          if (
+            config.updates?.url !==
+            "https://u.expo.dev/" + expectedProjectId
+          ) {
+            throw new Error("Runner EAS Updates URL mismatch.");
+          }
+
+          if (config.updates?.enabled !== true) {
+            throw new Error("Runner EAS Updates are disabled.");
+          }
+
+          if (
+            config.updates?.requestHeaders?.["expo-channel-name"] !==
+            "runner-production"
+          ) {
+            throw new Error("Runner production update channel is not embedded in the resolved config.");
+          }
+
+          if (config.runtimeVersion?.policy !== "fingerprint") {
+            throw new Error("Runner must use fingerprint runtime compatibility.");
+          }
+
+          if (eas.build?.production?.channel !== "runner-production") {
+            throw new Error("Runner production build channel mismatch.");
+          }
+
+          if (eas.build?.production?.environment !== "production") {
+            throw new Error("Runner production build must use production environment.");
+          }
+
+          if (eas.build?.production?.android?.buildType !== "apk") {
+            throw new Error("Runner production profile must produce an APK.");
+          }
+
+          console.log("Runner Expo project verified.");
+          console.log("Runner package: com.sami.runner");
+          console.log("Runner channel: runner-production");
+          console.log("Runner runtime policy: fingerprint");
+          NODE
+
+      - name: Check Runner Expo dependency compatibility
+        run: npx expo install --check
+
+      - name: Type-check Runner
+        run: npm run typecheck
+
+      - name: Check Runner Expo project health
+        run: npx expo-doctor
+
+      - name: Verify Runner Android JavaScript bundle
+        run: npx expo export --platform android --output-dir "$RUNNER_TEMP/sami-runner-ota-bundle"
+
+      - name: Find latest finished Runner production APK
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          BUILD_LIST="$RUNNER_TEMP/sami-runner-build-list.json"
+
+          npx eas-cli@latest build:list \
+            --platform android \
+            --build-profile production \
+            --channel runner-production \
+            --status finished \
+            --limit 10 \
+            --json \
+            --non-interactive > "$BUILD_LIST"
+
+          node - "$BUILD_LIST" "$RUNNER_TEMP/sami-runner-build-id.txt" <<'NODE'
+          const fs = require("node:fs");
+
+          const raw = JSON.parse(
+            fs.readFileSync(process.argv[2], "utf8")
+          );
+
+          const builds = Array.isArray(raw)
+            ? raw
+            : raw.builds ?? raw.data ?? raw.items ?? [];
+
+          const finished = builds
+            .filter((build) =>
+              String(build.status ?? "").toUpperCase() === "FINISHED" &&
+              String(build.platform ?? "").toUpperCase() === "ANDROID" &&
+              build.appIdentifier === "com.sami.runner" &&
+              build.buildProfile === "production"
+            )
+            .sort((a, b) =>
+              Date.parse(b.createdAt ?? b.created_at ?? 0) -
+              Date.parse(a.createdAt ?? a.created_at ?? 0)
+            );
+
+          const build = finished[0];
+
+          if (!build) {
+            throw new Error(
+              "No finished Runner production APK exists. Build the first Runner APK before publishing OTA updates."
+            );
+          }
+
+          fs.writeFileSync(process.argv[3], build.id);
+
+          console.log("Runner production APK found.");
+          console.log("Build ID: " + build.id);
+          console.log("Package: " + build.appIdentifier);
+          NODE
+
+      - name: Compare Runner OTA fingerprint with production APK
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          BUILD_ID="$(cat "$RUNNER_TEMP/sami-runner-build-id.txt")"
+          FINGERPRINT_COMPARE="$RUNNER_TEMP/sami-runner-fingerprint-compare.json"
+
+          npx eas-cli@latest fingerprint:compare \
+            --build-id "$BUILD_ID" \
+            --environment production \
+            --json \
+            --non-interactive > "$FINGERPRINT_COMPARE"
+
+          node - "$FINGERPRINT_COMPARE" "$BUILD_ID" <<'NODE'
+          const fs = require("node:fs");
+          const [file, buildId] = process.argv.slice(2);
+
+          const raw = fs.readFileSync(file, "utf8");
+          const start = raw.indexOf("{");
+          const end = raw.lastIndexOf("}");
+
+          if (start < 0 || end < start) {
+            throw new Error("EAS Runner fingerprint comparison returned invalid JSON.");
+          }
+
+          const comparison = JSON.parse(
+            raw.slice(start, end + 1)
+          );
+
+          const buildFingerprint = comparison.fingerprint1?.hash?.toLowerCase();
+          const projectFingerprint = comparison.fingerprint2?.hash?.toLowerCase();
+
+          if (!buildFingerprint || !projectFingerprint) {
+            throw new Error("EAS did not return both Runner fingerprints.");
+          }
+
+          // Preferred path: the latest EAS production APK matches the project.
+          // This automatically becomes the active path again once EAS builds resume.
+          if (buildFingerprint === projectFingerprint) {
+            console.log("Latest EAS production APK matches the current Runner project.");
+            console.log("Build ID: " + buildId);
+            console.log("Fingerprint: " + projectFingerprint);
+            process.exit(0);
+          }
+
+          // Temporary local-build path: allow OTA only when the current project
+          // still matches the explicitly verified fingerprint of the locally
+          // built APK installed on the device. A native change changes the
+          // project fingerprint and fails this comparison.
+          const localRuntimeFingerprint = (
+            process.env.RUNNER_ANDROID_RUNTIME_FINGERPRINT ?? ""
+          ).trim().toLowerCase();
+
+          if (!/^[a-f0-9]{40}$/.test(localRuntimeFingerprint)) {
+            throw new Error(
+              "Latest EAS APK is older/different and RUNNER_ANDROID_RUNTIME_FINGERPRINT is not configured as a valid 40-character SHA-1 hash. Add the verified local APK fingerprint as a GitHub Actions repository variable."
+            );
+          }
+
+          if (projectFingerprint !== localRuntimeFingerprint) {
+            console.error("Runner project no longer matches the registered local APK runtime.");
+            console.error("Latest EAS APK fingerprint: " + buildFingerprint);
+            console.error("Current project fingerprint: " + projectFingerprint);
+            console.error("Registered local APK fingerprint: " + localRuntimeFingerprint);
+            throw new Error(
+              "OTA blocked: current Runner project matches neither the latest EAS APK nor the registered local APK runtime."
+            );
+          }
+
+          console.log("Latest EAS build is from an older runtime; verified local APK baseline matches the current project.");
+          console.log("EAS build ID (older runtime): " + buildId);
+          console.log("Local APK / current project fingerprint: " + projectFingerprint);
+          NODE
+
+      - name: Publish Runner production Android update
+        run: >
+          npx eas-cli@latest update
+          --environment production
+          --channel runner-production
+          --platform android
+          --message "SaMi Runner production update ${GITHUB_SHA}"
+          --non-interactive
+ <<< "$EOL_REPORT" || {
+            echo "Runner app.config.ts did not receive the expected Windows-compatible line endings." >&2
+            exit 1
+          }
+
+          grep -Eq 'i/lf[[:space:]]+w/crlf[[:space:]]+attr/.*SaMiMapboxModule\\.kt      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: apps/runner/package-lock.json
+
+      - name: Install Runner dependencies from lockfile
+        run: npm ci --no-audit --no-fund
+
+      - name: Validate Runner production update target
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          test -n "$EXPO_TOKEN" || {
+            echo "EXPO_TOKEN is missing from GitHub Actions secrets." >&2
+            exit 1
+          }
+
+          npx expo config --type public --json \
+            > "$RUNNER_TEMP/sami-runner-expo-config.json"
+
+          node - "$RUNNER_TEMP/sami-runner-expo-config.json" <<'NODE'
+          const fs = require("node:fs");
+
+          const config = JSON.parse(
+            fs.readFileSync(process.argv[2], "utf8")
+          );
+
+          const eas = JSON.parse(
+            fs.readFileSync("eas.json", "utf8")
+          );
+
+          const expectedProjectId =
+            "8fcd647e-3514-4436-b1ce-c1b417f6c1d3";
+
+          if (config.slug !== "sami-runner") {
+            throw new Error("Incorrect Runner Expo slug.");
+          }
+
+          if (config.android?.package !== "com.sami.runner") {
+            throw new Error("Incorrect Runner Android package.");
+          }
+
+          if (config.ios?.bundleIdentifier !== "com.sami.runner") {
+            throw new Error("Incorrect Runner iOS bundle identifier.");
+          }
+
+          if (config.extra?.eas?.projectId !== expectedProjectId) {
+            throw new Error("Runner EAS project ID mismatch.");
+          }
+
+          if (
+            config.updates?.url !==
+            "https://u.expo.dev/" + expectedProjectId
+          ) {
+            throw new Error("Runner EAS Updates URL mismatch.");
+          }
+
+          if (config.updates?.enabled !== true) {
+            throw new Error("Runner EAS Updates are disabled.");
+          }
+
+          if (
+            config.updates?.requestHeaders?.["expo-channel-name"] !==
+            "runner-production"
+          ) {
+            throw new Error("Runner production update channel is not embedded in the resolved config.");
+          }
+
+          if (config.runtimeVersion?.policy !== "fingerprint") {
+            throw new Error("Runner must use fingerprint runtime compatibility.");
+          }
+
+          if (eas.build?.production?.channel !== "runner-production") {
+            throw new Error("Runner production build channel mismatch.");
+          }
+
+          if (eas.build?.production?.environment !== "production") {
+            throw new Error("Runner production build must use production environment.");
+          }
+
+          if (eas.build?.production?.android?.buildType !== "apk") {
+            throw new Error("Runner production profile must produce an APK.");
+          }
+
+          console.log("Runner Expo project verified.");
+          console.log("Runner package: com.sami.runner");
+          console.log("Runner channel: runner-production");
+          console.log("Runner runtime policy: fingerprint");
+          NODE
+
+      - name: Check Runner Expo dependency compatibility
+        run: npx expo install --check
+
+      - name: Type-check Runner
+        run: npm run typecheck
+
+      - name: Check Runner Expo project health
+        run: npx expo-doctor
+
+      - name: Verify Runner Android JavaScript bundle
+        run: npx expo export --platform android --output-dir "$RUNNER_TEMP/sami-runner-ota-bundle"
+
+      - name: Find latest finished Runner production APK
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          BUILD_LIST="$RUNNER_TEMP/sami-runner-build-list.json"
+
+          npx eas-cli@latest build:list \
+            --platform android \
+            --build-profile production \
+            --channel runner-production \
+            --status finished \
+            --limit 10 \
+            --json \
+            --non-interactive > "$BUILD_LIST"
+
+          node - "$BUILD_LIST" "$RUNNER_TEMP/sami-runner-build-id.txt" <<'NODE'
+          const fs = require("node:fs");
+
+          const raw = JSON.parse(
+            fs.readFileSync(process.argv[2], "utf8")
+          );
+
+          const builds = Array.isArray(raw)
+            ? raw
+            : raw.builds ?? raw.data ?? raw.items ?? [];
+
+          const finished = builds
+            .filter((build) =>
+              String(build.status ?? "").toUpperCase() === "FINISHED" &&
+              String(build.platform ?? "").toUpperCase() === "ANDROID" &&
+              build.appIdentifier === "com.sami.runner" &&
+              build.buildProfile === "production"
+            )
+            .sort((a, b) =>
+              Date.parse(b.createdAt ?? b.created_at ?? 0) -
+              Date.parse(a.createdAt ?? a.created_at ?? 0)
+            );
+
+          const build = finished[0];
+
+          if (!build) {
+            throw new Error(
+              "No finished Runner production APK exists. Build the first Runner APK before publishing OTA updates."
+            );
+          }
+
+          fs.writeFileSync(process.argv[3], build.id);
+
+          console.log("Runner production APK found.");
+          console.log("Build ID: " + build.id);
+          console.log("Package: " + build.appIdentifier);
+          NODE
+
+      - name: Compare Runner OTA fingerprint with production APK
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          BUILD_ID="$(cat "$RUNNER_TEMP/sami-runner-build-id.txt")"
+          FINGERPRINT_COMPARE="$RUNNER_TEMP/sami-runner-fingerprint-compare.json"
+
+          npx eas-cli@latest fingerprint:compare \
+            --build-id "$BUILD_ID" \
+            --environment production \
+            --json \
+            --non-interactive > "$FINGERPRINT_COMPARE"
+
+          node - "$FINGERPRINT_COMPARE" "$BUILD_ID" <<'NODE'
+          const fs = require("node:fs");
+          const [file, buildId] = process.argv.slice(2);
+
+          const raw = fs.readFileSync(file, "utf8");
+          const start = raw.indexOf("{");
+          const end = raw.lastIndexOf("}");
+
+          if (start < 0 || end < start) {
+            throw new Error("EAS Runner fingerprint comparison returned invalid JSON.");
+          }
+
+          const comparison = JSON.parse(
+            raw.slice(start, end + 1)
+          );
+
+          const buildFingerprint = comparison.fingerprint1?.hash?.toLowerCase();
+          const projectFingerprint = comparison.fingerprint2?.hash?.toLowerCase();
+
+          if (!buildFingerprint || !projectFingerprint) {
+            throw new Error("EAS did not return both Runner fingerprints.");
+          }
+
+          // Preferred path: the latest EAS production APK matches the project.
+          // This automatically becomes the active path again once EAS builds resume.
+          if (buildFingerprint === projectFingerprint) {
+            console.log("Latest EAS production APK matches the current Runner project.");
+            console.log("Build ID: " + buildId);
+            console.log("Fingerprint: " + projectFingerprint);
+            process.exit(0);
+          }
+
+          // Temporary local-build path: allow OTA only when the current project
+          // still matches the explicitly verified fingerprint of the locally
+          // built APK installed on the device. A native change changes the
+          // project fingerprint and fails this comparison.
+          const localRuntimeFingerprint = (
+            process.env.RUNNER_ANDROID_RUNTIME_FINGERPRINT ?? ""
+          ).trim().toLowerCase();
+
+          if (!/^[a-f0-9]{40}$/.test(localRuntimeFingerprint)) {
+            throw new Error(
+              "Latest EAS APK is older/different and RUNNER_ANDROID_RUNTIME_FINGERPRINT is not configured as a valid 40-character SHA-1 hash. Add the verified local APK fingerprint as a GitHub Actions repository variable."
+            );
+          }
+
+          if (projectFingerprint !== localRuntimeFingerprint) {
+            console.error("Runner project no longer matches the registered local APK runtime.");
+            console.error("Latest EAS APK fingerprint: " + buildFingerprint);
+            console.error("Current project fingerprint: " + projectFingerprint);
+            console.error("Registered local APK fingerprint: " + localRuntimeFingerprint);
+            throw new Error(
+              "OTA blocked: current Runner project matches neither the latest EAS APK nor the registered local APK runtime."
+            );
+          }
+
+          console.log("Latest EAS build is from an older runtime; verified local APK baseline matches the current project.");
+          console.log("EAS build ID (older runtime): " + buildId);
+          console.log("Local APK / current project fingerprint: " + projectFingerprint);
+          NODE
+
+      - name: Publish Runner production Android update
+        run: >
+          npx eas-cli@latest update
+          --environment production
+          --channel runner-production
+          --platform android
+          --message "SaMi Runner production update ${GITHUB_SHA}"
+          --non-interactive
+ <<< "$EOL_REPORT" || {
+            echo "SaMiMapboxModule.kt did not receive the expected Windows-compatible line endings." >&2
+            exit 1
+          }
+
+          git diff --quiet || {
+            echo "Line-ending normalization changed tracked file content beyond Git's configured checkout conversion." >&2
+            exit 1
+          }
+
+          echo "Windows-compatible Runner source checkout verified."
 
       - name: Set up Node.js
         uses: actions/setup-node@v4
