@@ -469,32 +469,52 @@ jobs:
         run: |
           set -euo pipefail
 
-          # The installed local APK fingerprint was generated from a Windows
-          # checkout using core.autocrlf=true. Recreate that working tree on Linux.
-          git config --local core.autocrlf true
-          git checkout-index --force --all
+          # Git's core.autocrlf does not emit CRLF on this Linux runner.
+          # These exact tracked text files were CRLF in the verified Windows
+          # working tree used to generate the installed APK fingerprint.
+          node <<'NODE'
+          const fs = require("node:fs");
+          const files = [
+            "apps/runner/app.config.ts",
+            "apps/runner/plugins/withSamiMapboxNative.js",
+            "apps/runner/modules/sami-mapbox/android/.gradle/buildOutputCleanup/cache.properties",
+            "apps/runner/modules/sami-mapbox/android/build.gradle",
+            "apps/runner/modules/sami-mapbox/android/src/main/AndroidManifest.xml",
+            "apps/runner/modules/sami-mapbox/android/src/main/java/com/sami/runner/mapbox/SaMiMapboxCameraController.kt",
+            "apps/runner/modules/sami-mapbox/android/src/main/java/com/sami/runner/mapbox/SaMiMapboxDiagnostics.kt",
+            "apps/runner/modules/sami-mapbox/android/src/main/java/com/sami/runner/mapbox/SaMiMapboxModule.kt",
+            "apps/runner/modules/sami-mapbox/android/src/main/java/com/sami/runner/mapbox/SaMiMapboxModule.kt.before-dashboard-20261120-182258.bak",
+            "apps/runner/modules/sami-mapbox/android/src/main/java/com/sami/runner/mapbox/SaMiMapboxModule.kt.before-dashboard-refresh-20261120182510.bak",
+            "apps/runner/modules/sami-mapbox/android/src/main/java/com/sami/runner/mapbox/SaMiRouteGuidanceController.kt",
+            "apps/runner/modules/sami-mapbox/android/src/main/java/com/sami/runner/mapbox/SaMiVoiceGuidanceController.kt"
+          ];
 
-          EOL_REPORT="$(git ls-files --eol -- \
+          for (const file of files) {
+            if (!fs.existsSync(file)) {
+              throw new Error("Expected fingerprint input is missing: " + file);
+            }
+            const original = fs.readFileSync(file, "utf8");
+            const windowsText = original.replace(/\r?\n/g, "\r\n");
+            if (windowsText !== original) {
+              fs.writeFileSync(file, windowsText, "utf8");
+            }
+            const verified = fs.readFileSync(file);
+            if (verified.includes(Buffer.from("\n")) &&
+                /(?<!\r)\n/.test(verified.toString("utf8"))) {
+              throw new Error("CRLF normalization failed: " + file);
+            }
+          }
+
+          console.log("Recreated CRLF for " + files.length + " verified Windows fingerprint inputs.");
+          NODE
+
+          git ls-files --eol -- \
             apps/runner/app.config.ts \
-            apps/runner/modules/sami-mapbox/android/src/main/java/com/sami/runner/mapbox/SaMiMapboxModule.kt)"
-          printf '%s\n' "$EOL_REPORT"
+            apps/runner/plugins/withSamiMapboxNative.js \
+            apps/runner/modules/sami-mapbox/android/build.gradle \
+            apps/runner/modules/sami-mapbox/android/src/main/AndroidManifest.xml \
+            apps/runner/modules/sami-mapbox/android/src/main/java/com/sami/runner/mapbox/SaMiMapboxModule.kt
 
-          grep -Eq 'i/lf[[:space:]]+w/crlf[[:space:]]+attr/.*apps/runner/app.config.ts$' <<< "$EOL_REPORT" || {
-            echo "Runner app.config.ts did not receive the expected Windows-compatible line endings." >&2
-            exit 1
-          }
-
-          grep -Eq 'i/lf[[:space:]]+w/crlf[[:space:]]+attr/.*SaMiMapboxModule\.kt$' <<< "$EOL_REPORT" || {
-            echo "SaMiMapboxModule.kt did not receive the expected Windows-compatible line endings." >&2
-            exit 1
-          }
-
-          git diff --quiet || {
-            echo "Unexpected source changes after line-ending checkout normalization." >&2
-            exit 1
-          }
-
-          echo "Windows-compatible Runner source checkout verified."
 
       - name: Set up Node.js
         uses: actions/setup-node@v4
