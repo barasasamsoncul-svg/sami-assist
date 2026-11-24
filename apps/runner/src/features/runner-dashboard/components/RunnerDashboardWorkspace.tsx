@@ -111,7 +111,7 @@ export function RunnerDashboardWorkspace({ dashboard }: Props) {
                   : dashboardState === "active"
                     ? "Your active errand is ready."
                     : dashboardState === "completion"
-                      ? "Your submitted errand is awaiting confirmation."
+                      ? "Your submitted errand is awaiting Admin confirmation."
                       : dashboardState === "offers"
                         ? "New errands are available."
                         : dashboardState === "offline"
@@ -509,8 +509,8 @@ export function RunnerDashboardWorkspace({ dashboard }: Props) {
 
               <SectionHeading
                 eyebrow="Completion submitted"
-                title="Waiting for confirmation"
-                subtitle="Your completion has been submitted. The customer must confirm before this errand is fully closed."
+                title="Waiting for Admin confirmation"
+                subtitle="Your completion has been submitted. SaMi Admin will review and confirm it before this errand is fully closed."
                 colors={colors}
               />
 

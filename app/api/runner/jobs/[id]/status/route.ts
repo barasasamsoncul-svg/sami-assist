@@ -40,7 +40,7 @@ export async function POST(request: Request, context: RouteContext) {
             from: "in_progress",
             to: "completion_submitted",
             event: "runner_submitted_completion",
-            note: "Runner submitted the errand for customer confirmation.",
+            note: "Runner submitted the errand for Admin confirmation.",
           }
         : null;
 
@@ -143,7 +143,7 @@ export async function POST(request: Request, context: RouteContext) {
         message:
           transition.to === "in_progress"
             ? "Errand started."
-            : "Completion submitted for customer confirmation.",
+            : "Completion submitted for Admin review.",
       },
       { headers: { "Cache-Control": "no-store" } },
     );

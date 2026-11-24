@@ -43,6 +43,11 @@ export default function AdminDashboard({ user }: AdminDashboardProps) {
 
           <div className="workspace-label">OPERATIONS</div>
 
+          <Link className="nav-item" href="/admin/errands">
+            <span className="nav-glyph" aria-hidden="true">↗</span>
+            <span>Errands</span>
+          </Link>
+
           <Link className="nav-item" href="/admin/runner-applications">
             <span className="nav-glyph" aria-hidden="true">♙</span>
             <span>Runner applications</span>
@@ -136,6 +141,28 @@ export default function AdminDashboard({ user }: AdminDashboardProps) {
             <section className="surface-card">
               <div className="surface-heading">
                 <div>
+                  <h3>Errand operations</h3>
+                  <p>Review new Customer requests and assign them to an eligible Runner.</p>
+                </div>
+                <span className="soft-count" aria-hidden="true">01</span>
+              </div>
+
+              <div className="attention-row">
+                <div className="attention-mark blue" aria-hidden="true">↗</div>
+                <div className="attention-copy">
+                  <b>Customer errands</b>
+                  <small>View incoming requests, check Runner availability and send a single Runner offer.</small>
+                </div>
+                <Link className="button ghost" href="/admin/errands" aria-label="Open customer errands">
+                  Open
+                  <span aria-hidden="true">→</span>
+                </Link>
+              </div>
+            </section>
+
+            <section className="surface-card">
+              <div className="surface-heading">
+                <div>
                   <h3>Runner management</h3>
                   <p>
                     Manage Runner onboarding and verification.
@@ -143,7 +170,7 @@ export default function AdminDashboard({ user }: AdminDashboardProps) {
                 </div>
 
                 <span className="soft-count" aria-hidden="true">
-                  01
+                  02
                 </span>
               </div>
 
