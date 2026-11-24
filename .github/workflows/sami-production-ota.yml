@@ -449,6 +449,8 @@ jobs:
       EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
       EXPO_PROJECT_ID: "8fcd647e-3514-4436-b1ce-c1b417f6c1d3"
       EXPO_PUBLIC_SAMI_API_URL: https://sami-assist.vercel.app
+      EXPO_UPDATE_CHANNEL: runner-production
+      RUNNER_ANDROID_RUNTIME_FINGERPRINT: ${{ vars.RUNNER_ANDROID_RUNTIME_FINGERPRINT }}
 
     steps:
       - name: Checkout Runner source
@@ -516,6 +518,13 @@ jobs:
 
           if (config.updates?.enabled !== true) {
             throw new Error("Runner EAS Updates are disabled.");
+          }
+
+          if (
+            config.updates?.requestHeaders?.["expo-channel-name"] !==
+            "runner-production"
+          ) {
+            throw new Error("Runner production update channel is not embedded in the resolved config.");
           }
 
           if (config.runtimeVersion?.policy !== "fingerprint") {
@@ -636,26 +645,49 @@ jobs:
             raw.slice(start, end + 1)
           );
 
-          const hashes = ["fingerprint1", "fingerprint2"]
-            .map((key) => comparison[key]?.hash)
-            .filter(Boolean);
+          const buildFingerprint = comparison.fingerprint1?.hash?.toLowerCase();
+          const projectFingerprint = comparison.fingerprint2?.hash?.toLowerCase();
 
-          if (hashes.length !== 2) {
+          if (!buildFingerprint || !projectFingerprint) {
             throw new Error("EAS did not return both Runner fingerprints.");
           }
 
-          if (hashes[0] !== hashes[1]) {
-            console.error("Runner OTA fingerprint mismatch.");
-            console.error("APK/project comparison: " + hashes.join(" vs "));
-            console.error(
-              "A new Runner production APK is required before OTA publication."
-            );
-            process.exit(1);
+          // Preferred path: the latest EAS production APK matches the project.
+          // This automatically becomes the active path again once EAS builds resume.
+          if (buildFingerprint === projectFingerprint) {
+            console.log("Latest EAS production APK matches the current Runner project.");
+            console.log("Build ID: " + buildId);
+            console.log("Fingerprint: " + projectFingerprint);
+            process.exit(0);
           }
 
-          console.log("Runner APK runtime compatibility verified.");
-          console.log("Build ID: " + buildId);
-          console.log("Fingerprint: " + hashes[0]);
+          // Temporary local-build path: allow OTA only when the current project
+          // still matches the explicitly verified fingerprint of the locally
+          // built APK installed on the device. A native change changes the
+          // project fingerprint and fails this comparison.
+          const localRuntimeFingerprint = (
+            process.env.RUNNER_ANDROID_RUNTIME_FINGERPRINT ?? ""
+          ).trim().toLowerCase();
+
+          if (!/^[a-f0-9]{40}$/.test(localRuntimeFingerprint)) {
+            throw new Error(
+              "Latest EAS APK is older/different and RUNNER_ANDROID_RUNTIME_FINGERPRINT is not configured as a valid 40-character SHA-1 hash. Add the verified local APK fingerprint as a GitHub Actions repository variable."
+            );
+          }
+
+          if (projectFingerprint !== localRuntimeFingerprint) {
+            console.error("Runner project no longer matches the registered local APK runtime.");
+            console.error("Latest EAS APK fingerprint: " + buildFingerprint);
+            console.error("Current project fingerprint: " + projectFingerprint);
+            console.error("Registered local APK fingerprint: " + localRuntimeFingerprint);
+            throw new Error(
+              "OTA blocked: current Runner project matches neither the latest EAS APK nor the registered local APK runtime."
+            );
+          }
+
+          console.log("Latest EAS build is from an older runtime; verified local APK baseline matches the current project.");
+          console.log("EAS build ID (older runtime): " + buildId);
+          console.log("Local APK / current project fingerprint: " + projectFingerprint);
           NODE
 
       - name: Publish Runner production Android update
