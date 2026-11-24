@@ -1,14 +1,21 @@
 import { useEffect, useMemo, useState } from "react";
 import {
   ActivityIndicator,
+  LayoutAnimation,
+  Modal,
   PanResponder,
   Pressable,
+  ScrollView,
+  StatusBar,
   StyleSheet,
   Text,
+  UIManager,
   View,
   useWindowDimensions,
+  Platform,
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useRunnerTheme } from "@/theme";
 
 export type RunnerDashboardSection =
@@ -38,39 +45,7 @@ type Props = {
   mapError?: string;
 };
 
-const COLORS = {
-  navy: "#000535",
-  panel: "#06132C",
-  panelRaised: "#0A1C3A",
-  panelSoft: "#0D2345",
-  border: "#294A78",
-  borderSoft: "#1B365C",
-  blue: "#3485F5",
-  blueSoft: "#16345B",
-  text: "#F6F8FC",
-  muted: "#AAB9CF",
-  quiet: "#71839F",
-  white: "#FFFFFF",
-  gold: "#E9B64E",
-  error: "#E2767D",
-  errorSoft: "#321A22",
-};
-
-function MetricValue({
-  visible,
-  value,
-}: {
-  visible: boolean;
-  value: string | null;
-}) {
-  const { colors } = useRunnerTheme();
-
-  return (
-    <Text style={[styles.metricValue, { color: colors.text }]} numberOfLines={1}>
-      {visible ? value ?? "—" : "••••"}
-    </Text>
-  );
-}
+const DASHBOARD_EARNINGS_PLACEHOLDER = "KSh 2,500";
 
 export function SaMiRunnerDashboardChrome({
   topInset,
@@ -80,61 +55,61 @@ export function SaMiRunnerDashboardChrome({
   authorized,
   canChangeAvailability,
   availabilityBusy,
-  locationLabel,
+  locationLabel: _locationLabel,
   expanded,
   onExpandedChange,
   onToggleAvailability,
   onOpenSection,
   offersCount,
   activeErrand,
-  hasActiveRoute,
+  hasActiveRoute: _hasActiveRoute,
   error,
   mapError,
 }: Props) {
   const { height: windowHeight } = useWindowDimensions();
-  const { colors: themeColors, showOverlay } = useRunnerTheme();
+  const insets = useSafeAreaInsets();
+  const { colors, showOverlay } = useRunnerTheme();
   const [earningsExpanded, setEarningsExpanded] = useState(false);
   const [earningsVisible, setEarningsVisible] = useState(true);
+  const [menuOpen, setMenuOpen] = useState(false);
 
-  const safeBottom = Math.max(bottomInset, 0);
-  const expandedHeight = Math.min(
-    Math.max(Math.round(windowHeight * 0.46), 340),
-    390,
-  );
-  const sheetBottom = 0;
-  const sheetHeight = (expanded ? expandedHeight : 104) + safeBottom;
+  const safeBottom = Math.max(bottomInset, insets.bottom, 0);
+  const expandedHeight = Math.min(Math.max(Math.round(windowHeight * 0.55), 390), 540);
+  const sheetHeight = (expanded ? expandedHeight : 214) + safeBottom;
+  const navy = colors.brandNavy || "#000535";
+  const actionBlue = colors.blueAction || "#1558B0";
+  const white = "#FFFFFF";
+  const glass = "rgba(255,255,255,0.105)";
+  const glassBorder = "rgba(255,255,255,0.23)";
+
+  useEffect(() => {
+    if (Platform.OS === "android" && UIManager.setLayoutAnimationEnabledExperimental) {
+      UIManager.setLayoutAnimationEnabledExperimental(true);
+    }
+  }, []);
+
+  const animateSheet = (nextExpanded: boolean) => {
+    LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
+    onExpandedChange(nextExpanded);
+  };
 
   const panResponder = useMemo(
     () =>
       PanResponder.create({
         onStartShouldSetPanResponder: () => false,
         onMoveShouldSetPanResponder: (_event, gesture) =>
-          Math.abs(gesture.dy) > 9 &&
-          Math.abs(gesture.dy) > Math.abs(gesture.dx) * 1.2,
+          Math.abs(gesture.dy) > 9 && Math.abs(gesture.dy) > Math.abs(gesture.dx) * 1.2,
         onPanResponderRelease: (_event, gesture) => {
-          if (gesture.dy < -24) onExpandedChange(true);
-          if (gesture.dy > 24) onExpandedChange(false);
+          if (gesture.dy < -24) animateSheet(true);
+          if (gesture.dy > 24) animateSheet(false);
         },
       }),
     [onExpandedChange],
   );
 
-  const statusText = activeErrand
-    ? "On errand"
-    : statusLabel === "PENDING"
-    ? "Pending"
-    : statusLabel === "RESTRICTED"
-      ? "Restricted"
-      : isOnline
-        ? "Online"
-        : "Offline";
-
-  const visibleLocation = locationLabel?.trim() || "Finding location";
-
   useEffect(() => {
     const message = error || mapError;
     if (!message) return;
-
     showOverlay({
       type: "error",
       title: error ? "Runner dashboard issue" : "Map issue",
@@ -143,323 +118,242 @@ export function SaMiRunnerDashboardChrome({
     });
   }, [error, mapError, showOverlay]);
 
+  const openSection = (section: RunnerDashboardSection) => {
+    setMenuOpen(false);
+    onOpenSection(section);
+  };
+
+  const availabilityLabel = isOnline ? "Go offline" : "Go online";
+  const availabilityDisabled = !authorized || !canChangeAvailability || availabilityBusy || activeErrand;
+
   return (
     <View pointerEvents="box-none" style={StyleSheet.absoluteFill}>
-      {/* SaMi header controls sit directly over the map without card shells. */}
-      <View
-        style={[
-          styles.headerRow,
-          {
-            top: topInset + 7,
-            paddingHorizontal: 17,
-          },
-        ]}
-      >
-        <View
-          accessibilityLabel={`Availability status: ${statusText}`}
-          style={[styles.headerCard, styles.statusCard]}
+      {/* Android status-bar background is configured in app.config/app.json; core RN 0.88 StatusBar only controls icon/text style here. */}
+      <StatusBar barStyle="light-content" />
+
+      {/* Top overlay: compact drawer control and one earnings pill. No location chip. */}
+      <View style={[styles.headerRow, { top: topInset + 7, paddingHorizontal: 16 }]}>
+        <Pressable
+          accessibilityRole="button"
+          accessibilityLabel="Open dashboard menu"
+          onPress={() => setMenuOpen(true)}
+          style={({ pressed }) => [styles.hamburgerButton, { backgroundColor: navy, opacity: pressed ? 0.78 : 1 }]}
         >
-          {availabilityBusy ? (
-            <ActivityIndicator size="small" color={themeColors.blue} />
-          ) : (
-            <View
-              style={[
-                styles.statusDot,
-                { backgroundColor: isOnline || activeErrand ? themeColors.blue : themeColors.muted },
-              ]}
-            />
-          )}
-          <Text style={[styles.headerCardText, { color: themeColors.text }]} numberOfLines={1}>
-            {statusText}
-          </Text>
-        </View>
+          <Ionicons name="menu" size={24} color={white} />
+        </Pressable>
 
-        <View style={[styles.headerCard, styles.earningsCard]}>
-          <Pressable
-            accessibilityRole="button"
-            accessibilityLabel="Expand or collapse earnings summary"
-            accessibilityState={{ expanded: earningsExpanded }}
-            onPress={() => setEarningsExpanded((current) => !current)}
-            style={styles.earningsMain}
-          >
-            <Ionicons name="bar-chart" size={17} color={themeColors.text} />
-            <View style={styles.earningsHeaderCopy}>
-              <Text style={[styles.headerEyebrow, { color: themeColors.textMuted }]}>EARNINGS</Text>
-              <Text style={[styles.headerCardText, { color: themeColors.text }]} numberOfLines={1}>
-                {earningsVisible ? "KSh —" : "KSh ••••"}
-              </Text>
-            </View>
-          </Pressable>
-          <Pressable
-            accessibilityRole="button"
-            accessibilityLabel={earningsVisible ? "Hide earnings" : "Show earnings"}
-            hitSlop={8}
-            onPress={() => setEarningsVisible((current) => !current)}
-            style={styles.eyeButton}
-          >
-            <Ionicons
-              name={earningsVisible ? "eye-outline" : "eye-off-outline"}
-              size={18}
-              color={themeColors.text}
-            />
-          </Pressable>
-        </View>
-
-        {(isOnline || activeErrand) && authorized ? (
-          <View
-            accessibilityLabel={`Current location: ${visibleLocation}`}
-            style={[styles.headerCard, styles.locationCard]}
-          >
-            <Ionicons name="location" size={17} color={themeColors.text} />
-            <Text style={[styles.headerCardText, { color: themeColors.text }]} numberOfLines={1}>
-              {visibleLocation}
-            </Text>
-          </View>
-        ) : null}
+        <Pressable
+          accessibilityRole="button"
+          accessibilityLabel={earningsVisible ? "Show today's earnings details" : "Open earnings details"}
+          accessibilityState={{ expanded: earningsExpanded }}
+          onPress={() => setEarningsExpanded((current) => !current)}
+          style={({ pressed }) => [styles.earningsPill, { backgroundColor: navy, opacity: pressed ? 0.9 : 1 }]}
+        >
+          {earningsVisible ? (
+            <>
+              <Text style={styles.earningsPillAmount}>{DASHBOARD_EARNINGS_PLACEHOLDER}</Text>
+              <Text style={styles.earningsPillToday}>Today</Text>
+            </>
+          ) : null}
+        </Pressable>
+        <View style={styles.headerRightSpacer} />
       </View>
 
       {earningsExpanded ? (
-        <Pressable
-          accessibilityRole="button"
-          accessibilityLabel="Close earnings details"
-          onPress={() => setEarningsExpanded(false)}
-          style={styles.overlayDismiss}
-        />
+        <>
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel="Close earnings overlay"
+            onPress={() => setEarningsExpanded(false)}
+            style={styles.earningsDismiss}
+          />
+          <View style={[styles.earningsOverlay, { top: topInset + 68, backgroundColor: navy, borderColor: glassBorder }]}>
+            <View style={styles.earningsOverlayHeader}>
+              <View>
+                <Text style={styles.earningsOverlayEyebrow}>TODAY</Text>
+                <Text style={styles.earningsOverlayValue}>{DASHBOARD_EARNINGS_PLACEHOLDER}</Text>
+              </View>
+              <Pressable
+                accessibilityRole="button"
+                accessibilityLabel={earningsVisible ? "Hide earnings on dashboard" : "Show earnings on dashboard"}
+                onPress={() => setEarningsVisible((current) => !current)}
+                hitSlop={10}
+                style={({ pressed }) => [styles.eyeButton, { backgroundColor: glass, opacity: pressed ? 0.72 : 1 }]}
+              >
+                <Ionicons name={earningsVisible ? "eye-off-outline" : "eye-outline"} size={21} color={white} />
+              </Pressable>
+            </View>
+            <Text style={styles.earningsOverlayHint}>
+              {earningsVisible ? "Tap the eye to hide the amount on the dashboard." : "Your dashboard amount is hidden. Your earnings details remain visible here."}
+            </Text>
+          </View>
+        </>
       ) : null}
 
-      {earningsExpanded ? (
+      {/* Persistent deep-navy bottom sheet. The availability button stays fixed above its content. */}
+      {!activeErrand ? (
         <View
           style={[
-            styles.earningsPanel,
+            styles.bottomSheet,
             {
-              top: topInset + (hasActiveRoute ? 230 : 61),
-              backgroundColor: themeColors.surface,
-              borderColor: themeColors.border,
+              height: sheetHeight,
+              paddingBottom: safeBottom + 12,
+              backgroundColor: navy,
+              borderTopColor: glassBorder,
             },
           ]}
+          {...panResponder.panHandlers}
         >
-          <View style={styles.earningsPanelHeader}>
-            <Text style={[styles.earningsPanelTitle, { color: themeColors.text }]}>Earnings overview</Text>
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel={expanded ? "Collapse dashboard panel" : "Expand dashboard panel"}
+            accessibilityState={{ expanded }}
+            onPress={() => animateSheet(!expanded)}
+            style={styles.sheetHandleArea}
+          >
+            <View style={[styles.sheetHandle, { backgroundColor: "rgba(255,255,255,0.62)" }]} />
+          </Pressable>
+
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel={availabilityLabel}
+            accessibilityHint="Changes your SaMi Runner availability."
+            disabled={availabilityDisabled}
+            onPress={onToggleAvailability}
+            style={({ pressed }) => [
+              styles.availabilityButton,
+              { backgroundColor: actionBlue, opacity: availabilityDisabled ? 0.55 : pressed ? 0.82 : 1 },
+            ]}
+          >
+            {availabilityBusy ? (
+              <ActivityIndicator size="small" color={white} />
+            ) : (
+              <>
+                <Ionicons name={isOnline ? "power" : "radio-outline"} size={19} color={white} />
+                <Text style={styles.availabilityButtonText}>{availabilityLabel}</Text>
+              </>
+            )}
+          </Pressable>
+
+          <ScrollView
+            style={styles.sheetScrollArea}
+            contentContainerStyle={styles.sheetScrollContent}
+            showsVerticalScrollIndicator={false}
+          >
             <Pressable
               accessibilityRole="button"
-              accessibilityLabel={earningsVisible ? "Hide earnings values" : "Show earnings values"}
-              hitSlop={8}
-              onPress={() => setEarningsVisible((current) => !current)}
+              accessibilityLabel="Open Offers and Rewards"
+              onPress={() => openSection("offers")}
+              style={({ pressed }) => [styles.glassCard, { backgroundColor: glass, borderColor: glassBorder, opacity: pressed ? 0.78 : 1 }]}
             >
-              <Ionicons
-                name={earningsVisible ? "eye-outline" : "eye-off-outline"}
-                size={19}
-                color={themeColors.text}
-              />
+              <View style={styles.offerIconWrap}>
+                <Ionicons name="gift-outline" size={25} color={white} />
+              </View>
+              <View style={styles.offerCopy}>
+                <Text style={styles.glassCardTitle}>Offers & Rewards</Text>
+                <Text style={styles.glassCardSubtitle}>SaMi offers, rewards and opportunities</Text>
+              </View>
+              {offersCount > 0 ? (
+                <View style={[styles.offerCountBadge, { backgroundColor: actionBlue }]}>
+                  <Text style={styles.offerCountText}>{offersCount}</Text>
+                </View>
+              ) : (
+                <Ionicons name="chevron-forward" size={20} color={white} />
+              )}
             </Pressable>
-          </View>
 
-          <View style={styles.metricTopRow}>
-            <View style={styles.metricCell}>
-              <Ionicons name="wallet-outline" size={18} color={themeColors.blue} />
-              <MetricValue visible={earningsVisible} value={null} />
-              <Text style={[styles.metricLabel, { color: themeColors.textMuted }]}>Today</Text>
-            </View>
-            <View style={[styles.metricDivider, { backgroundColor: themeColors.border }]} />
-            <View style={styles.metricCell}>
-              <Ionicons name="calendar-outline" size={18} color={themeColors.blue} />
-              <MetricValue visible={earningsVisible} value={null} />
-              <Text style={[styles.metricLabel, { color: themeColors.textMuted }]}>This week</Text>
-            </View>
-            <View style={[styles.metricDivider, { backgroundColor: themeColors.border }]} />
-            <View style={styles.metricCell}>
-              <Ionicons name="card-outline" size={18} color={themeColors.blue} />
-              <MetricValue visible={earningsVisible} value={null} />
-              <Text style={[styles.metricLabel, { color: themeColors.textMuted }]}>Balance</Text>
-            </View>
-          </View>
-
-          <View style={styles.metricBottomRow}>
-            <View style={styles.metricBottomCell}>
-              <Ionicons name="bicycle-outline" size={19} color={themeColors.blue} />
-              <View>
-                <MetricValue visible={earningsVisible} value={null} />
-                <Text style={[styles.metricLabel, { color: themeColors.textMuted }]}>Trips</Text>
-              </View>
-            </View>
-            <View style={[styles.metricDivider, { backgroundColor: themeColors.border }]} />
-            <View style={styles.metricBottomCell}>
-              <Ionicons name="time-outline" size={19} color={themeColors.blue} />
-              <View>
-                <MetricValue visible={earningsVisible} value={null} />
-                <Text style={[styles.metricLabel, { color: themeColors.textMuted }]}>Last trip</Text>
-              </View>
-            </View>
-          </View>
-          <Text style={[styles.metricsFootnote, { color: themeColors.muted }]}>
-            Earnings and trip totals will appear when the Runner metrics service is connected.
-          </Text>
+            {expanded ? (
+              <>
+                <Text style={styles.sectionEyebrow}>PERFORMANCE</Text>
+                <View style={styles.quickCardGrid}>
+                  <QuickCard icon="star-outline" label="Rating" value="—" onPress={() => openSection("rating")} glass={glass} border={glassBorder} />
+                  <QuickCard icon="trending-up-outline" label="Acceptance" value="—" onPress={() => openSection("acceptance")} glass={glass} border={glassBorder} />
+                </View>
+                <Text style={styles.sectionEyebrow}>QUICK ACCESS</Text>
+                <View style={styles.quickCardGrid}>
+                  <QuickCard icon="grid-outline" label="Runner menu" onPress={() => openSection("menu")} glass={glass} border={glassBorder} />
+                  <QuickCard icon="help-circle-outline" label="Help & support" onPress={() => openSection("help")} glass={glass} border={glassBorder} />
+                </View>
+              </>
+            ) : null}
+          </ScrollView>
         </View>
       ) : null}
 
-      {/* Persistent bottom sheet: offers stay first in both states. */}
-      {!activeErrand ? (
-      <View
-        style={[
-          styles.bottomSheet,
-          {
-            bottom: sheetBottom,
-            height: sheetHeight,
-            paddingBottom: safeBottom + 8,
-            backgroundColor: themeColors.surface,
-            borderTopColor: themeColors.border,
-          },
-        ]}
-        {...panResponder.panHandlers}
-      >
-        <Pressable
-          accessibilityRole="button"
-          accessibilityLabel={expanded ? "Collapse dashboard panel" : "Expand dashboard panel"}
-          accessibilityState={{ expanded }}
-          onPress={() => onExpandedChange(!expanded)}
-          style={styles.sheetHandleArea}
-        >
-          <View style={[styles.sheetHandle, { backgroundColor: themeColors.borderStrong }]} />
-          <Ionicons
-            name={expanded ? "chevron-down" : "chevron-up"}
-            size={16}
-            color={themeColors.textMuted}
-            style={styles.sheetChevron}
-          />
-        </Pressable>
-
-        <Pressable
-          accessibilityRole="button"
-          accessibilityLabel="Open Offers and Rewards"
-          onPress={() => onOpenSection("offers")}
-          style={({ pressed }) => [
-            styles.offerCard,
-            { opacity: pressed ? 0.82 : 1 },
-          ]}
-        >
-          <View style={styles.offerIconWrap}>
-            <Ionicons name="gift-outline" size={25} color={themeColors.blue} />
+      {/* Compact left-side drawer, opened from the circular hamburger. */}
+      <Modal visible={menuOpen} transparent animationType="fade" statusBarTranslucent={false} onRequestClose={() => setMenuOpen(false)}>
+        <View style={styles.drawerRoot}>
+          <Pressable style={styles.drawerBackdrop} onPress={() => setMenuOpen(false)} accessibilityLabel="Close menu" />
+          <View style={[styles.drawerPanel, { backgroundColor: navy, paddingTop: topInset + 22, paddingBottom: safeBottom + 18, borderColor: glassBorder }]}>
+            <View style={styles.drawerHeader}>
+              <View>
+                <Text style={styles.drawerBrand}>SaMi Runner</Text>
+                <Text style={styles.drawerSubtitle}>Consider it done.</Text>
+              </View>
+              <Pressable accessibilityRole="button" accessibilityLabel="Close menu" onPress={() => setMenuOpen(false)} style={styles.drawerClose}>
+                <Ionicons name="close" size={22} color={white} />
+              </Pressable>
+            </View>
+            <View style={styles.drawerDivider} />
+            <DrawerItem icon="gift-outline" label="Offers & Rewards" onPress={() => openSection("offers")} />
+            <DrawerItem icon="star-outline" label="Rating" onPress={() => openSection("rating")} />
+            <DrawerItem icon="trending-up-outline" label="Acceptance" onPress={() => openSection("acceptance")} />
+            <DrawerItem icon="grid-outline" label="Runner menu & profile" onPress={() => openSection("menu")} />
+            <DrawerItem icon="help-circle-outline" label="Help & support" onPress={() => openSection("help")} />
           </View>
-          <View style={styles.offerCopy}>
-            <View style={styles.offerTitleRow}>
-              <Text style={[styles.offerTitle, { color: themeColors.text }]}>Offers & Rewards</Text>
-              {offersCount > 0 ? (
-                <View style={styles.offerCountBadge}>
-                  <Text style={styles.offerCountText}>{offersCount}</Text>
-                </View>
-              ) : null}
-            </View>
-            <Text style={[styles.offerSubtitle, { color: themeColors.textMuted }]} numberOfLines={1}>
-              SaMi offers, rewards and opportunities
-            </Text>
-          </View>
-          <Ionicons name="chevron-forward" size={21} color={themeColors.textMuted} />
-        </Pressable>
-
-        {expanded ? (
-          <>
-                        <Text
-              style={[styles.quickCardLabel, { color: themeColors.textMuted, alignSelf: "flex-start", marginTop: 4, letterSpacing: 0.8 }]}
-            >
-              PERFORMANCE
-            </Text>
-            <View style={styles.quickCardGrid}>
-              <QuickCard
-                icon="star"
-                iconColor={themeColors.amber}
-                label="Rating"
-                value="â€”"
-                onPress={() => onOpenSection("rating")}
-              />
-              <QuickCard
-                icon="trending-up"
-                label="Acceptance"
-                value="â€”"
-                onPress={() => onOpenSection("acceptance")}
-              />
-            </View>
-            <Text
-              style={[styles.quickCardLabel, { color: themeColors.textMuted, alignSelf: "flex-start", marginTop: 8, letterSpacing: 0.8 }]}
-            >
-              QUICK ACCESS
-            </Text>
-            <View style={styles.quickCardGrid}>
-              <QuickCard
-                icon="grid"
-                label="Menu"
-                onPress={() => onOpenSection("menu")}
-              />
-              <QuickCard
-                icon="headset-outline"
-                label="Help"
-                onPress={() => onOpenSection("help")}
-              />
-            </View>
-
-            <Pressable
-              accessibilityRole="button"
-              accessibilityLabel={isOnline ? "Go offline" : "Go online"}
-              accessibilityHint={
-                activeErrand
-                  ? "Availability cannot be changed while an errand is active."
-                  : "Changes your SaMi Runner availability."
-              }
-              disabled={!authorized || !canChangeAvailability || availabilityBusy}
-              onPress={onToggleAvailability}
-              style={({ pressed }) => [
-                styles.goButton,
-                {
-                  opacity:
-                    !authorized || !canChangeAvailability || availabilityBusy
-                      ? 0.55
-                      : pressed
-                        ? 0.86
-                        : 1,
-                },
-              ]}
-            >
-              {availabilityBusy ? (
-                <ActivityIndicator size="small" color={themeColors.brandNavy} />
-              ) : (
-                <Text style={[styles.goButtonText, { color: themeColors.brandNavy }]}>GO</Text>
-              )}
-            </Pressable>
-          </>
-        ) : null}
-      </View>
-      ) : null}
+        </View>
+      </Modal>
     </View>
+  );
+}
+
+function DrawerItem({
+  icon,
+  label,
+  onPress,
+}: {
+  icon: keyof typeof Ionicons.glyphMap;
+  label: string;
+  onPress: () => void;
+}) {
+  return (
+    <Pressable
+      accessibilityRole="button"
+      onPress={onPress}
+      style={({ pressed }) => [styles.drawerItem, { backgroundColor: pressed ? "rgba(255,255,255,0.16)" : "transparent" }]}
+    >
+      <Ionicons name={icon} size={21} color="#FFFFFF" />
+      <Text style={styles.drawerItemText}>{label}</Text>
+      <Ionicons name="chevron-forward" size={17} color="rgba(255,255,255,0.72)" />
+    </Pressable>
   );
 }
 
 function QuickCard({
   icon,
-  iconColor = COLORS.blue,
   label,
   value,
   onPress,
+  glass,
+  border,
 }: {
   icon: keyof typeof Ionicons.glyphMap;
-  iconColor?: string;
   label: string;
   value?: string;
   onPress: () => void;
+  glass: string;
+  border: string;
 }) {
-  const { colors } = useRunnerTheme();
-
   return (
     <Pressable
       accessibilityRole="button"
       accessibilityLabel={value ? `${label}: ${value}` : label}
       onPress={onPress}
-      style={({ pressed }) => [
-        styles.quickCard,
-        { opacity: pressed ? 0.78 : 1 },
-      ]}
+      style={({ pressed }) => [styles.quickCard, { backgroundColor: glass, borderColor: border, opacity: pressed ? 0.76 : 1 }]}
     >
-      <Ionicons name={icon} size={22} color={iconColor ?? colors.blue} />
-      {value ? <Text style={[styles.quickCardValue, { color: colors.text }]}>{value}</Text> : null}
-      <Text style={[styles.quickCardLabel, { color: colors.textMuted }]}>{label}</Text>
+      <Ionicons name={icon} size={23} color="#FFFFFF" />
+      {value ? <Text style={styles.quickCardValue}>{value}</Text> : null}
+      <Text style={styles.quickCardLabel}>{label}</Text>
     </Pressable>
   );
 }
@@ -469,297 +363,141 @@ const styles = StyleSheet.create({
     position: "absolute",
     left: 0,
     right: 0,
-    zIndex: 30,
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 10,
-  },
-  headerCard: {
-    minHeight: 44,
-    borderRadius: 0,
-    borderWidth: 0,
-    borderColor: "transparent",
-    backgroundColor: "transparent",
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "center",
-    gap: 6,
-    paddingHorizontal: 2,
-  },
-  statusCard: {
-    flexGrow: 0.85,
-    flexBasis: 0,
-  },
-  earningsCard: {
-    flexGrow: 1.25,
-    flexBasis: 0,
-    justifyContent: "flex-start",
-  },
-  locationCard: {
-    flexGrow: 1.1,
-    flexBasis: 0,
-    justifyContent: "flex-start",
-  },
-  statusDot: {
-    width: 9,
-    height: 9,
-    borderRadius: 5,
-  },
-  headerCardText: {
-    color: "#FFFFFF",
-    fontSize: 11,
-    fontWeight: "800",
-    flexShrink: 1,
-  },
-  headerEyebrow: {
-    color: COLORS.muted,
-    fontSize: 7,
-    fontWeight: "900",
-    letterSpacing: 0.75,
-  },
-  earningsMain: {
-    flex: 1,
-    minWidth: 0,
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 7,
-  },
-  earningsHeaderCopy: {
-    flex: 1,
-    gap: 1,
-  },
-  eyeButton: {
-    minWidth: 22,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  overlayDismiss: {
-    ...StyleSheet.absoluteFill,
-    zIndex: 40,
-    elevation: 22,
-    backgroundColor: "transparent",
-  },
-  earningsPanel: {
-    position: "absolute",
-    left: 12,
-    right: 12,
-    zIndex: 41,
-    borderRadius: 16,
-    borderWidth: StyleSheet.hairlineWidth,
-    paddingHorizontal: 14,
-    paddingTop: 12,
-    paddingBottom: 10,
-    gap: 10,
-    elevation: 23,
-  },
-  earningsPanelHeader: {
+    zIndex: 50,
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
   },
-  earningsPanelTitle: {
-    color: "#FFFFFF",
-    fontSize: 13,
-    fontWeight: "900",
-  },
-  metricTopRow: {
-    flexDirection: "row",
-    alignItems: "stretch",
-    justifyContent: "space-between",
-  },
-  metricCell: {
-    flex: 1,
+  hamburgerButton: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
     alignItems: "center",
     justifyContent: "center",
-    gap: 3,
-    minWidth: 0,
-  },
-  metricDivider: {
-    width: StyleSheet.hairlineWidth,
-    backgroundColor: COLORS.border,
-    marginHorizontal: 8,
-  },
-  metricValue: {
-    color: "#FFFFFF",
-    fontSize: 13,
-    fontWeight: "900",
-    textAlign: "center",
-  },
-  metricLabel: {
-    color: "#D0D8E4",
-    fontSize: 10,
-    fontWeight: "600",
-    textAlign: "center",
-  },
-  metricBottomRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    borderTopWidth: StyleSheet.hairlineWidth,
-    borderTopColor: COLORS.borderSoft,
-    paddingTop: 9,
-  },
-  metricBottomCell: {
-    flex: 1,
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "center",
-    gap: 8,
-  },
-  metricsFootnote: {
-    color: COLORS.quiet,
-    fontSize: 9,
-    textAlign: "center",
-    lineHeight: 13,
-  },
-  errorBanner: {
-    position: "absolute",
-    left: 14,
-    right: 14,
-    zIndex: 28,
     borderWidth: 1,
-    borderColor: "#754253",
-    borderRadius: 13,
-    backgroundColor: COLORS.errorSoft,
-    paddingHorizontal: 11,
-    paddingVertical: 9,
-    flexDirection: "row",
+    borderColor: "rgba(255,255,255,0.19)",
+    elevation: 8,
+    shadowColor: "#000000",
+    shadowOffset: { width: 0, height: 3 },
+    shadowOpacity: 0.24,
+    shadowRadius: 7,
+  },
+  headerRightSpacer: { width: 44, height: 44 },
+  earningsPill: {
+    position: "absolute",
+    left: "50%",
+    transform: [{ translateX: -78 }],
+    width: 156,
+    minHeight: 53,
+    borderRadius: 28,
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.2)",
     alignItems: "center",
-    gap: 8,
+    justifyContent: "center",
+    paddingHorizontal: 14,
+    paddingVertical: 6,
+    elevation: 9,
+    shadowColor: "#000000",
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.28,
+    shadowRadius: 8,
   },
-  errorBannerText: {
-    color: COLORS.error,
-    flex: 1,
-    fontSize: 11,
-    fontWeight: "700",
+  earningsPillAmount: { color: "#FFFFFF", fontSize: 17, lineHeight: 21, fontWeight: "900", letterSpacing: -0.2 },
+  earningsPillToday: { color: "rgba(255,255,255,0.86)", fontSize: 10, lineHeight: 13, fontWeight: "700" },
+  earningsDismiss: { ...StyleSheet.absoluteFill, zIndex: 40, backgroundColor: "rgba(0,0,0,0.08)" },
+  earningsOverlay: {
+    position: "absolute",
+    left: 16,
+    right: 16,
+    zIndex: 60,
+    borderWidth: 1,
+    borderRadius: 20,
+    paddingHorizontal: 17,
+    paddingVertical: 15,
+    gap: 10,
+    elevation: 18,
+    shadowColor: "#000000",
+    shadowOffset: { width: 0, height: 8 },
+    shadowOpacity: 0.3,
+    shadowRadius: 14,
   },
+  earningsOverlayHeader: { flexDirection: "row", alignItems: "center", justifyContent: "space-between" },
+  earningsOverlayEyebrow: { color: "rgba(255,255,255,0.72)", fontSize: 9, fontWeight: "900", letterSpacing: 1.2 },
+  earningsOverlayValue: { color: "#FFFFFF", fontSize: 24, lineHeight: 30, fontWeight: "900" },
+  eyeButton: { width: 42, height: 42, borderRadius: 21, alignItems: "center", justifyContent: "center", borderWidth: 1, borderColor: "rgba(255,255,255,0.22)" },
+  earningsOverlayHint: { color: "rgba(255,255,255,0.82)", fontSize: 11, lineHeight: 16 },
   bottomSheet: {
     position: "absolute",
     left: 0,
     right: 0,
+    bottom: 0,
     zIndex: 35,
-    borderTopLeftRadius: 22,
-    borderTopRightRadius: 22,
-    borderTopWidth: StyleSheet.hairlineWidth,
-    paddingHorizontal: 17,
-    paddingBottom: 8,
-    gap: 9,
-    elevation: 12,
+    borderTopLeftRadius: 26,
+    borderTopRightRadius: 26,
+    borderTopWidth: 1,
+    paddingHorizontal: 16,
+    paddingTop: 4,
+    gap: 10,
+    elevation: 22,
+    shadowColor: "#000000",
+    shadowOffset: { width: 0, height: -5 },
+    shadowOpacity: 0.25,
+    shadowRadius: 15,
   },
-  sheetHandleArea: {
-    height: 22,
+  sheetHandleArea: { height: 19, alignItems: "center", justifyContent: "center" },
+  sheetHandle: { width: 39, height: 4, borderRadius: 4 },
+  availabilityButton: {
+    minHeight: 55,
+    borderRadius: 17,
     alignItems: "center",
     justifyContent: "center",
+    flexDirection: "row",
+    gap: 10,
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.25)",
+    elevation: 6,
+    shadowColor: "#000000",
+    shadowOffset: { width: 0, height: 3 },
+    shadowOpacity: 0.2,
+    shadowRadius: 7,
   },
-  sheetHandle: {
-    width: 42,
-    height: 4,
-    borderRadius: 99,
-    backgroundColor: "#A6B5CB",
-  },
-  sheetChevron: {
-    position: "absolute",
-    right: 7,
-  },
-  offerCard: {
-    minHeight: 60,
-    borderWidth: 0,
-    borderRadius: 0,
-    backgroundColor: "transparent",
-    paddingHorizontal: 2,
-    paddingVertical: 5,
+  availabilityButtonText: { color: "#FFFFFF", fontSize: 15, fontWeight: "900", letterSpacing: 0.15 },
+  sheetScrollArea: { flex: 1 },
+  sheetScrollContent: { gap: 10, paddingBottom: 3 },
+  glassCard: {
+    minHeight: 72,
+    borderWidth: 1,
+    borderRadius: 18,
+    paddingHorizontal: 13,
+    paddingVertical: 11,
     flexDirection: "row",
     alignItems: "center",
-    gap: 11,
-  },
-  offerIconWrap: {
-    width: 38,
-    height: 38,
-    borderRadius: 19,
-    backgroundColor: "transparent",
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  offerCopy: {
-    flex: 1,
-    gap: 3,
-  },
-  offerTitleRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 7,
-  },
-  offerTitle: {
-    color: "#FFFFFF",
-    fontSize: 14,
-    fontWeight: "900",
-  },
-  offerSubtitle: {
-    color: "#D0D8E4",
-    fontSize: 10,
-    fontWeight: "600",
-  },
-  offerCountBadge: {
-    minWidth: 19,
-    height: 19,
-    borderRadius: 10,
-    paddingHorizontal: 5,
-    backgroundColor: COLORS.blue,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  offerCountText: {
-    color: COLORS.white,
-    fontSize: 10,
-    fontWeight: "900",
-  },
-  quickCardGrid: {
-    flexDirection: "row",
-    flexWrap: "wrap",
-    gap: 8,
-  },
-  quickCard: {
-    width: "48.5%",
-    minHeight: 58,
-    borderWidth: 0,
-    borderRadius: 0,
-    backgroundColor: "transparent",
-    alignItems: "center",
-    justifyContent: "center",
-    paddingVertical: 4,
-    gap: 4,
-  },
-  quickCardValue: {
-    color: "#FFFFFF",
-    fontSize: 14,
-    fontWeight: "900",
-  },
-  quickCardLabel: {
-    color: "#D0D8E4",
-    fontSize: 10,
-    fontWeight: "700",
-  },
-  goButton: {
-    width: 78,
-    height: 78,
-    borderRadius: 39,
-    alignSelf: "center",
-    alignItems: "center",
-    justifyContent: "center",
-    backgroundColor: COLORS.white,
-    borderWidth: 4,
-    borderColor: "#D8E4F4",
-    marginTop: 1,
-    marginBottom: 2,
-    shadowColor: "#FFFFFF",
+    gap: 12,
+    elevation: 3,
+    shadowColor: "#000000",
     shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.16,
-    shadowRadius: 8,
-    elevation: 8,
+    shadowOpacity: 0.13,
+    shadowRadius: 5,
   },
-  goButtonText: {
-    color: COLORS.navy,
-    fontSize: 22,
-    fontWeight: "900",
-    letterSpacing: -0.5,
-  },
+  offerIconWrap: { width: 42, height: 42, borderRadius: 14, backgroundColor: "rgba(255,255,255,0.1)", alignItems: "center", justifyContent: "center" },
+  offerCopy: { flex: 1, gap: 4 },
+  glassCardTitle: { color: "#FFFFFF", fontSize: 14, fontWeight: "900" },
+  glassCardSubtitle: { color: "rgba(255,255,255,0.78)", fontSize: 10, fontWeight: "600" },
+  offerCountBadge: { minWidth: 24, height: 24, paddingHorizontal: 6, borderRadius: 12, alignItems: "center", justifyContent: "center" },
+  offerCountText: { color: "#FFFFFF", fontSize: 11, fontWeight: "900" },
+  sectionEyebrow: { color: "rgba(255,255,255,0.7)", fontSize: 9, fontWeight: "900", letterSpacing: 1.1, marginTop: 3 },
+  quickCardGrid: { flexDirection: "row", gap: 9 },
+  quickCard: { flex: 1, minHeight: 83, borderWidth: 1, borderRadius: 17, alignItems: "center", justifyContent: "center", padding: 10, gap: 5 },
+  quickCardValue: { color: "#FFFFFF", fontSize: 15, fontWeight: "900" },
+  quickCardLabel: { color: "#FFFFFF", fontSize: 11, fontWeight: "800", textAlign: "center" },
+  drawerRoot: { flex: 1, flexDirection: "row" },
+  drawerBackdrop: { ...StyleSheet.absoluteFill, backgroundColor: "rgba(0,0,0,0.58)" },
+  drawerPanel: { width: "82%", maxWidth: 340, minHeight: "100%", borderRightWidth: 1, paddingHorizontal: 17, gap: 8, elevation: 24 },
+  drawerHeader: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", marginBottom: 10 },
+  drawerBrand: { color: "#FFFFFF", fontSize: 21, fontWeight: "900", letterSpacing: -0.4 },
+  drawerSubtitle: { color: "rgba(255,255,255,0.68)", fontSize: 11, marginTop: 3 },
+  drawerClose: { width: 40, height: 40, borderRadius: 20, backgroundColor: "rgba(255,255,255,0.12)", alignItems: "center", justifyContent: "center" },
+  drawerDivider: { height: StyleSheet.hairlineWidth, backgroundColor: "rgba(255,255,255,0.23)", marginBottom: 8 },
+  drawerItem: { minHeight: 52, borderRadius: 13, paddingHorizontal: 11, flexDirection: "row", alignItems: "center", gap: 12 },
+  drawerItemText: { flex: 1, color: "#FFFFFF", fontSize: 13, fontWeight: "800" },
 });
