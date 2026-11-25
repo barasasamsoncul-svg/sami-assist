@@ -1,15 +1,11 @@
+
 /*
 |--------------------------------------------------------------------------
 | 1. IMPORTS
 |--------------------------------------------------------------------------
 */
 
-import {
-  useEffect,
-  useMemo,
-  useRef,
-  useState,
-} from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 
 import {
   ActivityIndicator,
@@ -32,7 +28,7 @@ import { runnerMotion, useRunnerTheme } from "@/theme";
 
 /*
 |--------------------------------------------------------------------------
-| 2. TYPES
+| 2. DASHBOARD SECTION TYPES
 |--------------------------------------------------------------------------
 */
 
@@ -75,15 +71,19 @@ type Props = {
 
 const DASHBOARD_EARNINGS_PLACEHOLDER = "KSh 2,500";
 
-const SLIDER_WIDTH = 152;
-const SLIDER_HEIGHT = 44;
-const SLIDER_THUMB_SIZE = 34;
-const SLIDER_INSET = 5;
+const AVAILABILITY_WIDTH = 188;
+const AVAILABILITY_HEIGHT = 46;
 
-const SLIDER_MAX_DISTANCE =
-  SLIDER_WIDTH - SLIDER_THUMB_SIZE - SLIDER_INSET * 2;
+const AVAILABILITY_THUMB_SIZE = 36;
+const AVAILABILITY_THUMB_INSET = 5;
 
-const AVAILABILITY_RED = "#B42318";
+const AVAILABILITY_MAX_DRAG =
+  AVAILABILITY_WIDTH -
+  AVAILABILITY_THUMB_SIZE -
+  AVAILABILITY_THUMB_INSET * 2;
+
+const OFFLINE_BLUE = "#1558B0";
+const ONLINE_RED = "#B42318";
 
 const PERFORMANCE_TIERS = [
   "Silver",
@@ -119,31 +119,36 @@ export function SaMiRunnerDashboardChrome({
 }: Props) {
   /*
   |--------------------------------------------------------------------------
-  | 5. THEME
+  | 5. WINDOW AND SAFE AREA
+  |--------------------------------------------------------------------------
+  */
+
+  const { height: windowHeight } = useWindowDimensions();
+  const insets = useSafeAreaInsets();
+
+  const safeTop = Math.max(topInset, insets.top, 0);
+  const safeBottom = Math.max(bottomInset, insets.bottom, 0);
+
+  /*
+  |--------------------------------------------------------------------------
+  | 6. THEME
   |--------------------------------------------------------------------------
   */
 
   const { colors, showOverlay, isDark } = useRunnerTheme();
 
-  const insets = useSafeAreaInsets();
-
-  const { height: windowHeight } = useWindowDimensions();
-
-  const safeTop = Math.max(topInset, insets.top, 0);
-  const safeBottom = Math.max(bottomInset, insets.bottom, 0);
-
   const navy = colors.brandNavy || "#000535";
 
-  // One understated outline system for every card.
+  // Consistent faint grey outline across the dashboard cards.
   const outlineColor = isDark
     ? "rgba(192,203,217,0.30)"
     : "rgba(70,86,107,0.30)";
 
-  const tierGold = isDark ? "#E8C574" : "#9A6A16";
+  const gold = isDark ? "#E8C574" : "#9A6A16";
 
   /*
   |--------------------------------------------------------------------------
-  | 6. LOCAL STATE
+  | 7. LOCAL INTERFACE STATE
   |--------------------------------------------------------------------------
   */
 
@@ -153,29 +158,45 @@ export function SaMiRunnerDashboardChrome({
 
   /*
   |--------------------------------------------------------------------------
-  | 7. SHEET GEOMETRY
+  | 8. COMPACT SHEET GEOMETRY
   |--------------------------------------------------------------------------
   |
-  | The sheet is a full-height view positioned below the visible area.
-  | An animated translation reveals it as the user swipes upwards.
+  | The compact sheet contains exactly:
+  |
+  | Availability slider
+  | Offers & Rewards
+  |
+  | No additional handle, extra cards or footer.
   |
   */
 
   const compactSheetHeight =
-    safeTop +
-    6 +
-    22 +
-    6 +
-    SLIDER_HEIGHT +
-    8 +
-    48 +
+    12 +
+    AVAILABILITY_HEIGHT +
+    10 +
+    50 +
     safeBottom +
-    10;
+    12;
 
   const sheetTravel = Math.max(
     1,
     windowHeight - compactSheetHeight,
   );
+
+  /*
+  |--------------------------------------------------------------------------
+  | 9. SINGLE SHARED ANIMATION VALUE
+  |--------------------------------------------------------------------------
+  |
+  | Every dashboard transition is derived from this value.
+  |
+  | 0 = Normal dashboard
+  | 1 = Full-screen Runner Hub
+  |
+  | There are no independent delayed animations for Offers,
+  | Availability or the Runner Hub.
+  |
+  */
 
   const sheetProgress = useRef(
     new Animated.Value(expanded ? 1 : 0),
@@ -185,6 +206,12 @@ export function SaMiRunnerDashboardChrome({
     expanded ? 1 : 0,
   );
 
+  /*
+  |--------------------------------------------------------------------------
+  | 10. SHEET MOVEMENT
+  |--------------------------------------------------------------------------
+  */
+
   const sheetTranslateY = sheetProgress.interpolate({
     inputRange: [0, 1],
     outputRange: [sheetTravel, 0],
@@ -193,58 +220,77 @@ export function SaMiRunnerDashboardChrome({
 
   /*
   |--------------------------------------------------------------------------
-  | 8. AVAILABILITY TRANSITION
+  | 11. COMPACT DASHBOARD FADE
   |--------------------------------------------------------------------------
   |
-  | The availability slider fades away when the sheet approaches
-  | the middle of its journey.
+  | Availability and the single Offers & Rewards card use
+  | precisely the same opacity.
   |
+  | The fade starts as the sheet approaches the middle.
+  |--------------------------------------------------------------------------
   */
 
-  const availabilityOpacity = sheetProgress.interpolate({
-    inputRange: [0, 0.46, 0.72, 1],
-    outputRange: [1, 1, 0.12, 0],
+  const compactOpacity = sheetProgress.interpolate({
+    inputRange: [
+      0,
+      0.45,
+      0.72,
+      1,
+    ],
+    outputRange: [
+      1,
+      1,
+      0,
+      0,
+    ],
     extrapolate: "clamp",
   });
-
-  const compactOffersOpacity = availabilityOpacity;
 
   /*
   |--------------------------------------------------------------------------
-  | 9. RUNNER HUB CROSSFADE
+  | 12. COMPACT CONTENT MOVEMENT
   |--------------------------------------------------------------------------
   |
-  | Runner Hub replaces the compact availability area.
-  |
+  | The compact controls remain together as the sheet moves.
+  | Their position transitions to the top safe area.
+  |--------------------------------------------------------------------------
   */
 
-  const hubHeaderOpacity = sheetProgress.interpolate({
-    inputRange: [0, 0.43, 0.72, 1],
-    outputRange: [0, 0.12, 0.86, 1],
-    extrapolate: "clamp",
-  });
-
-  const hubContentOpacity = sheetProgress.interpolate({
-    inputRange: [0, 0.56, 0.84, 1],
-    outputRange: [0, 0.12, 0.88, 1],
-    extrapolate: "clamp",
-  });
-
-  const hubContentTranslate = sheetProgress.interpolate({
+  const compactContentTranslateY = sheetProgress.interpolate({
     inputRange: [0, 1],
-    outputRange: [9, 0],
-    extrapolate: "clamp",
-  });
-
-  const quickAccessOpacity = sheetProgress.interpolate({
-    inputRange: [0, 0.65, 0.9, 1],
-    outputRange: [0, 0, 0.85, 1],
+    outputRange: [12, safeTop + 12],
     extrapolate: "clamp",
   });
 
   /*
   |--------------------------------------------------------------------------
-  | 10. KEEP THE SHEET SYNCHRONISED WITH THE DASHBOARD
+  | 13. RUNNER HUB FADE
+  |--------------------------------------------------------------------------
+  |
+  | Runner Hub begins appearing as the compact controls fade.
+  | Reversing the gesture reverses the same animation.
+  |--------------------------------------------------------------------------
+  */
+
+  const hubOpacity = sheetProgress.interpolate({
+    inputRange: [
+      0,
+      0.46,
+      0.72,
+      1,
+    ],
+    outputRange: [
+      0,
+      0,
+      0.88,
+      1,
+    ],
+    extrapolate: "clamp",
+  });
+
+  /*
+  |--------------------------------------------------------------------------
+  | 14. CONTROLLED ANIMATION SYNC
   |--------------------------------------------------------------------------
   */
 
@@ -258,18 +304,20 @@ export function SaMiRunnerDashboardChrome({
 
   /*
   |--------------------------------------------------------------------------
-  | 11. VERTICAL SHEET GESTURE
+  | 15. VERTICAL SWIPE / PAGE TRANSITION
   |--------------------------------------------------------------------------
   |
-  | Swipe upwards:
-  |   Expand the sheet to the full-screen Runner Hub.
+  | The sheet follows the finger.
   |
-  | Swipe downwards:
-  |   Collapse the sheet to the normal dashboard.
+  | Swipe UP:
+  |   Opens Runner Hub.
   |
-  | This responder covers the sheet's upper content only.
-  | Quick Access has a separate ScrollView below it.
+  | Swipe DOWN:
+  |   Returns to normal dashboard.
   |
+  | This gesture is attached to the upper dashboard area,
+  | NOT to the independent Quick Access list.
+  |--------------------------------------------------------------------------
   */
 
   const sheetPanResponder = useMemo(
@@ -302,30 +350,38 @@ export function SaMiRunnerDashboardChrome({
         },
 
         onPanResponderRelease: (_event, gesture) => {
-          const projectedProgress = Math.max(
-            0,
-            Math.min(
-              1,
-              sheetStartProgress.current -
-                gesture.dy / sheetTravel,
-            ),
-          );
+          let nextExpanded = expanded;
 
-          let nextExpanded = projectedProgress >= 0.5;
-
-          if (gesture.vy < -0.55) {
+          if (
+            !expanded &&
+            (
+              gesture.dy < -55 ||
+              gesture.vy < -0.48
+            )
+          ) {
             nextExpanded = true;
-          } else if (gesture.vy > 0.55) {
+          }
+
+          if (
+            expanded &&
+            (
+              gesture.dy > 55 ||
+              gesture.vy > 0.48
+            )
+          ) {
             nextExpanded = false;
           }
 
-          onExpandedChange(nextExpanded);
-
-          Animated.spring(sheetProgress, {
-            toValue: nextExpanded ? 1 : 0,
-            ...runnerMotion.spring,
-            useNativeDriver: true,
-          }).start();
+          if (nextExpanded !== expanded) {
+            onExpandedChange(nextExpanded);
+          } else {
+            // An incomplete swipe returns to its original state.
+            Animated.spring(sheetProgress, {
+              toValue: expanded ? 1 : 0,
+              ...runnerMotion.spring,
+              useNativeDriver: true,
+            }).start();
+          }
         },
 
         onPanResponderTerminate: () => {
@@ -348,7 +404,7 @@ export function SaMiRunnerDashboardChrome({
 
   /*
   |--------------------------------------------------------------------------
-  | 12. AVAILABILITY PERMISSION
+  | 16. AVAILABILITY RULES
   |--------------------------------------------------------------------------
   */
 
@@ -360,7 +416,7 @@ export function SaMiRunnerDashboardChrome({
 
   /*
   |--------------------------------------------------------------------------
-  | 13. ERROR HANDLING
+  | 17. ERROR HANDLING
   |--------------------------------------------------------------------------
   */
 
@@ -381,7 +437,7 @@ export function SaMiRunnerDashboardChrome({
 
   /*
   |--------------------------------------------------------------------------
-  | 14. NAVIGATION
+  | 18. NAVIGATION
   |--------------------------------------------------------------------------
   */
 
@@ -390,29 +446,39 @@ export function SaMiRunnerDashboardChrome({
     onOpenSection(section);
   };
 
-  const openOffersAndRewards = () => {
-    openSection("offers");
-  };
-
   /*
   |--------------------------------------------------------------------------
-  | 15. MAIN RENDER
+  | 19. NORMAL DASHBOARD AND FULL-SCREEN PAGE
   |--------------------------------------------------------------------------
   */
 
   return (
     <View
       pointerEvents="box-none"
-      style={StyleSheet.absoluteFill}
+      style={styles.root}
     >
+      {/*
+      |--------------------------------------------------------------------------
+      | 20. STATUS BAR
+      |--------------------------------------------------------------------------
+      |
+      | The system status bar remains visible throughout.
+      | Its visibility is NOT linked to the sheet animation.
+      |--------------------------------------------------------------------------
+      */}
+
       <StatusBar
-        barStyle={isDark ? "light-content" : "dark-content"}
         hidden={false}
+        barStyle={isDark ? "light-content" : "dark-content"}
       />
 
       {/*
       |--------------------------------------------------------------------------
-      | 16. NORMAL DASHBOARD TOP BAR
+      | 21. NORMAL DASHBOARD TOP CONTROLS
+      |--------------------------------------------------------------------------
+      |
+      | These remain on the map dashboard.
+      | The expanded Runner Hub will cover them completely.
       |--------------------------------------------------------------------------
       */}
 
@@ -420,8 +486,7 @@ export function SaMiRunnerDashboardChrome({
         style={[
           styles.headerRow,
           {
-            top: topInset + 7,
-            paddingHorizontal: 16,
+            top: safeTop + 7,
             zIndex: 50,
           },
         ]}
@@ -484,7 +549,7 @@ export function SaMiRunnerDashboardChrome({
 
       {/*
       |--------------------------------------------------------------------------
-      | 17. EARNINGS DETAILS
+      | 22. EARNINGS DETAILS
       |--------------------------------------------------------------------------
       */}
 
@@ -501,7 +566,7 @@ export function SaMiRunnerDashboardChrome({
             style={[
               styles.earningsOverlay,
               {
-                top: topInset + 68,
+                top: safeTop + 68,
                 backgroundColor: navy,
                 borderColor: outlineColor,
               },
@@ -532,6 +597,7 @@ export function SaMiRunnerDashboardChrome({
                 style={({ pressed }) => [
                   styles.eyeButton,
                   {
+                    backgroundColor: "rgba(255,255,255,0.10)",
                     opacity: pressed ? 0.72 : 1,
                   },
                 ]}
@@ -559,12 +625,19 @@ export function SaMiRunnerDashboardChrome({
 
       {/*
       |--------------------------------------------------------------------------
-      | 18. BOTTOM DASHBOARD OVERLAY / FULL-SCREEN HUB
+      | 23. CONTINUOUS BOTTOM SHEET
       |--------------------------------------------------------------------------
       |
-      | One continuous sheet.
-      | The original dashboard map remains underneath.
+      | This is the actual full-screen page layer.
       |
+      | Collapsed:
+      |   Only its bottom portion is visible.
+      |
+      | Expanded:
+      |   It covers the map, hamburger and earnings overlay.
+      |
+      | There is no extra page margin, side gap or grab handle.
+      |--------------------------------------------------------------------------
       */}
 
       {!activeErrand ? (
@@ -574,9 +647,15 @@ export function SaMiRunnerDashboardChrome({
             {
               height: windowHeight,
               backgroundColor: colors.surface,
+
+              borderTopLeftRadius: expanded ? 0 : 25,
+              borderTopRightRadius: expanded ? 0 : 25,
+              borderTopWidth: expanded ? 0 : 1,
               borderColor: outlineColor,
-              zIndex: 90,
+
+              zIndex: 100,
               elevation: 30,
+
               transform: [
                 {
                   translateY: sheetTranslateY,
@@ -587,591 +666,608 @@ export function SaMiRunnerDashboardChrome({
         >
           {/*
           |--------------------------------------------------------------------------
-          | 19. UPPER DRAG AREA
+          | 24. COMPACT DASHBOARD CONTENT
           |--------------------------------------------------------------------------
           |
-          | Everything in this section controls sheet movement.
-          | Quick Access is deliberately outside this responder.
+          | Only two controls:
           |
+          | 1. Availability
+          | 2. Offers & Rewards
+          |
+          | They fade out together during expansion.
+          |--------------------------------------------------------------------------
           */}
 
-          <View
+          <Animated.View
             {...sheetPanResponder.panHandlers}
+            pointerEvents={expanded ? "none" : "auto"}
             style={[
-              styles.sheetDragArea,
+              styles.compactLayer,
               {
-                paddingTop: safeTop + 6,
+                height: compactSheetHeight,
+                paddingBottom: safeBottom + 12,
+                opacity: compactOpacity,
+                transform: [
+                  {
+                    translateY: compactContentTranslateY,
+                  },
+                ],
               },
             ]}
           >
-            {/* Sheet handle */}
+            {/*
+            |--------------------------------------------------------------------------
+            | 25. CENTRED AVAILABILITY
+            |--------------------------------------------------------------------------
+            */}
 
-            <View style={styles.sheetHandleArea}>
-              <View
-                style={[
-                  styles.sheetHandle,
-                  {
-                    backgroundColor: isDark
-                      ? "rgba(255,255,255,0.62)"
-                      : colors.borderStrong,
-                  },
-                ]}
+            <View style={styles.availabilityContainer}>
+              <AvailabilityControl
+                isOnline={isOnline}
+                disabled={availabilityDisabled}
+                busy={availabilityBusy}
+                onToggle={onToggleAvailability}
               />
             </View>
 
             {/*
             |--------------------------------------------------------------------------
-            | 20. AVAILABILITY / RUNNER HUB TRANSITION SLOT
+            | 26. ONE OFFERS & REWARDS CARD
             |--------------------------------------------------------------------------
             */}
 
-            <View style={styles.transitionSlot}>
-              {/* Compact availability slider */}
+            <Pressable
+              accessibilityRole="button"
+              accessibilityLabel={
+                offersCount > 0
+                  ? `Offers and Rewards, ${offersCount} eligible errands`
+                  : "Offers and Rewards"
+              }
+              onPress={() => openSection("offers")}
+              style={({ pressed }) => [
+                styles.offersRewardsCard,
+                {
+                  borderColor: outlineColor,
+                  opacity: pressed ? 0.65 : 1,
+                },
+              ]}
+            >
+              <Ionicons
+                name="gift-outline"
+                size={21}
+                color={colors.blue}
+              />
 
-              <Animated.View
-                pointerEvents={expanded ? "none" : "auto"}
+              <Text
                 style={[
-                  styles.availabilityLayer,
+                  styles.offersRewardsTitle,
                   {
-                    opacity: availabilityOpacity,
+                    color: colors.text,
                   },
                 ]}
               >
-                <AvailabilitySlider
-                  isOnline={isOnline}
-                  disabled={availabilityDisabled}
-                  busy={availabilityBusy}
-                  onToggle={onToggleAvailability}
-                />
-              </Animated.View>
+                Offers & Rewards
+              </Text>
 
-              {/* Runner Hub title */}
-
-              <Animated.View
-                pointerEvents={expanded ? "auto" : "none"}
-                style={[
-                  styles.hubTitleLayer,
-                  {
-                    opacity: hubHeaderOpacity,
-                  },
-                ]}
-              >
+              {offersCount > 0 ? (
                 <Text
                   style={[
-                    styles.hubTitle,
-                    {
-                      color: colors.text,
-                    },
+                    styles.offersRewardsCount,
+                    { color: colors.textMuted },
                   ]}
                 >
-                  Runner Hub
+                  {offersCount}
                 </Text>
-              </Animated.View>
-            </View>
+              ) : null}
 
-            {/*
-            |--------------------------------------------------------------------------
-            | 21. COMPACT OFFERS & REWARDS / EXPANDED PERFORMANCE
-            |--------------------------------------------------------------------------
-            |
-            | The Offers & Rewards card occupies the same transition
-            | region that reveals the Performance content.
-            |
-            | This avoids leaving an empty card-sized gap in the hub.
-            |--------------------------------------------------------------------------
-            */}
-
-            <View style={styles.transitionContentRegion}>
-              {/* Compact Offers & Rewards shortcut */}
-
-              <Animated.View
-                pointerEvents={expanded ? "none" : "auto"}
-                style={[
-                  styles.compactOffersLayer,
-                  {
-                    opacity: compactOffersOpacity,
-                  },
-                ]}
-              >
-                <Pressable
-                  accessibilityRole="button"
-                  accessibilityLabel={
-                    offersCount > 0
-                      ? `Offers and Rewards. ${offersCount} eligible errands`
-                      : "Offers and Rewards"
-                  }
-                  onPress={openOffersAndRewards}
-                  style={({ pressed }) => [
-                    styles.offersRewardsCard,
-                    {
-                      borderColor: outlineColor,
-                      opacity: pressed ? 0.65 : 1,
-                    },
-                  ]}
-                >
-                  <Ionicons
-                    name="gift-outline"
-                    size={20}
-                    color={colors.blue}
-                  />
-
-                  <Text
-                    style={[
-                      styles.offersRewardsTitle,
-                      {
-                        color: colors.text,
-                      },
-                    ]}
-                  >
-                    Offers & Rewards
-                  </Text>
-
-                  <Ionicons
-                    name="chevron-forward"
-                    size={18}
-                    color={colors.textMuted}
-                  />
-                </Pressable>
-              </Animated.View>
-
-              {/* Expanded performance content */}
-
-              <Animated.View
-                pointerEvents={expanded ? "auto" : "none"}
-                style={[
-                  styles.hubPerformanceContent,
-                  {
-                    opacity: hubContentOpacity,
-                    transform: [
-                      {
-                        translateY: hubContentTranslate,
-                      },
-                    ],
-                  },
-                ]}
-              >
-                <View style={styles.hubWelcome}>
-                  <Text
-                    style={[
-                      styles.hubWelcomeTitle,
-                      { color: colors.text },
-                    ]}
-                  >
-                    Everything in one place.
-                  </Text>
-
-                  <Text
-                    style={[
-                      styles.hubWelcomeSubtitle,
-                      { color: colors.textMuted },
-                    ]}
-                  >
-                    Your performance and account at a glance.
-                  </Text>
-                </View>
-
-                {/*
-                |--------------------------------------------------------------------------
-                | 22. PERFORMANCE HEADING
-                |--------------------------------------------------------------------------
-                */}
-
-                <View style={styles.hubSectionHeader}>
-                  <Text
-                    style={[
-                      styles.hubSectionEyebrow,
-                      { color: colors.textMuted },
-                    ]}
-                  >
-                    PERFORMANCE
-                  </Text>
-                </View>
-
-                {/*
-                |--------------------------------------------------------------------------
-                | 23. PERFORMANCE TIERS CARD
-                |--------------------------------------------------------------------------
-                |
-                | Original Silver tier and progression values are retained.
-                | Arrows visually connect the next performance levels.
-                |--------------------------------------------------------------------------
-                */}
-
-                <Pressable
-                  accessibilityRole="button"
-                  accessibilityLabel="Open performance and tier progress"
-                  onPress={() => openSection("performance")}
-                  style={({ pressed }) => [
-                    styles.tierCard,
-                    {
-                      borderColor: outlineColor,
-                      opacity: pressed ? 0.82 : 1,
-                    },
-                  ]}
-                >
-                  <View style={styles.tierCardTop}>
-                    <View
-                      style={[
-                        styles.tierIconWrap,
-                        {
-                          backgroundColor: isDark
-                            ? "rgba(232,197,116,0.13)"
-                            : "rgba(154,106,22,0.09)",
-                        },
-                      ]}
-                    >
-                      <Ionicons
-                        name="trophy-outline"
-                        size={23}
-                        color={tierGold}
-                      />
-                    </View>
-
-                    <View style={styles.tierCardCopy}>
-                      <Text
-                        style={[
-                          styles.tierEyebrow,
-                          { color: colors.textMuted },
-                        ]}
-                      >
-                        PERFORMANCE TIERS
-                      </Text>
-
-                      <Text
-                        style={[
-                          styles.tierTitle,
-                          { color: colors.text },
-                        ]}
-                      >
-                        Silver tier
-                      </Text>
-                    </View>
-
-                    <Ionicons
-                      name="arrow-forward-circle-outline"
-                      size={22}
-                      color={colors.textMuted}
-                    />
-                  </View>
-
-                  <View style={styles.tierPointsRow}>
-                    <Text
-                      style={[
-                        styles.tierPointsLabel,
-                        { color: colors.textMuted },
-                      ]}
-                    >
-                      Tier progress
-                    </Text>
-
-                    <Text
-                      style={[
-                        styles.tierPointsValue,
-                        { color: colors.text },
-                      ]}
-                    >
-                      200 / 1,000 PTS
-                    </Text>
-                  </View>
-
-                  <View
-                    style={[
-                      styles.tierProgressTrack,
-                      {
-                        backgroundColor: isDark
-                          ? "rgba(255,255,255,0.13)"
-                          : "#D8E0EA",
-                      },
-                    ]}
-                  >
-                    <View
-                      style={[
-                        styles.tierProgressFill,
-                        {
-                          backgroundColor: tierGold,
-                          width: "20%",
-                        },
-                      ]}
-                    />
-                  </View>
-
-                  <View style={styles.tierProgressFooter}>
-                    <Text
-                      style={[
-                        styles.tierProgressCaption,
-                        { color: colors.textMuted },
-                      ]}
-                    >
-                      800 points to Gold
-                    </Text>
-
-                    <Text
-                      style={[
-                        styles.tierProgressCaption,
-                        { color: colors.textMuted },
-                      ]}
-                    >
-                      20% complete
-                    </Text>
-                  </View>
-
-                  {/* Tier progression path */}
-
-                  <View style={styles.tierStepsRow}>
-                    {PERFORMANCE_TIERS.map((tier, index) => (
-                      <View
-                        key={tier}
-                        style={styles.tierStepItem}
-                      >
-                        <Text
-                          style={[
-                            styles.tierStep,
-                            {
-                              color: index === 0
-                                ? colors.text
-                                : colors.textMuted,
-                            },
-                          ]}
-                        >
-                          {tier}
-                        </Text>
-
-                        {index < PERFORMANCE_TIERS.length - 1 ? (
-                          <Ionicons
-                            name="arrow-forward"
-                            size={12}
-                            color={colors.textMuted}
-                          />
-                        ) : null}
-                      </View>
-                    ))}
-                  </View>
-                </Pressable>
-
-                {/*
-                |--------------------------------------------------------------------------
-                | 24. PERFORMANCE METRICS
-                |--------------------------------------------------------------------------
-                |
-                | Rating, Acceptance and Cancellation remain unchanged.
-                |--------------------------------------------------------------------------
-                */}
-
-                <View style={styles.performanceMetricRow}>
-                  <Pressable
-                    accessibilityRole="button"
-                    onPress={() => openSection("performance")}
-                    style={[
-                      styles.performanceMetric,
-                      { borderColor: outlineColor },
-                    ]}
-                  >
-                    <Ionicons
-                      name="star"
-                      size={17}
-                      color={tierGold}
-                    />
-
-                    <Text
-                      style={[
-                        styles.performanceMetricValue,
-                        { color: colors.text },
-                      ]}
-                    >
-                      —
-                    </Text>
-
-                    <Text
-                      style={[
-                        styles.performanceMetricLabel,
-                        { color: colors.textMuted },
-                      ]}
-                    >
-                      Rating
-                    </Text>
-                  </Pressable>
-
-                  <Pressable
-                    accessibilityRole="button"
-                    onPress={() => openSection("performance")}
-                    style={[
-                      styles.performanceMetric,
-                      { borderColor: outlineColor },
-                    ]}
-                  >
-                    <Ionicons
-                      name="trending-up-outline"
-                      size={17}
-                      color={colors.blue}
-                    />
-
-                    <Text
-                      style={[
-                        styles.performanceMetricValue,
-                        { color: colors.text },
-                      ]}
-                    >
-                      —%
-                    </Text>
-
-                    <Text
-                      style={[
-                        styles.performanceMetricLabel,
-                        { color: colors.textMuted },
-                      ]}
-                    >
-                      Acceptance
-                    </Text>
-                  </Pressable>
-
-                  <Pressable
-                    accessibilityRole="button"
-                    onPress={() => openSection("performance")}
-                    style={[
-                      styles.performanceMetric,
-                      { borderColor: outlineColor },
-                    ]}
-                  >
-                    <Ionicons
-                      name="close-circle-outline"
-                      size={17}
-                      color={colors.red}
-                    />
-
-                    <Text
-                      style={[
-                        styles.performanceMetricValue,
-                        { color: colors.text },
-                      ]}
-                    >
-                      —%
-                    </Text>
-
-                    <Text
-                      style={[
-                        styles.performanceMetricLabel,
-                        { color: colors.textMuted },
-                      ]}
-                    >
-                      Cancellation
-                    </Text>
-                  </Pressable>
-                </View>
-              </Animated.View>
-            </View>
-          </View>
+              <Ionicons
+                name="chevron-forward"
+                size={18}
+                color={colors.textMuted}
+              />
+            </Pressable>
+          </Animated.View>
 
           {/*
           |--------------------------------------------------------------------------
-          | 25. QUICK ACCESS
+          | 27. FULL-SCREEN RUNNER HUB
           |--------------------------------------------------------------------------
           |
-          | Its own ScrollView.
-          | Scrolling the list does not move the entire dashboard sheet.
+          | One uninterrupted page.
+          | No SaMi Runner heading.
+          | No duplicate availability badge.
+          | No View details link.
           |--------------------------------------------------------------------------
           */}
 
           <Animated.View
             pointerEvents={expanded ? "auto" : "none"}
             style={[
-              styles.quickAccessSection,
+              styles.hubPage,
               {
-                opacity: quickAccessOpacity,
-                paddingBottom: safeBottom + 10,
+                paddingTop: safeTop + 14,
+                paddingBottom: safeBottom + 8,
+                opacity: hubOpacity,
               },
             ]}
           >
-            <View style={styles.hubSectionHeader}>
+            {/*
+            |--------------------------------------------------------------------------
+            | 28. RUNNER HUB PERFORMANCE AREA
+            |--------------------------------------------------------------------------
+            |
+            | Vertical drag gestures in this area collapse the page.
+            | Its contents are not independently scrolled.
+            |--------------------------------------------------------------------------
+            */}
+
+            <View
+              {...sheetPanResponder.panHandlers}
+              style={styles.hubPerformanceArea}
+            >
+              {/* Hub page heading */}
+
               <Text
                 style={[
-                  styles.hubSectionEyebrow,
-                  { color: colors.textMuted },
+                  styles.hubTitle,
+                  {
+                    color: colors.text,
+                  },
                 ]}
               >
-                QUICK ACCESS
+                Runner Hub
               </Text>
+
+              {/*
+              |--------------------------------------------------------------------------
+              | 29. PERFORMANCE HEADING
+              |--------------------------------------------------------------------------
+              */}
+
+              <View style={styles.performanceHeading}>
+                <Text
+                  style={[
+                    styles.sectionHeading,
+                    {
+                      color: colors.text,
+                    },
+                  ]}
+                >
+                  Performance
+                </Text>
+              </View>
+
+              {/*
+              |--------------------------------------------------------------------------
+              | 30. PERFORMANCE TIERS CARD
+              |--------------------------------------------------------------------------
+              |
+              | Existing Silver tier and progress remain unchanged.
+              | Arrows show the path to the next levels.
+              |--------------------------------------------------------------------------
+              */}
+
+              <Pressable
+                accessibilityRole="button"
+                accessibilityLabel="Open performance and tier progress"
+                onPress={() => openSection("performance")}
+                style={({ pressed }) => [
+                  styles.tierCard,
+                  {
+                    backgroundColor: isDark
+                      ? "#071329"
+                      : "#F2F5FA",
+                    borderColor: outlineColor,
+                    opacity: pressed ? 0.86 : 1,
+                  },
+                ]}
+              >
+                <View style={styles.tierCardTop}>
+                  <View
+                    style={[
+                      styles.tierIconWrap,
+                      {
+                        backgroundColor: isDark
+                          ? "rgba(232,197,116,0.13)"
+                          : "rgba(154,106,22,0.09)",
+                      },
+                    ]}
+                  >
+                    <Ionicons
+                      name="trophy-outline"
+                      size={22}
+                      color={gold}
+                    />
+                  </View>
+
+                  <View style={styles.tierCardCopy}>
+                    <Text
+                      style={[
+                        styles.tierEyebrow,
+                        {
+                          color: colors.textMuted,
+                        },
+                      ]}
+                    >
+                      PERFORMANCE TIERS
+                    </Text>
+
+                    <Text
+                      style={[
+                        styles.tierTitle,
+                        {
+                          color: colors.text,
+                        },
+                      ]}
+                    >
+                      Silver tier
+                    </Text>
+                  </View>
+
+                  <Ionicons
+                    name="chevron-forward"
+                    size={19}
+                    color={colors.textMuted}
+                  />
+                </View>
+
+                <View style={styles.tierPointsRow}>
+                  <Text
+                    style={[
+                      styles.tierPointsLabel,
+                      {
+                        color: colors.textMuted,
+                      },
+                    ]}
+                  >
+                    Tier progress
+                  </Text>
+
+                  <Text
+                    style={[
+                      styles.tierPointsValue,
+                      {
+                        color: colors.text,
+                      },
+                    ]}
+                  >
+                    200 / 1,000 PTS
+                  </Text>
+                </View>
+
+                <View
+                  style={[
+                    styles.tierProgressTrack,
+                    {
+                      backgroundColor: isDark
+                        ? "rgba(255,255,255,0.13)"
+                        : "#D8E0EA",
+                    },
+                  ]}
+                >
+                  <View
+                    style={[
+                      styles.tierProgressFill,
+                      {
+                        backgroundColor: isDark
+                          ? "#D6B568"
+                          : "#A97826",
+                        width: "20%",
+                      },
+                    ]}
+                  />
+                </View>
+
+                <View style={styles.tierProgressFooter}>
+                  <Text
+                    style={[
+                      styles.tierProgressCaption,
+                      {
+                        color: colors.textMuted,
+                      },
+                    ]}
+                  >
+                    800 points to Gold
+                  </Text>
+
+                  <Text
+                    style={[
+                      styles.tierProgressCaption,
+                      {
+                        color: colors.textMuted,
+                      },
+                    ]}
+                  >
+                    20% complete
+                  </Text>
+                </View>
+
+                {/*
+                |--------------------------------------------------------------------------
+                | 31. TIER PROGRESSION ARROWS
+                |--------------------------------------------------------------------------
+                */}
+
+                <View style={styles.tierStepsRow}>
+                  {PERFORMANCE_TIERS.map((tier, index) => (
+                    <View
+                      key={tier}
+                      style={styles.tierStepItem}
+                    >
+                      <Text
+                        style={[
+                          styles.tierStep,
+                          {
+                            color: index === 0
+                              ? colors.text
+                              : colors.textMuted,
+                          },
+                        ]}
+                      >
+                        {tier}
+                      </Text>
+
+                      {index < PERFORMANCE_TIERS.length - 1 ? (
+                        <Ionicons
+                          name="arrow-forward"
+                          size={11}
+                          color={colors.textMuted}
+                        />
+                      ) : null}
+                    </View>
+                  ))}
+                </View>
+              </Pressable>
+
+              {/*
+              |--------------------------------------------------------------------------
+              | 32. PERFORMANCE METRICS
+              |--------------------------------------------------------------------------
+              |
+              | Rating.
+              | Acceptance.
+              | Cancellation.
+              |
+              | Existing placeholders and navigation preserved.
+              |--------------------------------------------------------------------------
+              */}
+
+              <View style={styles.performanceMetricRow}>
+                <Pressable
+                  accessibilityRole="button"
+                  onPress={() => openSection("performance")}
+                  style={[
+                    styles.performanceMetric,
+                    {
+                      backgroundColor: isDark
+                        ? "#071329"
+                        : "#F2F5FA",
+                      borderColor: outlineColor,
+                    },
+                  ]}
+                >
+                  <Ionicons
+                    name="star"
+                    size={16}
+                    color={isDark ? "#F2C66D" : "#A16A13"}
+                  />
+
+                  <Text
+                    style={[
+                      styles.performanceMetricValue,
+                      {
+                        color: colors.text,
+                      },
+                    ]}
+                  >
+                    —
+                  </Text>
+
+                  <Text
+                    style={[
+                      styles.performanceMetricLabel,
+                      {
+                        color: colors.textMuted,
+                      },
+                    ]}
+                  >
+                    Rating
+                  </Text>
+                </Pressable>
+
+                <Pressable
+                  accessibilityRole="button"
+                  onPress={() => openSection("performance")}
+                  style={[
+                    styles.performanceMetric,
+                    {
+                      backgroundColor: isDark
+                        ? "#071329"
+                        : "#F2F5FA",
+                      borderColor: outlineColor,
+                    },
+                  ]}
+                >
+                  <Ionicons
+                    name="trending-up-outline"
+                    size={16}
+                    color={colors.blue}
+                  />
+
+                  <Text
+                    style={[
+                      styles.performanceMetricValue,
+                      {
+                        color: colors.text,
+                      },
+                    ]}
+                  >
+                    —%
+                  </Text>
+
+                  <Text
+                    style={[
+                      styles.performanceMetricLabel,
+                      {
+                        color: colors.textMuted,
+                      },
+                    ]}
+                  >
+                    Acceptance
+                  </Text>
+                </Pressable>
+
+                <Pressable
+                  accessibilityRole="button"
+                  onPress={() => openSection("performance")}
+                  style={[
+                    styles.performanceMetric,
+                    {
+                      backgroundColor: isDark
+                        ? "#071329"
+                        : "#F2F5FA",
+                      borderColor: outlineColor,
+                    },
+                  ]}
+                >
+                  <Ionicons
+                    name="close-circle-outline"
+                    size={16}
+                    color={colors.red}
+                  />
+
+                  <Text
+                    style={[
+                      styles.performanceMetricValue,
+                      {
+                        color: colors.text,
+                      },
+                    ]}
+                  >
+                    —%
+                  </Text>
+
+                  <Text
+                    style={[
+                      styles.performanceMetricLabel,
+                      {
+                        color: colors.textMuted,
+                      },
+                    ]}
+                  >
+                    Cancellation
+                  </Text>
+                </Pressable>
+              </View>
             </View>
 
-            <ScrollView
-              style={styles.quickAccessScroll}
-              contentContainerStyle={styles.quickAccessContent}
-              showsVerticalScrollIndicator={false}
-              keyboardShouldPersistTaps="handled"
-              nestedScrollEnabled
-            >
-              <HubAccessRow
-                icon="wallet-outline"
-                title="Earnings"
-                subtitle="Payouts and history"
-                outlineColor={outlineColor}
-                textColor={colors.text}
-                mutedColor={colors.textMuted}
-                iconColor={colors.blue}
-                onPress={() => openSection("earnings")}
-              />
+            {/*
+            |--------------------------------------------------------------------------
+            | 33. QUICK ACCESS
+            |--------------------------------------------------------------------------
+            |
+            | Separate scrolling area.
+            |
+            | No "Your tools and account".
+            | No grid.
+            | No tile backgrounds.
+            | Consistent faint grey outlines.
+            |--------------------------------------------------------------------------
+            */}
 
-              <HubAccessRow
-                icon="settings-outline"
-                title="Settings"
-                subtitle="App preferences"
-                outlineColor={outlineColor}
-                textColor={colors.text}
-                mutedColor={colors.textMuted}
-                iconColor={colors.blue}
-                onPress={() => openSection("settings")}
-              />
+            <View style={styles.quickAccessSection}>
+              <Text
+                style={[
+                  styles.quickAccessHeading,
+                  {
+                    color: colors.text,
+                  },
+                ]}
+              >
+                Quick Access
+              </Text>
 
-              <HubAccessRow
-                icon="shield-checkmark-outline"
-                title="Privacy"
-                subtitle="Location and privacy"
-                outlineColor={outlineColor}
-                textColor={colors.text}
-                mutedColor={colors.textMuted}
-                iconColor={colors.blue}
-                onPress={() => openSection("privacy")}
-              />
+              <ScrollView
+                style={styles.quickAccessScroll}
+                contentContainerStyle={styles.quickAccessContent}
+                showsVerticalScrollIndicator={false}
+                keyboardShouldPersistTaps="handled"
+                nestedScrollEnabled
+              >
+                <HubAccessRow
+                  icon="wallet-outline"
+                  title="Earnings"
+                  subtitle="Payouts and history"
+                  outlineColor={outlineColor}
+                  textColor={colors.text}
+                  mutedColor={colors.textMuted}
+                  iconColor={colors.blue}
+                  onPress={() => openSection("earnings")}
+                />
 
-              <HubAccessRow
-                icon="person-circle-outline"
-                title="Runner profile"
-                subtitle="Profile and documents"
-                outlineColor={outlineColor}
-                textColor={colors.text}
-                mutedColor={colors.textMuted}
-                iconColor={colors.blue}
-                onPress={() => openSection("menu")}
-              />
+                <HubAccessRow
+                  icon="settings-outline"
+                  title="Settings"
+                  subtitle="App preferences"
+                  outlineColor={outlineColor}
+                  textColor={colors.text}
+                  mutedColor={colors.textMuted}
+                  iconColor={colors.blue}
+                  onPress={() => openSection("settings")}
+                />
 
-              <HubAccessRow
-                icon="headset-outline"
-                title="Help & support"
-                subtitle="Get help and assistance"
-                outlineColor={outlineColor}
-                textColor={colors.text}
-                mutedColor={colors.textMuted}
-                iconColor={colors.blue}
-                onPress={() => openSection("help")}
-              />
+                <HubAccessRow
+                  icon="shield-checkmark-outline"
+                  title="Privacy"
+                  subtitle="Location and privacy"
+                  outlineColor={outlineColor}
+                  textColor={colors.text}
+                  mutedColor={colors.textMuted}
+                  iconColor={colors.blue}
+                  onPress={() => openSection("privacy")}
+                />
 
-              <HubAccessRow
-                icon="grid-outline"
-                title="Account menu"
-                subtitle="Account actions"
-                outlineColor={outlineColor}
-                textColor={colors.text}
-                mutedColor={colors.textMuted}
-                iconColor={colors.blue}
-                onPress={() => openSection("menu")}
-              />
-            </ScrollView>
+                <HubAccessRow
+                  icon="person-circle-outline"
+                  title="Runner profile"
+                  subtitle="Profile and documents"
+                  outlineColor={outlineColor}
+                  textColor={colors.text}
+                  mutedColor={colors.textMuted}
+                  iconColor={colors.blue}
+                  onPress={() => openSection("menu")}
+                />
+
+                <HubAccessRow
+                  icon="headset-outline"
+                  title="Help & support"
+                  subtitle="Get help and assistance"
+                  outlineColor={outlineColor}
+                  textColor={colors.text}
+                  mutedColor={colors.textMuted}
+                  iconColor={colors.blue}
+                  onPress={() => openSection("help")}
+                />
+
+                <HubAccessRow
+                  icon="grid-outline"
+                  title="Account menu"
+                  subtitle="Account actions"
+                  outlineColor={outlineColor}
+                  textColor={colors.text}
+                  mutedColor={colors.textMuted}
+                  iconColor={colors.blue}
+                  onPress={() => openSection("menu")}
+                />
+              </ScrollView>
+            </View>
           </Animated.View>
         </Animated.View>
       ) : null}
 
       {/*
       |--------------------------------------------------------------------------
-      | 26. DASHBOARD MENU DRAWER
+      | 34. DASHBOARD MENU
       |--------------------------------------------------------------------------
       */}
 
@@ -1271,24 +1367,22 @@ export function SaMiRunnerDashboardChrome({
 
 /*
 |--------------------------------------------------------------------------
-| 27. AVAILABILITY SLIDER
+| 35. AVAILABILITY CONTROL
 |--------------------------------------------------------------------------
 |
-| Online:
-|   Red track, Go offline.
-|   Thumb begins on the left.
-|   Slide RIGHT to go offline.
+| OFFLINE:
+|   Blue "Go online" button.
+|   Tapping it invokes the existing availability callback.
 |
-| Offline:
-|   Blue track, Go online.
-|   Thumb begins on the right.
-|   Slide LEFT to go online.
+| ONLINE:
+|   Red "Go offline" slider.
+|   Sliding its thumb to the RIGHT invokes the callback.
 |
-| No tap action is provided.
+| There is no left-slide-to-go-online behaviour.
 |--------------------------------------------------------------------------
 */
 
-function AvailabilitySlider({
+function AvailabilityControl({
   isOnline,
   disabled,
   busy,
@@ -1303,36 +1397,30 @@ function AvailabilitySlider({
     new Animated.Value(0),
   ).current;
 
-  const thumbStartLeft = isOnline
-    ? SLIDER_INSET
-    : SLIDER_WIDTH - SLIDER_THUMB_SIZE - SLIDER_INSET;
-
-  const label = isOnline ? "Go offline" : "Go online";
-
-  const trackColor = isOnline
-    ? AVAILABILITY_RED
-    : "#1558B0";
-
   /*
   |--------------------------------------------------------------------------
-  | SLIDER RESET
+  | 36. RESET SLIDER AFTER AVAILABILITY REQUEST
   |--------------------------------------------------------------------------
   */
 
   useEffect(() => {
-    if (!busy) {
-      Animated.spring(thumbTranslateX, {
-        toValue: 0,
-        damping: 19,
-        stiffness: 240,
-        useNativeDriver: true,
-      }).start();
-    }
+    if (busy) return;
+
+    Animated.spring(thumbTranslateX, {
+      toValue: 0,
+      damping: 19,
+      stiffness: 240,
+      mass: 0.7,
+      useNativeDriver: true,
+    }).start();
   }, [isOnline, busy, thumbTranslateX]);
 
   /*
   |--------------------------------------------------------------------------
-  | HORIZONTAL DRAG
+  | 37. HORIZONTAL RIGHT-SLIDE GESTURE
+  |--------------------------------------------------------------------------
+  |
+  | This gesture is only used while ONLINE.
   |--------------------------------------------------------------------------
   */
 
@@ -1342,45 +1430,37 @@ function AvailabilitySlider({
         onStartShouldSetPanResponder: () => false,
 
         onMoveShouldSetPanResponder: (_event, gesture) =>
+          isOnline &&
           !disabled &&
           Math.abs(gesture.dx) > 5 &&
           Math.abs(gesture.dx) >
-            Math.abs(gesture.dy) * 1.1,
+            Math.abs(gesture.dy) * 1.15,
 
         onPanResponderGrant: () => {
           thumbTranslateX.stopAnimation();
         },
 
         onPanResponderMove: (_event, gesture) => {
-          const position = isOnline
-            ? Math.max(
-                0,
-                Math.min(SLIDER_MAX_DISTANCE, gesture.dx),
-              )
-            : Math.max(
-                -SLIDER_MAX_DISTANCE,
-                Math.min(0, gesture.dx),
-              );
+          const nextPosition = Math.max(
+            0,
+            Math.min(
+              AVAILABILITY_MAX_DRAG,
+              gesture.dx,
+            ),
+          );
 
-          thumbTranslateX.setValue(position);
+          // Negative movement never changes availability.
+          thumbTranslateX.setValue(nextPosition);
         },
 
         onPanResponderRelease: (_event, gesture) => {
-          const completed = isOnline
-            ? (
-                gesture.dx >= SLIDER_MAX_DISTANCE * 0.5 ||
-                gesture.vx > 0.7
-              )
-            : (
-                gesture.dx <= -SLIDER_MAX_DISTANCE * 0.5 ||
-                gesture.vx < -0.7
-              );
+          const completed =
+            gesture.dx >= AVAILABILITY_MAX_DRAG * 0.45 ||
+            gesture.vx > 0.7;
 
           if (completed && !disabled) {
             Animated.spring(thumbTranslateX, {
-              toValue: isOnline
-                ? SLIDER_MAX_DISTANCE
-                : -SLIDER_MAX_DISTANCE,
+              toValue: AVAILABILITY_MAX_DRAG,
               damping: 18,
               stiffness: 230,
               useNativeDriver: true,
@@ -1409,34 +1489,77 @@ function AvailabilitySlider({
         onPanResponderTerminationRequest: () => false,
       }),
     [
-      disabled,
       isOnline,
+      disabled,
       onToggle,
       thumbTranslateX,
     ],
   );
+
+  /*
+  |--------------------------------------------------------------------------
+  | 38. OFFLINE: GO ONLINE IS A TAP
+  |--------------------------------------------------------------------------
+  */
+
+  if (!isOnline) {
+    return (
+      <Pressable
+        accessibilityRole="button"
+        accessibilityLabel="Go online"
+        disabled={disabled}
+        onPress={onToggle}
+        style={({ pressed }) => [
+          styles.availabilityButton,
+          {
+            width: AVAILABILITY_WIDTH,
+            height: AVAILABILITY_HEIGHT,
+            backgroundColor: OFFLINE_BLUE,
+            opacity: disabled
+              ? 0.55
+              : pressed
+                ? 0.82
+                : 1,
+          },
+        ]}
+      >
+        {busy ? (
+          <ActivityIndicator
+            color="#FFFFFF"
+            size="small"
+          />
+        ) : (
+          <Text style={styles.availabilityText}>
+            Go online
+          </Text>
+        )}
+      </Pressable>
+    );
+  }
+
+  /*
+  |--------------------------------------------------------------------------
+  | 39. ONLINE: GO OFFLINE IS A RIGHT-SWIPE
+  |--------------------------------------------------------------------------
+  */
 
   return (
     <Animated.View
       {...sliderPanResponder.panHandlers}
       accessible
       accessibilityRole="switch"
-      accessibilityLabel={label}
-      accessibilityHint={
-        isOnline
-          ? "Slide right to go offline."
-          : "Slide left to go online."
-      }
+      accessibilityLabel="Go offline"
+      accessibilityHint="Slide right to go offline."
       accessibilityState={{
-        checked: isOnline,
+        checked: true,
         disabled,
       }}
       style={[
-        styles.availabilityTrack,
+        styles.availabilitySlider,
         {
-          width: SLIDER_WIDTH,
-          height: SLIDER_HEIGHT,
-          backgroundColor: trackColor,
+          width: AVAILABILITY_WIDTH,
+          height: AVAILABILITY_HEIGHT,
+          backgroundColor: ONLINE_RED,
           opacity: disabled ? 0.55 : 1,
         },
       ]}
@@ -1445,16 +1568,16 @@ function AvailabilitySlider({
         pointerEvents="none"
         style={styles.availabilityText}
       >
-        {label}
+        {busy ? "Updating..." : "Go offline"}
       </Text>
 
       <Animated.View
         style={[
           styles.availabilityThumb,
           {
-            left: thumbStartLeft,
-            width: SLIDER_THUMB_SIZE,
-            height: SLIDER_THUMB_SIZE,
+            width: AVAILABILITY_THUMB_SIZE,
+            height: AVAILABILITY_THUMB_SIZE,
+            left: AVAILABILITY_THUMB_INSET,
             transform: [
               {
                 translateX: thumbTranslateX,
@@ -1470,12 +1593,8 @@ function AvailabilitySlider({
           />
         ) : (
           <Ionicons
-            name={
-              isOnline
-                ? "chevron-forward"
-                : "chevron-back"
-            }
-            size={21}
+            name="chevron-forward"
+            size={20}
             color="#000535"
           />
         )}
@@ -1486,7 +1605,11 @@ function AvailabilitySlider({
 
 /*
 |--------------------------------------------------------------------------
-| 28. QUICK ACCESS LIST ROW
+| 40. QUICK ACCESS ROW
+|--------------------------------------------------------------------------
+|
+| Plain text actions with consistent grey outlines.
+| These rows do not use glassmorphism or grid tiles.
 |--------------------------------------------------------------------------
 */
 
@@ -1515,14 +1638,14 @@ function HubAccessRow({
       accessibilityLabel={`${title}. ${subtitle}`}
       onPress={onPress}
       style={({ pressed }) => [
-        styles.hubAccessRow,
+        styles.quickAccessRow,
         {
           borderColor: outlineColor,
           opacity: pressed ? 0.68 : 1,
         },
       ]}
     >
-      <View style={styles.hubAccessIcon}>
+      <View style={styles.quickAccessIcon}>
         <Ionicons
           name={icon}
           size={21}
@@ -1530,10 +1653,10 @@ function HubAccessRow({
         />
       </View>
 
-      <View style={styles.hubAccessCopy}>
+      <View style={styles.quickAccessCopy}>
         <Text
           style={[
-            styles.hubAccessTitle,
+            styles.quickAccessTitle,
             { color: textColor },
           ]}
         >
@@ -1542,7 +1665,7 @@ function HubAccessRow({
 
         <Text
           style={[
-            styles.hubAccessSubtitle,
+            styles.quickAccessSubtitle,
             { color: mutedColor },
           ]}
         >
@@ -1561,7 +1684,7 @@ function HubAccessRow({
 
 /*
 |--------------------------------------------------------------------------
-| 29. MENU DRAWER ITEM
+| 41. DRAWER ITEM
 |--------------------------------------------------------------------------
 */
 
@@ -1608,7 +1731,7 @@ function DrawerItem({
 
 /*
 |--------------------------------------------------------------------------
-| 30. STYLES
+| 42. COMPONENT STYLES
 |--------------------------------------------------------------------------
 */
 
@@ -1616,14 +1739,24 @@ const styles = StyleSheet.create({
 
   /*
   |--------------------------------------------------------------------------
-  | TOP DASHBOARD OVERLAY
+  | ROOT
+  |--------------------------------------------------------------------------
+  */
+
+  root: {
+    ...StyleSheet.absoluteFill,
+  },
+
+  /*
+  |--------------------------------------------------------------------------
+  | DASHBOARD TOP BAR
   |--------------------------------------------------------------------------
   */
 
   headerRow: {
     position: "absolute",
-    left: 0,
-    right: 0,
+    left: 16,
+    right: 16,
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
@@ -1690,15 +1823,16 @@ const styles = StyleSheet.create({
     fontWeight: "700",
   },
 
-earningsDismiss: {
-  position: "absolute",
-  top: 0,
-  right: 0,
-  bottom: 0,
-  left: 0,
-  zIndex: 40,
-  backgroundColor: "rgba(0,0,0,0.08)",
-},
+  earningsDismiss: {
+    position: "absolute",
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    zIndex: 40,
+    backgroundColor: "rgba(0,0,0,0.08)",
+  },
+
   earningsOverlay: {
     position: "absolute",
     left: 16,
@@ -1754,7 +1888,7 @@ earningsDismiss: {
 
   /*
   |--------------------------------------------------------------------------
-  | MAIN BOTTOM SHEET
+  | FULL-SCREEN SHEET
   |--------------------------------------------------------------------------
   */
 
@@ -1763,9 +1897,6 @@ earningsDismiss: {
     top: 0,
     left: 0,
     right: 0,
-    borderTopLeftRadius: 24,
-    borderTopRightRadius: 24,
-    borderTopWidth: 1,
     overflow: "hidden",
     shadowColor: "#000000",
     shadowOffset: { width: 0, height: -5 },
@@ -1773,49 +1904,40 @@ earningsDismiss: {
     shadowRadius: 15,
   },
 
-  sheetDragArea: {
-    flexShrink: 0,
+  /*
+  |--------------------------------------------------------------------------
+  | COMPACT DASHBOARD
+  |--------------------------------------------------------------------------
+  */
+
+  compactLayer: {
+    position: "absolute",
+    top: 0,
+    left: 0,
+    right: 0,
     paddingHorizontal: 18,
+    paddingTop: 0,
+    gap: 10,
+    alignItems: "stretch",
   },
 
-  sheetHandleArea: {
-    height: 22,
+  availabilityContainer: {
+    width: "100%",
+    height: AVAILABILITY_HEIGHT,
     alignItems: "center",
     justifyContent: "center",
   },
 
-  sheetHandle: {
-    width: 39,
-    height: 4,
-    borderRadius: 4,
-  },
-
-  /*
-  |--------------------------------------------------------------------------
-  | AVAILABILITY / HUB HEADER
-  |--------------------------------------------------------------------------
-  */
-
-  transitionSlot: {
-    height: 50,
-    marginTop: 4,
-    position: "relative",
-    justifyContent: "center",
-  },
-
-  availabilityLayer: {
-    position: "absolute",
-    left: 0,
-    top: 0,
-    right: 0,
-    alignItems: "flex-start",
-    justifyContent: "center",
-    height: 50,
-  },
-
-  availabilityTrack: {
+  availabilityButton: {
     borderRadius: 999,
+    alignItems: "center",
+    justifyContent: "center",
+    paddingHorizontal: 16,
+  },
+
+  availabilitySlider: {
     position: "relative",
+    borderRadius: 999,
     alignItems: "center",
     justifyContent: "center",
     overflow: "hidden",
@@ -1830,8 +1952,8 @@ earningsDismiss: {
 
   availabilityThumb: {
     position: "absolute",
-    top: SLIDER_INSET,
-    borderRadius: SLIDER_THUMB_SIZE / 2,
+    top: AVAILABILITY_THUMB_INSET,
+    borderRadius: AVAILABILITY_THUMB_SIZE / 2,
     backgroundColor: "#FFFFFF",
     alignItems: "center",
     justifyContent: "center",
@@ -1842,45 +1964,15 @@ earningsDismiss: {
     shadowRadius: 3,
   },
 
-  hubTitleLayer: {
-    position: "absolute",
-    left: 0,
-    right: 0,
-    top: 0,
-    height: 50,
-    alignItems: "flex-start",
-    justifyContent: "center",
-  },
-
-  hubTitle: {
-    fontSize: 23,
-    lineHeight: 29,
-    fontWeight: "900",
-    letterSpacing: -0.45,
-  },
-
   /*
   |--------------------------------------------------------------------------
-  | COMPACT OFFERS & REWARDS
+  | ONE OFFERS & REWARDS CARD
   |--------------------------------------------------------------------------
   */
 
-  transitionContentRegion: {
-    position: "relative",
-    marginTop: 8,
-  },
-
-  compactOffersLayer: {
-    position: "absolute",
-    top: 0,
-    left: 0,
-    right: 0,
-    zIndex: 2,
-  },
-
   offersRewardsCard: {
     width: "100%",
-    height: 48,
+    minHeight: 50,
     borderWidth: 1,
     borderRadius: 15,
     paddingHorizontal: 13,
@@ -1896,60 +1988,66 @@ earningsDismiss: {
     fontWeight: "800",
   },
 
+  offersRewardsCount: {
+    fontSize: 11,
+    fontWeight: "800",
+  },
+
   /*
   |--------------------------------------------------------------------------
-  | RUNNER HUB PERFORMANCE CONTENT
+  | FULL-SCREEN RUNNER HUB PAGE
   |--------------------------------------------------------------------------
   */
 
-  hubPerformanceContent: {
+  hubPage: {
+    position: "absolute",
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    paddingHorizontal: 18,
+    flexDirection: "column",
+  },
+
+  hubPerformanceArea: {
+    flexShrink: 0,
     gap: 12,
-    paddingBottom: 12,
   },
 
-  hubWelcome: {
-    gap: 3,
-    paddingBottom: 2,
-  },
-
-  hubWelcomeTitle: {
-    fontSize: 18,
+  hubTitle: {
+    fontSize: 23,
+    lineHeight: 30,
     fontWeight: "900",
-    letterSpacing: -0.3,
-  },
-
-  hubWelcomeSubtitle: {
-    fontSize: 11,
-    lineHeight: 16,
-    fontWeight: "500",
-  },
-
-  hubSectionHeader: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-    gap: 8,
-    marginTop: 2,
-  },
-
-  hubSectionEyebrow: {
-    fontSize: 10,
-    fontWeight: "900",
-    letterSpacing: 1.25,
+    letterSpacing: -0.45,
   },
 
   /*
   |--------------------------------------------------------------------------
-  | PERFORMANCE TIER CARD
+  | PERFORMANCE HEADING
+  |--------------------------------------------------------------------------
+  */
+
+  performanceHeading: {
+    marginTop: 2,
+    marginBottom: 1,
+  },
+
+  sectionHeading: {
+    fontSize: 15,
+    fontWeight: "900",
+  },
+
+  /*
+  |--------------------------------------------------------------------------
+  | PERFORMANCE TIERS
   |--------------------------------------------------------------------------
   */
 
   tierCard: {
     borderWidth: 1,
     borderRadius: 19,
-    padding: 14,
+    padding: 15,
     gap: 12,
-    backgroundColor: "transparent",
   },
 
   tierCardTop: {
@@ -2043,7 +2141,7 @@ earningsDismiss: {
 
   /*
   |--------------------------------------------------------------------------
-  | RATING / ACCEPTANCE / CANCELLATION
+  | PERFORMANCE METRICS
   |--------------------------------------------------------------------------
   */
 
@@ -2057,7 +2155,6 @@ earningsDismiss: {
     minHeight: 83,
     borderRadius: 15,
     borderWidth: 1,
-    backgroundColor: "transparent",
     alignItems: "center",
     justifyContent: "center",
     paddingHorizontal: 4,
@@ -2078,16 +2175,20 @@ earningsDismiss: {
 
   /*
   |--------------------------------------------------------------------------
-  | QUICK ACCESS SECTION
+  | QUICK ACCESS
   |--------------------------------------------------------------------------
   */
 
   quickAccessSection: {
     flex: 1,
     minHeight: 0,
-    paddingHorizontal: 18,
-    paddingTop: 12,
+    paddingTop: 15,
     gap: 10,
+  },
+
+  quickAccessHeading: {
+    fontSize: 15,
+    fontWeight: "900",
   },
 
   quickAccessScroll: {
@@ -2097,11 +2198,11 @@ earningsDismiss: {
 
   quickAccessContent: {
     gap: 9,
-    paddingBottom: 10,
+    paddingBottom: 8,
   },
 
-  hubAccessRow: {
-    minHeight: 64,
+  quickAccessRow: {
+    minHeight: 66,
     borderWidth: 1,
     borderRadius: 15,
     paddingHorizontal: 13,
@@ -2112,24 +2213,24 @@ earningsDismiss: {
     backgroundColor: "transparent",
   },
 
-  hubAccessIcon: {
-    width: 29,
-    height: 34,
+  quickAccessIcon: {
+    width: 32,
+    height: 36,
     alignItems: "center",
     justifyContent: "center",
   },
 
-  hubAccessCopy: {
+  quickAccessCopy: {
     flex: 1,
     gap: 3,
   },
 
-  hubAccessTitle: {
+  quickAccessTitle: {
     fontSize: 12,
     fontWeight: "900",
   },
 
-  hubAccessSubtitle: {
+  quickAccessSubtitle: {
     fontSize: 10,
     lineHeight: 14,
     fontWeight: "600",
@@ -2137,7 +2238,7 @@ earningsDismiss: {
 
   /*
   |--------------------------------------------------------------------------
-  | MENU DRAWER
+  | DASHBOARD MENU
   |--------------------------------------------------------------------------
   */
 
@@ -2147,13 +2248,14 @@ earningsDismiss: {
   },
 
   drawerBackdrop: {
-  position: "absolute",
-  top: 0,
-  right: 0,
-  bottom: 0,
-  left: 0,
-  backgroundColor: "rgba(0,0,0,0.58)",
-},
+    position: "absolute",
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    backgroundColor: "rgba(0,0,0,0.58)",
+  },
+
   drawerPanel: {
     width: "82%",
     maxWidth: 340,
