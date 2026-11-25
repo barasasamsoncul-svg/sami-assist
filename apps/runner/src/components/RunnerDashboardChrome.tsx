@@ -1,8 +1,21 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+
+/*
+|--------------------------------------------------------------------------
+| 1. IMPORTS
+|--------------------------------------------------------------------------
+*/
+
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
+
 import {
   ActivityIndicator,
   Animated,
-  LayoutAnimation,
   Modal,
   PanResponder,
   Pressable,
@@ -10,14 +23,21 @@ import {
   StatusBar,
   StyleSheet,
   Text,
-  UIManager,
   View,
   useWindowDimensions,
-  Platform,
 } from "react-native";
+
 import { Ionicons } from "@expo/vector-icons";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-import { useRunnerTheme } from "@/theme";
+
+// @/theme resolves to apps/runner/src/theme.ts.
+import { runnerMotion, useRunnerTheme } from "@/theme";
+
+/*
+|--------------------------------------------------------------------------
+| 2. SECTION TYPES AND CONSTANTS
+|--------------------------------------------------------------------------
+*/
 
 export type RunnerDashboardSection =
   | "offers"
@@ -52,137 +72,526 @@ type Props = {
 
 const DASHBOARD_EARNINGS_PLACEHOLDER = "KSh 2,500";
 
+const AVAILABILITY_TRACK_WIDTH = 188;
+const AVAILABILITY_TRACK_HEIGHT = 48;
+const AVAILABILITY_THUMB_SIZE = 36;
+const AVAILABILITY_THUMB_INSET = 6;
+
+const AVAILABILITY_DRAG_DISTANCE =
+  AVAILABILITY_TRACK_WIDTH -
+  AVAILABILITY_THUMB_SIZE -
+  AVAILABILITY_THUMB_INSET * 2;
+
+const AVAILABILITY_RED = "#B42318";
+
+const PERFORMANCE_TIERS = [
+  "Silver",
+  "Gold",
+  "Platinum",
+  "Diamond",
+] as const;
+
+/*
+|--------------------------------------------------------------------------
+| 3. MAIN DASHBOARD CHROME
+|--------------------------------------------------------------------------
+*/
+
 export function SaMiRunnerDashboardChrome({
   topInset,
   bottomInset,
   isOnline,
-  statusLabel,
   authorized,
   canChangeAvailability,
   availabilityBusy,
-  locationLabel: _locationLabel,
   expanded,
   onExpandedChange,
   onToggleAvailability,
   onOpenSection,
   offersCount,
   activeErrand,
-  hasActiveRoute: _hasActiveRoute,
   error,
   mapError,
 }: Props) {
   const { height: windowHeight } = useWindowDimensions();
   const insets = useSafeAreaInsets();
-  const { colors, showOverlay, isDark } = useRunnerTheme();
+
+  const {
+    colors,
+    showOverlay,
+    isDark,
+  } = useRunnerTheme();
+
+  /*
+  |--------------------------------------------------------------------------
+  | 4. THEME AND LAYOUT VALUES
+  |--------------------------------------------------------------------------
+  */
+
+  const safeTop = Math.max(topInset, insets.top);
+  const safeBottom = Math.max(bottomInset, insets.bottom, 0);
+
+  const navy = colors.brandNavy || "#000535";
+  const actionBlue = colors.blueAction || "#1558B0";
+  const panelBackground = colors.surface;
+
+  // Faint grey outline used consistently throughout the cards.
+  const softOutline = isDark
+    ? "rgba(192,203,217,0.28)"
+    : "rgba(70,86,107,0.28)";
+
+  const tierGold = isDark ? "#E8C574" : "#9A6A16";
+
+  /*
+  |--------------------------------------------------------------------------
+  | 5. DASHBOARD STATE
+  |--------------------------------------------------------------------------
+  */
+
   const [earningsExpanded, setEarningsExpanded] = useState(false);
   const [earningsVisible, setEarningsVisible] = useState(true);
   const [menuOpen, setMenuOpen] = useState(false);
-  const availabilityOpacity = useRef(new Animated.Value(expanded ? 0 : 1)).current;
-  const hubHeaderOpacity = useRef(new Animated.Value(expanded ? 1 : 0)).current;
 
-  const safeBottom = Math.max(bottomInset, insets.bottom, 0);
-  const compactSheetHeight = 97 + safeBottom;
-  const sheetHeight = expanded ? windowHeight + insets.top : compactSheetHeight;
-  const navy = colors.brandNavy || "#000535";
-  const panelBackground = colors.surface;
-  const actionBlue = colors.blueAction || "#1558B0";
-  const offlineRed = "#B42318";
-  const white = "#FFFFFF";
-  const glass = isDark ? "rgba(255,255,255,0.105)" : "#F2F5FA";
-  const glassBorder = isDark ? "rgba(255,255,255,0.20)" : colors.border;
+  const sheetTranslateY = useRef(
+    new Animated.Value(0),
+  ).current;
 
-  useEffect(() => {
-    Animated.parallel([
-      Animated.timing(availabilityOpacity, {
-        toValue: expanded ? 0 : 1,
-        duration: 190,
+  const availabilitySlideX = useRef(
+    new Animated.Value(0),
+  ).current;
+
+  const sheetDragStartY = useRef(0);
+
+  const availabilityDisabled =
+    !authorized ||
+    !canChangeAvailability ||
+    availabilityBusy ||
+    activeErrand;
+
+  /*
+  |--------------------------------------------------------------------------
+  | 6. SHEET DIMENSIONS
+  |--------------------------------------------------------------------------
+  */
+
+  // Compact mode contains:
+  // Safe-area spacing + handle + availability + offers/rewards + bottom inset.
+
+  const compactSheetHeight =
+    safeTop +
+    6 +
+    22 +
+    56 +
+    8 +
+    50 +
+    safeBottom +
+    10;
+
+  // The sheet travels from the bottom of the dashboard to the top.
+  const sheetTravel = Math.max(
+    1,
+    windowHeight - compactSheetHeight + safeTop,
+  );
+
+  /*
+  |--------------------------------------------------------------------------
+  | 7. TRANSITION ANIMATIONS
+  |--------------------------------------------------------------------------
+  */
+
+  // Availability begins fading as the sheet moves past the middle.
+  const availabilityOpacity = sheetTranslateY.interpolate({
+    inputRange: [
+      0,
+      sheetTravel * 0.55,
+      sheetTravel,
+    ],
+    outputRange: [0, 0.35, 1],
+    extrapolate: "clamp",
+  });
+
+  // Hub title appears as availability disappears.
+  const hubHeaderOpacity = sheetTranslateY.interpolate({
+    inputRange: [
+      0,
+      sheetTravel * 0.55,
+      sheetTravel,
+    ],
+    outputRange: [1, 0.55, 0],
+    extrapolate: "clamp",
+  });
+
+  // Performance content fades in during the transition.
+  const hubContentOpacity = sheetTranslateY.interpolate({
+    inputRange: [
+      0,
+      sheetTravel * 0.55,
+      sheetTravel,
+    ],
+    outputRange: [1, 0.6, 0],
+    extrapolate: "clamp",
+  });
+
+  const hubContentTranslateY = sheetTranslateY.interpolate({
+    inputRange: [0, sheetTravel],
+    outputRange: [0, 9],
+    extrapolate: "clamp",
+  });
+
+  // Compact Offers and Rewards disappear as the hub expands.
+  const compactLinksOpacity = availabilityOpacity;
+
+  const compactLinksHeight = sheetTranslateY.interpolate({
+    inputRange: [0, sheetTravel],
+    outputRange: [0, 50],
+    extrapolate: "clamp",
+  });
+
+  /*
+  |--------------------------------------------------------------------------
+  | 8. SHEET SNAP AND EXPANSION
+  |--------------------------------------------------------------------------
+  */
+
+  const snapSheet = useCallback(
+    (nextExpanded: boolean) => {
+      if (nextExpanded !== expanded) {
+        onExpandedChange(nextExpanded);
+        return;
+      }
+
+      Animated.spring(sheetTranslateY, {
+        toValue: expanded ? 0 : sheetTravel,
+        ...runnerMotion.spring,
         useNativeDriver: true,
-      }),
-      Animated.timing(hubHeaderOpacity, {
-        toValue: expanded ? 1 : 0,
-        duration: 230,
-        delay: expanded ? 55 : 0,
-        useNativeDriver: true,
-      }),
-    ]).start();
-  }, [expanded, availabilityOpacity, hubHeaderOpacity]);
-
-  useEffect(() => {
-    if (Platform.OS === "android" && UIManager.setLayoutAnimationEnabledExperimental) {
-      UIManager.setLayoutAnimationEnabledExperimental(true);
-    }
-  }, []);
-
-  const animateSheet = (nextExpanded: boolean) => {
-    LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
-    onExpandedChange(nextExpanded);
-  };
-
-  const panResponder = useMemo(
-    () =>
-      PanResponder.create({
-        onStartShouldSetPanResponder: () => false,
-        onMoveShouldSetPanResponder: (_event, gesture) =>
-          Math.abs(gesture.dy) > 9 && Math.abs(gesture.dy) > Math.abs(gesture.dx) * 1.2,
-        onPanResponderRelease: (_event, gesture) => {
-          if (gesture.dy < -24) animateSheet(true);
-          if (gesture.dy > 24) animateSheet(false);
-        },
-      }),
-    [onExpandedChange],
+      }).start();
+    },
+    [
+      expanded,
+      onExpandedChange,
+      sheetTranslateY,
+      sheetTravel,
+    ],
   );
 
   useEffect(() => {
+    Animated.spring(sheetTranslateY, {
+      toValue: expanded ? 0 : sheetTravel,
+      ...runnerMotion.spring,
+      useNativeDriver: true,
+    }).start();
+  }, [expanded, sheetTravel, sheetTranslateY]);
+
+  /*
+  |--------------------------------------------------------------------------
+  | 9. VERTICAL SWIPE GESTURE
+  |--------------------------------------------------------------------------
+  |
+  | Collapsed:
+  | Swipe UP to expand the complete Runner hub.
+  |
+  | Expanded:
+  | Swipe DOWN from the upper performance area to collapse.
+  |
+  | Quick Access has its own ScrollView and is deliberately excluded
+  | from this gesture responder.
+  |--------------------------------------------------------------------------
+  */
+
+  const sheetPanResponder = useMemo(
+    () =>
+      PanResponder.create({
+        onStartShouldSetPanResponder: () => false,
+
+        onMoveShouldSetPanResponder: (_event, gesture) =>
+          Math.abs(gesture.dy) > 7 &&
+          Math.abs(gesture.dy) >
+            Math.abs(gesture.dx) * 1.15,
+
+        onPanResponderGrant: () => {
+          sheetTranslateY.stopAnimation((value) => {
+            sheetDragStartY.current = value;
+          });
+        },
+
+        onPanResponderMove: (_event, gesture) => {
+          const nextPosition =
+            sheetDragStartY.current + gesture.dy;
+
+          sheetTranslateY.setValue(
+            Math.max(
+              0,
+              Math.min(sheetTravel, nextPosition),
+            ),
+          );
+        },
+
+        onPanResponderRelease: (_event, gesture) => {
+          const swipeUp =
+            gesture.dy < -42 ||
+            gesture.vy < -0.55;
+
+          const swipeDown =
+            gesture.dy > 42 ||
+            gesture.vy > 0.55;
+
+          let nextExpanded = expanded;
+
+          if (!expanded && swipeUp) {
+            nextExpanded = true;
+          }
+
+          if (expanded && swipeDown) {
+            nextExpanded = false;
+          }
+
+          snapSheet(nextExpanded);
+        },
+
+        onPanResponderTerminate: () => {
+          snapSheet(expanded);
+        },
+
+        onPanResponderTerminationRequest: () => false,
+      }),
+    [
+      expanded,
+      sheetTravel,
+      sheetTranslateY,
+      snapSheet,
+    ],
+  );
+
+  /*
+  |--------------------------------------------------------------------------
+  | 10. HORIZONTAL AVAILABILITY SLIDER
+  |--------------------------------------------------------------------------
+  |
+  | ONLINE:
+  | Red track, "Go offline".
+  | Handle starts LEFT.
+  | Swipe RIGHT to go offline.
+  |
+  | OFFLINE:
+  | Blue track, "Go online".
+  | Handle starts RIGHT.
+  | Swipe LEFT to go online.
+  |
+  | There is deliberately no tap action.
+  |--------------------------------------------------------------------------
+  */
+
+  const availabilityLabel = isOnline
+    ? "Go offline"
+    : "Go online";
+
+  const availabilityPanResponder = useMemo(
+    () =>
+      PanResponder.create({
+        onStartShouldSetPanResponder: () => false,
+
+        onMoveShouldSetPanResponder: (_event, gesture) =>
+          !availabilityDisabled &&
+          Math.abs(gesture.dx) > 5 &&
+          Math.abs(gesture.dx) >
+            Math.abs(gesture.dy) * 1.1,
+
+        onPanResponderGrant: () => {
+          availabilitySlideX.stopAnimation();
+        },
+
+        onPanResponderMove: (_event, gesture) => {
+          const nextPosition = isOnline
+            ? Math.max(
+                0,
+                Math.min(
+                  AVAILABILITY_DRAG_DISTANCE,
+                  gesture.dx,
+                ),
+              )
+            : Math.max(
+                -AVAILABILITY_DRAG_DISTANCE,
+                Math.min(0, gesture.dx),
+              );
+
+          availabilitySlideX.setValue(nextPosition);
+        },
+
+        onPanResponderRelease: (_event, gesture) => {
+          const completed = isOnline
+            ? (
+                gesture.dx >
+                  AVAILABILITY_DRAG_DISTANCE * 0.42 ||
+                gesture.vx > 0.7
+              )
+            : (
+                gesture.dx <
+                  -AVAILABILITY_DRAG_DISTANCE * 0.42 ||
+                gesture.vx < -0.7
+              );
+
+          Animated.spring(availabilitySlideX, {
+            toValue: 0,
+            damping: 19,
+            stiffness: 240,
+            mass: 0.7,
+            useNativeDriver: true,
+          }).start();
+
+          if (completed && !availabilityDisabled) {
+            onToggleAvailability();
+          }
+        },
+
+        onPanResponderTerminate: () => {
+          Animated.spring(availabilitySlideX, {
+            toValue: 0,
+            damping: 19,
+            stiffness: 240,
+            useNativeDriver: true,
+          }).start();
+        },
+
+        onPanResponderTerminationRequest: () => false,
+      }),
+    [
+      isOnline,
+      availabilityDisabled,
+      availabilitySlideX,
+      onToggleAvailability,
+    ],
+  );
+
+  /*
+  |--------------------------------------------------------------------------
+  | 11. ERROR OVERLAYS
+  |--------------------------------------------------------------------------
+  */
+
+  useEffect(() => {
     const message = error || mapError;
+
     if (!message) return;
+
     showOverlay({
       type: "error",
-      title: error ? "Runner dashboard issue" : "Map issue",
+      title: error
+        ? "Runner dashboard issue"
+        : "Map issue",
       message,
       dismissOnBackdrop: true,
     });
   }, [error, mapError, showOverlay]);
+
+  /*
+  |--------------------------------------------------------------------------
+  | 12. NAVIGATION HELPERS
+  |--------------------------------------------------------------------------
+  */
 
   const openSection = (section: RunnerDashboardSection) => {
     setMenuOpen(false);
     onOpenSection(section);
   };
 
-  const availabilityLabel = isOnline ? "Go offline" : "Go online";
-  const availabilityDisabled = !authorized || !canChangeAvailability || availabilityBusy || activeErrand;
+  const openOffersAndRewards = () => {
+    // Both compact shortcuts use the existing combined page.
+    openSection("offers");
+  };
+
+  /*
+  |--------------------------------------------------------------------------
+  | 13. MAIN RENDER
+  |--------------------------------------------------------------------------
+  */
 
   return (
-    <View pointerEvents="box-none" style={StyleSheet.absoluteFill}>
-      {/* Android status-bar background is configured in app.config/app.json; core RN 0.88 StatusBar only controls icon/text style here. */}
-      <StatusBar barStyle="light-content" hidden={expanded} />
+    <View
+      pointerEvents="box-none"
+      style={StyleSheet.absoluteFill}
+    >
+      <StatusBar
+        barStyle="light-content"
+        hidden={expanded}
+      />
 
-      {/* Top overlay: compact drawer control and one earnings pill. No location chip. */}
-      <View style={[styles.headerRow, { top: topInset + 7, paddingHorizontal: 16 }]}>
+      {/*
+      |--------------------------------------------------------------------------
+      | 14. DASHBOARD TOP BAR
+      |--------------------------------------------------------------------------
+      */}
+
+      <View
+        style={[
+          styles.headerRow,
+          {
+            top: safeTop + 7,
+            paddingHorizontal: 16,
+            zIndex: expanded ? 120 : 50,
+          },
+        ]}
+      >
         <Pressable
           accessibilityRole="button"
           accessibilityLabel="Open dashboard menu"
           onPress={() => setMenuOpen(true)}
-          style={({ pressed }) => [styles.hamburgerButton, { backgroundColor: navy, opacity: pressed ? 0.78 : 1 }]}
+          style={({ pressed }) => [
+            styles.hamburgerButton,
+            {
+              backgroundColor: navy,
+              opacity: pressed ? 0.78 : 1,
+            },
+          ]}
         >
-          <Ionicons name="menu" size={24} color={white} />
+          <Ionicons
+            name="menu"
+            size={24}
+            color="#FFFFFF"
+          />
         </Pressable>
 
         <Pressable
           accessibilityRole="button"
-          accessibilityLabel={earningsVisible ? "Show today's earnings details" : "Open earnings details"}
-          accessibilityState={{ expanded: earningsExpanded }}
-          onPress={() => setEarningsExpanded((current) => !current)}
-          style={({ pressed }) => [styles.earningsPill, { backgroundColor: navy, opacity: pressed ? 0.9 : 1 }]}
+          accessibilityLabel={
+            earningsVisible
+              ? "Show today's earnings details"
+              : "Open earnings details"
+          }
+          accessibilityState={{
+            expanded: earningsExpanded,
+          }}
+          onPress={() =>
+            setEarningsExpanded((current) => !current)
+          }
+          style={({ pressed }) => [
+            styles.earningsPill,
+            {
+              backgroundColor: navy,
+              opacity: pressed ? 0.9 : 1,
+            },
+          ]}
         >
           {earningsVisible ? (
             <>
-              <Text style={styles.earningsPillAmount}>{DASHBOARD_EARNINGS_PLACEHOLDER}</Text>
-              <Text style={styles.earningsPillToday}>Today</Text>
+              <Text style={styles.earningsPillAmount}>
+                {DASHBOARD_EARNINGS_PLACEHOLDER}
+              </Text>
+
+              <Text style={styles.earningsPillToday}>
+                Today
+              </Text>
             </>
           ) : null}
         </Pressable>
+
         <View style={styles.headerRightSpacer} />
       </View>
+
+      {/*
+      |--------------------------------------------------------------------------
+      | 15. EARNINGS DETAILS OVERLAY
+      |--------------------------------------------------------------------------
+      */}
 
       {earningsExpanded ? (
         <>
@@ -192,148 +601,355 @@ export function SaMiRunnerDashboardChrome({
             onPress={() => setEarningsExpanded(false)}
             style={styles.earningsDismiss}
           />
-          <View style={[styles.earningsOverlay, { top: topInset + 68, backgroundColor: navy, borderColor: glassBorder }]}>
+
+          <View
+            style={[
+              styles.earningsOverlay,
+              {
+                top: safeTop + 68,
+                backgroundColor: navy,
+                borderColor: softOutline,
+              },
+            ]}
+          >
             <View style={styles.earningsOverlayHeader}>
               <View>
-                <Text style={styles.earningsOverlayEyebrow}>TODAY</Text>
-                <Text style={styles.earningsOverlayValue}>{DASHBOARD_EARNINGS_PLACEHOLDER}</Text>
+                <Text style={styles.earningsOverlayEyebrow}>
+                  TODAY
+                </Text>
+
+                <Text style={styles.earningsOverlayValue}>
+                  {DASHBOARD_EARNINGS_PLACEHOLDER}
+                </Text>
               </View>
+
               <Pressable
                 accessibilityRole="button"
-                accessibilityLabel={earningsVisible ? "Hide earnings on dashboard" : "Show earnings on dashboard"}
-                onPress={() => setEarningsVisible((current) => !current)}
+                accessibilityLabel={
+                  earningsVisible
+                    ? "Hide earnings on dashboard"
+                    : "Show earnings on dashboard"
+                }
+                onPress={() =>
+                  setEarningsVisible((current) => !current)
+                }
                 hitSlop={10}
-                style={({ pressed }) => [styles.eyeButton, { backgroundColor: glass, opacity: pressed ? 0.72 : 1 }]}
+                style={({ pressed }) => [
+                  styles.eyeButton,
+                  {
+                    opacity: pressed ? 0.72 : 1,
+                  },
+                ]}
               >
-                <Ionicons name={earningsVisible ? "eye-off-outline" : "eye-outline"} size={21} color={white} />
+                <Ionicons
+                  name={
+                    earningsVisible
+                      ? "eye-off-outline"
+                      : "eye-outline"
+                  }
+                  size={21}
+                  color="#FFFFFF"
+                />
               </Pressable>
             </View>
+
             <Text style={styles.earningsOverlayHint}>
-              {earningsVisible ? "Tap the eye to hide the amount on the dashboard." : "Your dashboard amount is hidden. Your earnings details remain visible here."}
+              {earningsVisible
+                ? "Tap the eye to hide the amount on the dashboard."
+                : "Your dashboard amount is hidden. Your earnings details remain visible here."}
             </Text>
           </View>
         </>
       ) : null}
 
-      {/* Compact availability drawer. Expanding turns it into a full-screen Runner hub. */}
+      {/*
+      |--------------------------------------------------------------------------
+      | 16. ANIMATED BOTTOM SHEET
+      |--------------------------------------------------------------------------
+      |
+      | One continuous sheet.
+      | The map remains underneath it.
+      | Translation uses the native animation driver.
+      |--------------------------------------------------------------------------
+      */}
+
       {!activeErrand ? (
-        <View
+        <Animated.View
           style={[
             styles.bottomSheet,
             {
-              top: expanded ? -insets.top : undefined,
-              left: expanded ? 0 : -1,
-              right: expanded ? 0 : -1,
-              height: sheetHeight,
-              paddingHorizontal: expanded ? 18 : 14,
-              paddingTop: expanded ? insets.top + 5 : 4,
-              paddingBottom: expanded ? safeBottom + 8 : safeBottom + 9,
+              top: -safeTop,
+              height: windowHeight + safeTop,
               backgroundColor: panelBackground,
-              borderTopColor: isDark ? "rgba(255,255,255,0.17)" : colors.border,
-              borderTopLeftRadius: expanded ? 0 : 25,
-              borderTopRightRadius: expanded ? 0 : 25,
-              borderBottomLeftRadius: 0,
-              borderBottomRightRadius: 0,
-              borderLeftWidth: 0,
-              borderRightWidth: 0,
-              borderBottomWidth: 0,
+              borderTopColor: softOutline,
               zIndex: expanded ? 90 : 35,
               elevation: expanded ? 30 : 22,
-              gap: expanded ? 12 : 7,
+              transform: [
+                {
+                  translateY: sheetTranslateY,
+                },
+              ],
             },
           ]}
         >
-          <View {...panResponder.panHandlers} style={styles.sheetHandlePanArea}>
-            <Pressable
-              accessibilityRole="button"
-              accessibilityLabel={expanded ? "Collapse Runner hub" : "Expand Runner hub"}
-              accessibilityState={{ expanded }}
-              onPress={() => animateSheet(!expanded)}
-              style={[styles.sheetHandleArea, { height: expanded ? 30 : 22 }]}
+          {/*
+          |--------------------------------------------------------------------------
+          | 17. SHEET UPPER REGION
+          |--------------------------------------------------------------------------
+          |
+          | Vertical dragging here controls the full sheet.
+          | This includes the availability and performance areas.
+          |--------------------------------------------------------------------------
+          */}
+
+          <View
+            {...sheetPanResponder.panHandlers}
+            style={[
+              styles.sheetTopDragSurface,
+              {
+                paddingTop: safeTop + 6,
+                paddingHorizontal: 18,
+              },
+            ]}
+          >
+            {/* Drag handle. No tap-to-expand action. */}
+            <View
+              accessible
+              accessibilityLabel={
+                expanded
+                  ? "Swipe down to collapse the Runner hub"
+                  : "Swipe up to expand the Runner hub"
+              }
+              style={styles.sheetHandlePanArea}
             >
               <View
                 style={[
                   styles.sheetHandle,
-                  { backgroundColor: isDark ? "rgba(255,255,255,0.62)" : colors.borderStrong },
+                  {
+                    backgroundColor: isDark
+                      ? "rgba(255,255,255,0.62)"
+                      : colors.borderStrong,
+                  },
                 ]}
               />
-            </Pressable>
-          </View>
+            </View>
 
-          <View style={styles.sheetActionSlot}>
-            <Animated.View
-              pointerEvents={expanded ? "none" : "auto"}
-              style={[styles.availabilityLayer, { opacity: availabilityOpacity }]}
-            >
-              <Pressable
-                accessibilityRole="button"
-                accessibilityLabel={availabilityLabel}
-                accessibilityHint="Changes your SaMi Runner availability."
-                disabled={availabilityDisabled}
-                onPress={onToggleAvailability}
-                style={({ pressed }) => [
-                  styles.availabilityButton,
+            {/*
+            |--------------------------------------------------------------------------
+            | 18. AVAILABILITY / HUB TITLE CROSSFADE
+            |--------------------------------------------------------------------------
+            */}
+
+            <View style={styles.sheetActionSlot}>
+              {/* Compact availability slider */}
+              <Animated.View
+                pointerEvents={expanded ? "none" : "auto"}
+                style={[
+                  styles.availabilityLayer,
                   {
-                    backgroundColor: isOnline ? actionBlue : offlineRed,
-                    opacity: availabilityDisabled ? 0.55 : pressed ? 0.84 : 1,
+                    opacity: availabilityOpacity,
                   },
                 ]}
               >
-                {availabilityBusy ? (
-                  <ActivityIndicator size="small" color={white} />
-                ) : (
-                  <>
-                    <Ionicons name={isOnline ? "power" : "radio-outline"} size={19} color={white} />
-                    <Text style={styles.availabilityButtonText}>{availabilityLabel}</Text>
-                  </>
-                )}
-              </Pressable>
+                <Animated.View
+                  {...availabilityPanResponder.panHandlers}
+                  accessible
+                  accessibilityRole="switch"
+                  accessibilityLabel={availabilityLabel}
+                  accessibilityHint={
+                    "Slide right to go offline. Slide left to go online."
+                  }
+                  accessibilityState={{
+                    checked: isOnline,
+                    disabled: availabilityDisabled,
+                  }}
+                  style={[
+                    styles.availabilityTrack,
+                    {
+                      width: AVAILABILITY_TRACK_WIDTH,
+                      height: AVAILABILITY_TRACK_HEIGHT,
+                      backgroundColor: isOnline
+                        ? AVAILABILITY_RED
+                        : actionBlue,
+                      opacity: availabilityDisabled
+                        ? 0.55
+                        : 1,
+                    },
+                  ]}
+                >
+                  <Text style={styles.availabilityLabel}>
+                    {availabilityLabel}
+                  </Text>
+
+                  <Animated.View
+                    style={[
+                      styles.availabilityThumb,
+                      {
+                        width: AVAILABILITY_THUMB_SIZE,
+                        height: AVAILABILITY_THUMB_SIZE,
+                        left: isOnline ? AVAILABILITY_THUMB_INSET : undefined,
+                        right: isOnline ? undefined : AVAILABILITY_THUMB_INSET,
+                        transform: [
+                          {
+                            translateX: availabilitySlideX,
+                          },
+                        ],
+                      },
+                    ]}
+                  >
+                    {availabilityBusy ? (
+                      <ActivityIndicator
+                        size="small"
+                        color="#000535"
+                      />
+                    ) : (
+                      <Ionicons
+                        name={
+                          isOnline
+                            ? "chevron-forward"
+                            : "chevron-back"
+                        }
+                        size={21}
+                        color="#000535"
+                      />
+                    )}
+                  </Animated.View>
+                </Animated.View>
+              </Animated.View>
+
+              {/* Expanded hub title */}
+              <Animated.View
+                pointerEvents={expanded ? "auto" : "none"}
+                style={[
+                  styles.expandedTitleLayer,
+                  {
+                    opacity: hubHeaderOpacity,
+                  },
+                ]}
+              >
+                <Text
+                  style={[
+                    styles.expandedTitle,
+                    { color: colors.text },
+                  ]}
+                >
+                  Your hub
+                </Text>
+              </Animated.View>
+            </View>
+
+            {/*
+            |--------------------------------------------------------------------------
+            | 19. COMPACT OFFERS AND REWARDS
+            |--------------------------------------------------------------------------
+            |
+            | Plain content.
+            | Transparent surfaces.
+            | Faint grey borders.
+            |--------------------------------------------------------------------------
+            */}
+
+            <Animated.View
+              pointerEvents={expanded ? "none" : "auto"}
+              style={[
+                styles.compactLinksRow,
+                {
+                  height: compactLinksHeight,
+                  opacity: compactLinksOpacity,
+                  borderColor: softOutline,
+                },
+              ]}
+            >
+              <CompactActionCard
+                icon="briefcase-outline"
+                title="Offers"
+                subtitle="Eligible errands"
+                count={offersCount}
+                outlineColor={softOutline}
+                textColor={colors.text}
+                mutedColor={colors.textMuted}
+                iconColor={colors.blue}
+                onPress={openOffersAndRewards}
+              />
+
+              <CompactActionCard
+                icon="gift-outline"
+                title="Rewards"
+                subtitle="Promotions and milestones"
+                outlineColor={softOutline}
+                textColor={colors.text}
+                mutedColor={colors.textMuted}
+                iconColor={colors.blue}
+                onPress={openOffersAndRewards}
+              />
             </Animated.View>
+
+            {/*
+            |--------------------------------------------------------------------------
+            | 20. RUNNER HUB PERFORMANCE AREA
+            |--------------------------------------------------------------------------
+            |
+            | No repeated application branding.
+            | No duplicate availability indicator.
+            | No View details link.
+            |--------------------------------------------------------------------------
+            */}
 
             <Animated.View
               pointerEvents={expanded ? "auto" : "none"}
-              style={[styles.expandedTitleLayer, { opacity: hubHeaderOpacity }]}
-            >
-              <View style={styles.expandedTitleCopy}>
-                <Text style={[styles.expandedEyebrow, { color: colors.textMuted }]}>SAMI RUNNER</Text>
-                <Text style={[styles.expandedTitle, { color: colors.text }]}>Your Runner hub</Text>
-              </View>
-              <View
-                accessibilityLabel={isOnline ? "Runner is online" : "Runner is offline"}
-                style={[
-                  styles.expandedStatusPill,
-                  {
-                    backgroundColor: isOnline ? colors.successSoft : colors.dangerSoft,
-                    borderColor: isOnline ? colors.success : colors.red,
-                  },
-                ]}
-              >
-                <View style={[styles.expandedStatusDot, { backgroundColor: isOnline ? colors.success : colors.red }]} />
-                <Text style={[styles.expandedStatusText, { color: isOnline ? colors.success : colors.red }]}>
-                  {isOnline ? "ONLINE" : "OFFLINE"}
-                </Text>
-              </View>
-            </Animated.View>
-          </View>
-
-          {expanded ? (
-            <ScrollView
-              style={styles.hubScroll}
-              contentContainerStyle={styles.hubContent}
-              showsVerticalScrollIndicator={false}
-              keyboardShouldPersistTaps="handled"
+              style={[
+                styles.hubPerformanceContent,
+                {
+                  opacity: hubContentOpacity,
+                  transform: [
+                    {
+                      translateY: hubContentTranslateY,
+                    },
+                  ],
+                },
+              ]}
             >
               <View style={styles.hubWelcome}>
-                <Text style={[styles.hubWelcomeTitle, { color: colors.text }]}>Everything in one place.</Text>
-                <Text style={[styles.hubWelcomeSubtitle, { color: colors.textMuted }]}>Your performance, earnings and account shortcuts.</Text>
+                <Text
+                  style={[
+                    styles.hubWelcomeTitle,
+                    { color: colors.text },
+                  ]}
+                >
+                  Everything in one place.
+                </Text>
+
+                <Text
+                  style={[
+                    styles.hubWelcomeSubtitle,
+                    { color: colors.textMuted },
+                  ]}
+                >
+                  Your performance and account at a glance.
+                </Text>
               </View>
 
+              {/* Performance heading: no View details action */}
               <View style={styles.hubSectionHeader}>
-                <Text style={[styles.hubSectionEyebrow, { color: colors.textMuted }]}>PERFORMANCE</Text>
-                <Pressable onPress={() => openSection("performance")} accessibilityRole="button">
-                  <Text style={[styles.hubSeeAll, { color: colors.blue }]}>View details</Text>
-                </Pressable>
+                <Text
+                  style={[
+                    styles.hubSectionEyebrow,
+                    { color: colors.textMuted },
+                  ]}
+                >
+                  PERFORMANCE
+                </Text>
               </View>
+
+              {/*
+              |--------------------------------------------------------------------------
+              | 21. PERFORMANCE TIERS CARD
+              |--------------------------------------------------------------------------
+              |
+              | Retains existing progression values.
+              | Adds a visual path between the next levels.
+              |--------------------------------------------------------------------------
+              */}
 
               <Pressable
                 accessibilityRole="button"
@@ -342,100 +958,462 @@ export function SaMiRunnerDashboardChrome({
                 style={({ pressed }) => [
                   styles.tierCard,
                   {
-                    backgroundColor: isDark ? "#071329" : "#F2F5FA",
-                    borderColor: colors.border,
-                    opacity: pressed ? 0.88 : 1,
+                    borderColor: softOutline,
+                    opacity: pressed ? 0.82 : 1,
                   },
                 ]}
               >
                 <View style={styles.tierCardTop}>
-                  <View style={styles.tierIconWrap}>
-                    <Ionicons name="trophy-outline" size={22} color={isDark ? "#E8C574" : "#9A6A16"} />
+                  <View
+                    style={[
+                      styles.tierIconWrap,
+                      {
+                        backgroundColor: isDark
+                          ? "rgba(232,197,116,0.13)"
+                          : "rgba(154,106,22,0.09)",
+                      },
+                    ]}
+                  >
+                    <Ionicons
+                      name="trophy-outline"
+                      size={23}
+                      color={tierGold}
+                    />
                   </View>
+
                   <View style={styles.tierCardCopy}>
-                    <Text style={[styles.tierEyebrow, { color: colors.textMuted }]}>SAMI PERFORMANCE TIERS</Text>
-                    <Text style={[styles.tierTitle, { color: colors.text }]}>Silver tier</Text>
+                    <Text
+                      style={[
+                        styles.tierEyebrow,
+                        { color: colors.textMuted },
+                      ]}
+                    >
+                      PERFORMANCE TIERS
+                    </Text>
+
+                    <Text
+                      style={[
+                        styles.tierTitle,
+                        { color: colors.text },
+                      ]}
+                    >
+                      Silver tier
+                    </Text>
                   </View>
-                  <Ionicons name="chevron-forward" size={19} color={colors.textMuted} />
+
+                  <Ionicons
+                    name="arrow-forward-circle-outline"
+                    size={23}
+                    color={colors.textMuted}
+                  />
                 </View>
+
                 <View style={styles.tierPointsRow}>
-                  <Text style={[styles.tierPointsLabel, { color: colors.textMuted }]}>Tier progress</Text>
-                  <Text style={[styles.tierPointsValue, { color: colors.text }]}>200 / 1,000 PTS</Text>
+                  <Text
+                    style={[
+                      styles.tierPointsLabel,
+                      { color: colors.textMuted },
+                    ]}
+                  >
+                    Tier progress
+                  </Text>
+
+                  <Text
+                    style={[
+                      styles.tierPointsValue,
+                      { color: colors.text },
+                    ]}
+                  >
+                    200 / 1,000 PTS
+                  </Text>
                 </View>
-                <View style={[styles.tierProgressTrack, { backgroundColor: isDark ? "rgba(255,255,255,0.13)" : "#D8E0EA" }]}>
-                <View style={[styles.tierProgressFill, { backgroundColor: isDark ? "#D6B568" : "#A97826", width: "20%" }]} />
-              </View>
-              <View style={styles.tierProgressFooter}>
-                <Text style={[styles.tierProgressCaption, { color: colors.textMuted }]}>800 points to Gold</Text>
-                <Text style={[styles.tierProgressCaption, { color: colors.textMuted }]}>20% complete</Text>
-              </View>
+
+                <View
+                  style={[
+                    styles.tierProgressTrack,
+                    {
+                      backgroundColor: isDark
+                        ? "rgba(255,255,255,0.13)"
+                        : "#D8E0EA",
+                    },
+                  ]}
+                >
+                  <View
+                    style={[
+                      styles.tierProgressFill,
+                      {
+                        backgroundColor: tierGold,
+                        width: "20%",
+                      },
+                    ]}
+                  />
+                </View>
+
+                <View style={styles.tierProgressFooter}>
+                  <Text
+                    style={[
+                      styles.tierProgressCaption,
+                      { color: colors.textMuted },
+                    ]}
+                  >
+                    800 points to Gold
+                  </Text>
+
+                  <Text
+                    style={[
+                      styles.tierProgressCaption,
+                      { color: colors.textMuted },
+                    ]}
+                  >
+                    20% complete
+                  </Text>
+                </View>
+
+                {/* Progression path */}
                 <View style={styles.tierStepsRow}>
-                  {(["Silver", "Gold", "Platinum", "Diamond"] as const).map((tier) => (
-                    <Text key={tier} style={[styles.tierStep, { color: colors.textMuted }]}>{tier}</Text>
+                  {PERFORMANCE_TIERS.map((tier, index) => (
+                    <View
+                      key={tier}
+                      style={styles.tierStageItem}
+                    >
+                      <Text
+                        style={[
+                          styles.tierStep,
+                          {
+                            color: index === 0
+                              ? colors.text
+                              : colors.textMuted,
+                          },
+                        ]}
+                      >
+                        {tier}
+                      </Text>
+
+                      {index < PERFORMANCE_TIERS.length - 1 ? (
+                        <Ionicons
+                          name="arrow-forward"
+                          size={11}
+                          color={colors.textMuted}
+                        />
+                      ) : null}
+                    </View>
                   ))}
                 </View>
               </Pressable>
 
+              {/*
+              |--------------------------------------------------------------------------
+              | 22. PERFORMANCE METRICS
+              |--------------------------------------------------------------------------
+              |
+              | Rating, Acceptance and Cancellation remain as they are.
+              |--------------------------------------------------------------------------
+              */}
+
               <View style={styles.performanceMetricRow}>
-                <Pressable onPress={() => openSection("performance")} style={[styles.performanceMetric, { backgroundColor: isDark ? "#071329" : "#F2F5FA", borderColor: colors.border }]}>
-                  <Ionicons name="star" size={16} color={isDark ? "#F2C66D" : "#A16A13"} />
-                  <Text style={[styles.performanceMetricValue, { color: colors.text }]}>—</Text>
-                  <Text style={[styles.performanceMetricLabel, { color: colors.textMuted }]}>Rating</Text>
-                </Pressable>
-                <Pressable onPress={() => openSection("performance")} style={[styles.performanceMetric, { backgroundColor: isDark ? "#071329" : "#F2F5FA", borderColor: colors.border }]}>
-                  <Ionicons name="trending-up-outline" size={16} color={colors.blue} />
-                  <Text style={[styles.performanceMetricValue, { color: colors.text }]}>—%</Text>
-                  <Text style={[styles.performanceMetricLabel, { color: colors.textMuted }]}>Acceptance</Text>
-                </Pressable>
-                <Pressable onPress={() => openSection("performance")} style={[styles.performanceMetric, { backgroundColor: isDark ? "#071329" : "#F2F5FA", borderColor: colors.border }]}>
-                  <Ionicons name="close-circle-outline" size={16} color={colors.red} />
-                  <Text style={[styles.performanceMetricValue, { color: colors.text }]}>—%</Text>
-                  <Text style={[styles.performanceMetricLabel, { color: colors.textMuted }]}>Cancellation</Text>
-                </Pressable>
-              </View>
+                <Pressable
+                  accessibilityRole="button"
+                  onPress={() => openSection("performance")}
+                  style={[
+                    styles.performanceMetric,
+                    { borderColor: softOutline },
+                  ]}
+                >
+                  <Ionicons
+                    name="star"
+                    size={17}
+                    color={tierGold}
+                  />
 
-              <View style={styles.hubSectionHeader}>
-                <Text style={[styles.hubSectionEyebrow, { color: colors.textMuted }]}>QUICK ACCESS</Text>
-                <Text style={[styles.hubSectionHint, { color: colors.textMuted }]}>Your tools and account</Text>
-              </View>
+                  <Text
+                    style={[
+                      styles.performanceMetricValue,
+                      { color: colors.text },
+                    ]}
+                  >
+                    —
+                  </Text>
 
-              <View style={styles.hubAccessGrid}>
-                <HubAccessCard icon="wallet-outline" title="Earnings" subtitle="Payouts and history" onPress={() => openSection("earnings")} colors={colors} isDark={isDark} />
-                <HubAccessCard icon="settings-outline" title="Settings" subtitle="App preferences" onPress={() => openSection("settings")} colors={colors} isDark={isDark} />
-                <HubAccessCard icon="shield-checkmark-outline" title="Privacy" subtitle="Location and privacy" onPress={() => openSection("privacy")} colors={colors} isDark={isDark} />
-                <HubAccessCard icon="person-circle-outline" title="Runner profile" subtitle="Profile and documents" onPress={() => openSection("menu")} colors={colors} isDark={isDark} />
-                <HubAccessCard icon="headset-outline" title="Help & support" subtitle="Get help from SaMi" onPress={() => openSection("help")} colors={colors} isDark={isDark} />
-                <HubAccessCard icon="grid-outline" title="Account menu" subtitle="Account actions" onPress={() => openSection("menu")} colors={colors} isDark={isDark} />
+                  <Text
+                    style={[
+                      styles.performanceMetricLabel,
+                      { color: colors.textMuted },
+                    ]}
+                  >
+                    Rating
+                  </Text>
+                </Pressable>
+
+                <Pressable
+                  accessibilityRole="button"
+                  onPress={() => openSection("performance")}
+                  style={[
+                    styles.performanceMetric,
+                    { borderColor: softOutline },
+                  ]}
+                >
+                  <Ionicons
+                    name="trending-up-outline"
+                    size={17}
+                    color={colors.blue}
+                  />
+
+                  <Text
+                    style={[
+                      styles.performanceMetricValue,
+                      { color: colors.text },
+                    ]}
+                  >
+                    —%
+                  </Text>
+
+                  <Text
+                    style={[
+                      styles.performanceMetricLabel,
+                      { color: colors.textMuted },
+                    ]}
+                  >
+                    Acceptance
+                  </Text>
+                </Pressable>
+
+                <Pressable
+                  accessibilityRole="button"
+                  onPress={() => openSection("performance")}
+                  style={[
+                    styles.performanceMetric,
+                    { borderColor: softOutline },
+                  ]}
+                >
+                  <Ionicons
+                    name="close-circle-outline"
+                    size={17}
+                    color={colors.red}
+                  />
+
+                  <Text
+                    style={[
+                      styles.performanceMetricValue,
+                      { color: colors.text },
+                    ]}
+                  >
+                    —%
+                  </Text>
+
+                  <Text
+                    style={[
+                      styles.performanceMetricLabel,
+                      { color: colors.textMuted },
+                    ]}
+                  >
+                    Cancellation
+                  </Text>
+                </Pressable>
               </View>
-              <View style={styles.hubFooter}>
-                <Text style={[styles.hubFooterBrand, { color: colors.text }]}>SaMi Runner</Text>
-                <Text style={[styles.hubFooterCaption, { color: colors.textMuted }]}>Consider it done.</Text>
-              </View>
+            </Animated.View>
+          </View>
+
+          {/*
+          |--------------------------------------------------------------------------
+          | 23. QUICK ACCESS
+          |--------------------------------------------------------------------------
+          |
+          | Independent vertical ScrollView.
+          | Scrolling here does not collapse the full sheet.
+          | All actions use plain outlined rows.
+          |--------------------------------------------------------------------------
+          */}
+
+          <View
+            pointerEvents={expanded ? "auto" : "none"}
+            style={[
+              styles.quickAccessSection,
+              {
+                paddingBottom: safeBottom + 10,
+              },
+            ]}
+          >
+            <View style={styles.hubSectionHeader}>
+              <Text
+                style={[
+                  styles.hubSectionEyebrow,
+                  { color: colors.textMuted },
+                ]}
+              >
+                QUICK ACCESS
+              </Text>
+            </View>
+
+            <ScrollView
+              style={styles.hubAccessScroll}
+              contentContainerStyle={styles.hubAccessContent}
+              showsVerticalScrollIndicator={false}
+              keyboardShouldPersistTaps="handled"
+              nestedScrollEnabled
+            >
+              <HubAccessRow
+                icon="wallet-outline"
+                title="Earnings"
+                subtitle="Payouts and history"
+                outlineColor={softOutline}
+                textColor={colors.text}
+                mutedColor={colors.textMuted}
+                iconColor={colors.blue}
+                onPress={() => openSection("earnings")}
+              />
+
+              <HubAccessRow
+                icon="settings-outline"
+                title="Settings"
+                subtitle="App preferences"
+                outlineColor={softOutline}
+                textColor={colors.text}
+                mutedColor={colors.textMuted}
+                iconColor={colors.blue}
+                onPress={() => openSection("settings")}
+              />
+
+              <HubAccessRow
+                icon="shield-checkmark-outline"
+                title="Privacy"
+                subtitle="Location and privacy"
+                outlineColor={softOutline}
+                textColor={colors.text}
+                mutedColor={colors.textMuted}
+                iconColor={colors.blue}
+                onPress={() => openSection("privacy")}
+              />
+
+              <HubAccessRow
+                icon="person-circle-outline"
+                title="Runner profile"
+                subtitle="Profile and documents"
+                outlineColor={softOutline}
+                textColor={colors.text}
+                mutedColor={colors.textMuted}
+                iconColor={colors.blue}
+                onPress={() => openSection("menu")}
+              />
+
+              <HubAccessRow
+                icon="headset-outline"
+                title="Help & support"
+                subtitle="Get help and assistance"
+                outlineColor={softOutline}
+                textColor={colors.text}
+                mutedColor={colors.textMuted}
+                iconColor={colors.blue}
+                onPress={() => openSection("help")}
+              />
+
+              <HubAccessRow
+                icon="grid-outline"
+                title="Account menu"
+                subtitle="Account actions"
+                outlineColor={softOutline}
+                textColor={colors.text}
+                mutedColor={colors.textMuted}
+                iconColor={colors.blue}
+                onPress={() => openSection("menu")}
+              />
             </ScrollView>
-          ) : null}
-        </View>
+          </View>
+        </Animated.View>
       ) : null}
-      {/* Compact left-side drawer, opened from the circular hamburger. */}
-      <Modal visible={menuOpen} transparent animationType="fade" statusBarTranslucent={false} onRequestClose={() => setMenuOpen(false)}>
+
+      {/*
+      |--------------------------------------------------------------------------
+      | 24. DASHBOARD MENU
+      |--------------------------------------------------------------------------
+      */}
+
+      <Modal
+        visible={menuOpen}
+        transparent
+        animationType="fade"
+        statusBarTranslucent={false}
+        onRequestClose={() => setMenuOpen(false)}
+      >
         <View style={styles.drawerRoot}>
-          <Pressable style={styles.drawerBackdrop} onPress={() => setMenuOpen(false)} accessibilityLabel="Close menu" />
-          <View style={[styles.drawerPanel, { backgroundColor: navy, paddingTop: topInset + 22, paddingBottom: safeBottom + 18, borderColor: glassBorder }]}>
+          <Pressable
+            style={styles.drawerBackdrop}
+            onPress={() => setMenuOpen(false)}
+            accessibilityLabel="Close menu"
+          />
+
+          <View
+            style={[
+              styles.drawerPanel,
+              {
+                backgroundColor: navy,
+                paddingTop: safeTop + 22,
+                paddingBottom: safeBottom + 18,
+                borderColor: softOutline,
+              },
+            ]}
+          >
             <View style={styles.drawerHeader}>
               <View>
-                <Text style={styles.drawerBrand}>SaMi Runner</Text>
-                <Text style={styles.drawerSubtitle}>Consider it done.</Text>
+                <Text style={styles.drawerBrand}>
+                  SaMi Runner
+                </Text>
+
+                <Text style={styles.drawerSubtitle}>
+                  Consider it done.
+                </Text>
               </View>
-              <Pressable accessibilityRole="button" accessibilityLabel="Close menu" onPress={() => setMenuOpen(false)} style={styles.drawerClose}>
-                <Ionicons name="close" size={22} color={white} />
+
+              <Pressable
+                accessibilityRole="button"
+                accessibilityLabel="Close menu"
+                onPress={() => setMenuOpen(false)}
+                style={styles.drawerClose}
+              >
+                <Ionicons
+                  name="close"
+                  size={22}
+                  color="#FFFFFF"
+                />
               </Pressable>
             </View>
+
             <View style={styles.drawerDivider} />
-            <DrawerItem icon="speedometer-outline" label="Performance" onPress={() => openSection("performance")} />
-            <DrawerItem icon="wallet-outline" label="Earnings" onPress={() => openSection("earnings")} />
-            <DrawerItem icon="settings-outline" label="Settings" onPress={() => openSection("settings")} />
-            <DrawerItem icon="shield-checkmark-outline" label="Privacy" onPress={() => openSection("privacy")} />
-            <DrawerItem icon="grid-outline" label="Runner profile & account" onPress={() => openSection("menu")} />
-            <DrawerItem icon="headset-outline" label="Help & support" onPress={() => openSection("help")} />
+
+            <DrawerItem
+              icon="speedometer-outline"
+              label="Performance"
+              onPress={() => openSection("performance")}
+            />
+
+            <DrawerItem
+              icon="wallet-outline"
+              label="Earnings"
+              onPress={() => openSection("earnings")}
+            />
+
+            <DrawerItem
+              icon="settings-outline"
+              label="Settings"
+              onPress={() => openSection("settings")}
+            />
+
+            <DrawerItem
+              icon="shield-checkmark-outline"
+              label="Privacy"
+              onPress={() => openSection("privacy")}
+            />
+
+            <DrawerItem
+              icon="grid-outline"
+              label="Runner profile & account"
+              onPress={() => openSection("menu")}
+            />
+
+            <DrawerItem
+              icon="headset-outline"
+              label="Help & support"
+              onPress={() => openSection("help")}
+            />
           </View>
         </View>
       </Modal>
@@ -443,20 +1421,121 @@ export function SaMiRunnerDashboardChrome({
   );
 }
 
-function HubAccessCard({
+/*
+|--------------------------------------------------------------------------
+| 25. COMPACT OFFERS AND REWARDS CARD
+|--------------------------------------------------------------------------
+*/
+
+function CompactActionCard({
+  icon,
+  title,
+  subtitle,
+  count,
+  onPress,
+  outlineColor,
+  textColor,
+  mutedColor,
+  iconColor,
+}: {
+  icon: keyof typeof Ionicons.glyphMap;
+  title: string;
+  subtitle: string;
+  count?: number;
+  onPress: () => void;
+  outlineColor: string;
+  textColor: string;
+  mutedColor: string;
+  iconColor: string;
+}) {
+  return (
+    <Pressable
+      accessibilityRole="button"
+      accessibilityLabel={
+        count !== undefined
+          ? `${title}, ${count} available`
+          : title
+      }
+      onPress={onPress}
+      style={({ pressed }) => [
+        styles.compactActionCard,
+        {
+          borderColor: outlineColor,
+          opacity: pressed ? 0.65 : 1,
+        },
+      ]}
+    >
+      <Ionicons
+        name={icon}
+        size={19}
+        color={iconColor}
+      />
+
+      <View style={styles.compactActionCopy}>
+        <Text
+          style={[
+            styles.compactActionTitle,
+            { color: textColor },
+          ]}
+        >
+          {title}
+        </Text>
+
+        <Text
+          style={[
+            styles.compactActionSubtitle,
+            { color: mutedColor },
+          ]}
+          numberOfLines={1}
+        >
+          {subtitle}
+        </Text>
+      </View>
+
+      {count !== undefined ? (
+        <Text
+          style={[
+            styles.compactActionCount,
+            { color: textColor },
+          ]}
+        >
+          {count}
+        </Text>
+      ) : (
+        <Ionicons
+          name="chevron-forward"
+          size={16}
+          color={mutedColor}
+        />
+      )}
+    </Pressable>
+  );
+}
+
+/*
+|--------------------------------------------------------------------------
+| 26. QUICK ACCESS LIST ROW
+|--------------------------------------------------------------------------
+*/
+
+function HubAccessRow({
   icon,
   title,
   subtitle,
   onPress,
-  colors,
-  isDark,
+  outlineColor,
+  textColor,
+  mutedColor,
+  iconColor,
 }: {
   icon: keyof typeof Ionicons.glyphMap;
   title: string;
   subtitle: string;
   onPress: () => void;
-  colors: { text: string; textMuted: string; border: string; blue: string; blueSoft: string };
-  isDark: boolean;
+  outlineColor: string;
+  textColor: string;
+  mutedColor: string;
+  iconColor: string;
 }) {
   return (
     <Pressable
@@ -464,25 +1543,55 @@ function HubAccessCard({
       accessibilityLabel={`${title}. ${subtitle}`}
       onPress={onPress}
       style={({ pressed }) => [
-        styles.hubAccessCard,
+        styles.hubAccessRow,
         {
-          backgroundColor: isDark ? "#071329" : "#F2F5FA",
-          borderColor: colors.border,
-          opacity: pressed ? 0.78 : 1,
+          borderColor: outlineColor,
+          opacity: pressed ? 0.65 : 1,
         },
       ]}
     >
-      <View style={[styles.hubAccessIcon, { backgroundColor: isDark ? "rgba(255,255,255,0.09)" : colors.blueSoft }]}>
-        <Ionicons name={icon} size={21} color={colors.blue} />
+      <View style={styles.hubAccessIcon}>
+        <Ionicons
+          name={icon}
+          size={22}
+          color={iconColor}
+        />
       </View>
+
       <View style={styles.hubAccessCopy}>
-        <Text style={[styles.hubAccessTitle, { color: colors.text }]}>{title}</Text>
-        <Text style={[styles.hubAccessSubtitle, { color: colors.textMuted }]}>{subtitle}</Text>
+        <Text
+          style={[
+            styles.hubAccessTitle,
+            { color: textColor },
+          ]}
+        >
+          {title}
+        </Text>
+
+        <Text
+          style={[
+            styles.hubAccessSubtitle,
+            { color: mutedColor },
+          ]}
+        >
+          {subtitle}
+        </Text>
       </View>
-      <Ionicons name="chevron-forward" size={17} color={colors.textMuted} />
+
+      <Ionicons
+        name="chevron-forward"
+        size={18}
+        color={mutedColor}
+      />
     </Pressable>
   );
 }
+
+/*
+|--------------------------------------------------------------------------
+| 27. MENU DRAWER ROW
+|--------------------------------------------------------------------------
+*/
 
 function DrawerItem({
   icon,
@@ -497,54 +1606,53 @@ function DrawerItem({
     <Pressable
       accessibilityRole="button"
       onPress={onPress}
-      style={({ pressed }) => [styles.drawerItem, { backgroundColor: pressed ? "rgba(255,255,255,0.16)" : "transparent" }]}
+      style={({ pressed }) => [
+        styles.drawerItem,
+        {
+          backgroundColor: pressed
+            ? "rgba(255,255,255,0.16)"
+            : "transparent",
+        },
+      ]}
     >
-      <Ionicons name={icon} size={21} color="#FFFFFF" />
-      <Text style={styles.drawerItemText}>{label}</Text>
-      <Ionicons name="chevron-forward" size={17} color="rgba(255,255,255,0.72)" />
+      <Ionicons
+        name={icon}
+        size={21}
+        color="#FFFFFF"
+      />
+
+      <Text style={styles.drawerItemText}>
+        {label}
+      </Text>
+
+      <Ionicons
+        name="chevron-forward"
+        size={17}
+        color="rgba(255,255,255,0.72)"
+      />
     </Pressable>
   );
 }
 
-function QuickCard({
-  icon,
-  label,
-  value,
-  onPress,
-  glass,
-  border,
-}: {
-  icon: keyof typeof Ionicons.glyphMap;
-  label: string;
-  value?: string;
-  onPress: () => void;
-  glass: string;
-  border: string;
-}) {
-  return (
-    <Pressable
-      accessibilityRole="button"
-      accessibilityLabel={value ? `${label}: ${value}` : label}
-      onPress={onPress}
-      style={({ pressed }) => [styles.quickCard, { backgroundColor: glass, borderColor: border, opacity: pressed ? 0.76 : 1 }]}
-    >
-      <Ionicons name={icon} size={23} color="#FFFFFF" />
-      {value ? <Text style={styles.quickCardValue}>{value}</Text> : null}
-      <Text style={styles.quickCardLabel}>{label}</Text>
-    </Pressable>
-  );
-}
+/*
+|--------------------------------------------------------------------------
+| 28. COMPONENT STYLES
+|--------------------------------------------------------------------------
+*/
 
 const styles = StyleSheet.create({
+
+  /* Dashboard top bar */
+
   headerRow: {
     position: "absolute",
     left: 0,
     right: 0,
-    zIndex: 50,
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
   },
+
   hamburgerButton: {
     width: 44,
     height: 44,
@@ -559,7 +1667,14 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.24,
     shadowRadius: 7,
   },
-  headerRightSpacer: { width: 44, height: 44 },
+
+  headerRightSpacer: {
+    width: 44,
+    height: 44,
+  },
+
+  /* Earnings */
+
   earningsPill: {
     position: "absolute",
     left: "50%",
@@ -579,14 +1694,33 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.28,
     shadowRadius: 8,
   },
-  earningsPillAmount: { color: "#FFFFFF", fontSize: 17, lineHeight: 21, fontWeight: "900", letterSpacing: -0.2 },
-  earningsPillToday: { color: "rgba(255,255,255,0.86)", fontSize: 10, lineHeight: 13, fontWeight: "700" },
-  earningsDismiss: { ...StyleSheet.absoluteFill, zIndex: 40, backgroundColor: "rgba(0,0,0,0.08)" },
+
+  earningsPillAmount: {
+    color: "#FFFFFF",
+    fontSize: 17,
+    lineHeight: 21,
+    fontWeight: "900",
+    letterSpacing: -0.2,
+  },
+
+  earningsPillToday: {
+    color: "rgba(255,255,255,0.86)",
+    fontSize: 10,
+    lineHeight: 13,
+    fontWeight: "700",
+  },
+
+  earningsDismiss: {
+    ...StyleSheet.absoluteFill,
+    zIndex: 110,
+    backgroundColor: "rgba(0,0,0,0.08)",
+  },
+
   earningsOverlay: {
     position: "absolute",
     left: 16,
     right: 16,
-    zIndex: 60,
+    zIndex: 130,
     borderWidth: 1,
     borderRadius: 20,
     paddingHorizontal: 17,
@@ -598,130 +1732,480 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.3,
     shadowRadius: 14,
   },
-  earningsOverlayHeader: { flexDirection: "row", alignItems: "center", justifyContent: "space-between" },
-  earningsOverlayEyebrow: { color: "rgba(255,255,255,0.72)", fontSize: 9, fontWeight: "900", letterSpacing: 1.2 },
-  earningsOverlayValue: { color: "#FFFFFF", fontSize: 24, lineHeight: 30, fontWeight: "900" },
-  eyeButton: { width: 42, height: 42, borderRadius: 21, alignItems: "center", justifyContent: "center", borderWidth: 1, borderColor: "rgba(255,255,255,0.22)" },
-  earningsOverlayHint: { color: "rgba(255,255,255,0.82)", fontSize: 11, lineHeight: 16 },
+
+  earningsOverlayHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+  },
+
+  earningsOverlayEyebrow: {
+    color: "rgba(255,255,255,0.72)",
+    fontSize: 9,
+    fontWeight: "900",
+    letterSpacing: 1.2,
+  },
+
+  earningsOverlayValue: {
+    color: "#FFFFFF",
+    fontSize: 24,
+    lineHeight: 30,
+    fontWeight: "900",
+  },
+
+  eyeButton: {
+    width: 42,
+    height: 42,
+    borderRadius: 21,
+    alignItems: "center",
+    justifyContent: "center",
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.22)",
+  },
+
+  earningsOverlayHint: {
+    color: "rgba(255,255,255,0.82)",
+    fontSize: 11,
+    lineHeight: 16,
+  },
+
+  /* Main sheet */
+
   bottomSheet: {
     position: "absolute",
     left: 0,
     right: 0,
-    bottom: 0,
-    zIndex: 35,
-    borderTopLeftRadius: 26,
-    borderTopRightRadius: 26,
+    flexDirection: "column",
+    borderTopLeftRadius: 25,
+    borderTopRightRadius: 25,
     borderTopWidth: 1,
-    paddingHorizontal: 16,
-    paddingTop: 4,
-    gap: 10,
-    elevation: 22,
+    overflow: "hidden",
     shadowColor: "#000000",
     shadowOffset: { width: 0, height: -5 },
     shadowOpacity: 0.25,
     shadowRadius: 15,
   },
-  sheetHandlePanArea: { minHeight: 22, alignItems: "center", justifyContent: "center" },
-  sheetHandleArea: { height: 22, alignItems: "center", justifyContent: "center", width: "100%" },
-  sheetHandle: { width: 39, height: 4, borderRadius: 4 },
-  availabilityButton: {
-    minHeight: 55,
-    borderRadius: 17,
+
+  sheetTopDragSurface: {
+    flexShrink: 0,
+  },
+
+  sheetHandlePanArea: {
+    height: 22,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+
+  sheetHandle: {
+    width: 39,
+    height: 4,
+    borderRadius: 4,
+  },
+
+  sheetActionSlot: {
+    height: 56,
+    justifyContent: "center",
+    alignItems: "flex-start",
+    position: "relative",
+  },
+
+  /* Availability */
+
+  availabilityLayer: {
+    position: "absolute",
+    left: 0,
+    right: 0,
+    top: 0,
+    alignItems: "flex-start",
+  },
+
+  availabilityTrack: {
+    borderRadius: AVAILABILITY_TRACK_HEIGHT / 2,
     alignItems: "center",
     justifyContent: "center",
     flexDirection: "row",
-    gap: 10,
-    borderWidth: 1,
-    borderColor: "rgba(255,255,255,0.25)",
-    elevation: 6,
-    shadowColor: "#000000",
-    shadowOffset: { width: 0, height: 3 },
-    shadowOpacity: 0.2,
-    shadowRadius: 7,
+    position: "relative",
+    overflow: "hidden",
   },
-  availabilityButtonText: { color: "#FFFFFF", fontSize: 15, fontWeight: "900", letterSpacing: 0.15 },
-  sheetScrollArea: { flex: 1 },
-  sheetScrollContent: { gap: 10, paddingBottom: 3 },
-  glassCard: {
-    minHeight: 72,
+
+  availabilityLabel: {
+    color: "#FFFFFF",
+    fontSize: 12,
+    fontWeight: "900",
+    letterSpacing: 0.15,
+    paddingHorizontal: 43,
+  },
+
+  availabilityThumb: {
+    position: "absolute",
+    top: AVAILABILITY_THUMB_INSET,
+    borderRadius: AVAILABILITY_THUMB_SIZE / 2,
+    backgroundColor: "#FFFFFF",
+    alignItems: "center",
+    justifyContent: "center",
+    elevation: 4,
+    shadowColor: "#000000",
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.2,
+    shadowRadius: 3,
+  },
+
+  /* Expanded hub title */
+
+  expandedTitleLayer: {
+    position: "absolute",
+    left: 0,
+    right: 0,
+    top: 0,
+    height: 56,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+  },
+
+  expandedTitle: {
+    fontSize: 22,
+    lineHeight: 28,
+    fontWeight: "900",
+    letterSpacing: -0.45,
+  },
+
+  /* Compact Offers and Rewards */
+
+  compactLinksRow: {
+    flexDirection: "row",
+    gap: 8,
+    overflow: "hidden",
+  },
+
+  compactActionCard: {
+    flex: 1,
+    minWidth: 0,
+    minHeight: 50,
     borderWidth: 1,
-    borderRadius: 18,
+    borderRadius: 15,
+    paddingHorizontal: 9,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 7,
+    backgroundColor: "transparent",
+  },
+
+  compactActionCopy: {
+    flex: 1,
+    minWidth: 0,
+    gap: 2,
+  },
+
+  compactActionTitle: {
+    fontSize: 11,
+    fontWeight: "900",
+  },
+
+  compactActionSubtitle: {
+    fontSize: 8,
+    lineHeight: 11,
+    fontWeight: "600",
+  },
+
+  compactActionCount: {
+    fontSize: 11,
+    fontWeight: "900",
+  },
+
+  /* Performance content */
+
+  hubPerformanceContent: {
+    gap: 12,
+    paddingTop: 12,
+  },
+
+  hubWelcome: {
+    gap: 3,
+    paddingBottom: 2,
+  },
+
+  hubWelcomeTitle: {
+    fontSize: 18,
+    fontWeight: "900",
+    letterSpacing: -0.3,
+  },
+
+  hubWelcomeSubtitle: {
+    fontSize: 11,
+    lineHeight: 16,
+    fontWeight: "500",
+  },
+
+  hubSectionHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: 8,
+    marginTop: 2,
+  },
+
+  hubSectionEyebrow: {
+    fontSize: 10,
+    fontWeight: "900",
+    letterSpacing: 1.25,
+  },
+
+  /* Performance tier card */
+
+  tierCard: {
+    borderWidth: 1,
+    borderRadius: 19,
+    padding: 14,
+    gap: 12,
+    backgroundColor: "transparent",
+  },
+
+  tierCardTop: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 11,
+  },
+
+  tierIconWrap: {
+    width: 43,
+    height: 43,
+    borderRadius: 14,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+
+  tierCardCopy: {
+    flex: 1,
+    gap: 4,
+  },
+
+  tierEyebrow: {
+    fontSize: 9,
+    fontWeight: "900",
+    letterSpacing: 1,
+  },
+
+  tierTitle: {
+    fontSize: 15,
+    fontWeight: "900",
+  },
+
+  tierPointsRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: 10,
+  },
+
+  tierPointsLabel: {
+    fontSize: 10,
+    fontWeight: "700",
+  },
+
+  tierPointsValue: {
+    fontSize: 12,
+    fontWeight: "900",
+    letterSpacing: 0.2,
+  },
+
+  tierProgressTrack: {
+    height: 7,
+    borderRadius: 5,
+    overflow: "hidden",
+  },
+
+  tierProgressFill: {
+    height: "100%",
+    borderRadius: 5,
+  },
+
+  tierProgressFooter: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    gap: 8,
+  },
+
+  tierProgressCaption: {
+    fontSize: 9,
+    fontWeight: "700",
+  },
+
+  tierStepsRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: 3,
+  },
+
+  tierStageItem: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 4,
+    flexShrink: 1,
+  },
+
+  tierStep: {
+    fontSize: 9,
+    fontWeight: "800",
+  },
+
+  /* Rating, acceptance and cancellation */
+
+  performanceMetricRow: {
+    flexDirection: "row",
+    gap: 8,
+  },
+
+  performanceMetric: {
+    flex: 1,
+    minHeight: 83,
+    borderRadius: 15,
+    borderWidth: 1,
+    backgroundColor: "transparent",
+    alignItems: "center",
+    justifyContent: "center",
+    paddingHorizontal: 4,
+    paddingVertical: 9,
+    gap: 4,
+  },
+
+  performanceMetricValue: {
+    fontSize: 17,
+    fontWeight: "900",
+  },
+
+  performanceMetricLabel: {
+    fontSize: 9,
+    fontWeight: "800",
+    textAlign: "center",
+  },
+
+  /* Quick Access */
+
+  quickAccessSection: {
+    flex: 1,
+    minHeight: 0,
+    paddingHorizontal: 18,
+    paddingTop: 13,
+    gap: 10,
+  },
+
+  hubAccessScroll: {
+    flex: 1,
+    minHeight: 0,
+  },
+
+  hubAccessContent: {
+    gap: 9,
+    paddingBottom: 10,
+  },
+
+  hubAccessRow: {
+    minHeight: 66,
+    borderWidth: 1,
+    borderRadius: 15,
     paddingHorizontal: 13,
-    paddingVertical: 11,
+    paddingVertical: 9,
     flexDirection: "row",
     alignItems: "center",
     gap: 12,
-    elevation: 3,
-    shadowColor: "#000000",
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.13,
-    shadowRadius: 5,
+    backgroundColor: "transparent",
   },
-  offerIconWrap: { width: 42, height: 42, borderRadius: 14, backgroundColor: "rgba(255,255,255,0.1)", alignItems: "center", justifyContent: "center" },
-  offerCopy: { flex: 1, gap: 4 },
-  glassCardTitle: { color: "#FFFFFF", fontSize: 14, fontWeight: "900" },
-  glassCardSubtitle: { color: "rgba(255,255,255,0.78)", fontSize: 10, fontWeight: "600" },
-  offerCountBadge: { minWidth: 24, height: 24, paddingHorizontal: 6, borderRadius: 12, alignItems: "center", justifyContent: "center" },
-  offerCountText: { color: "#FFFFFF", fontSize: 11, fontWeight: "900" },
-  sectionEyebrow: { color: "rgba(255,255,255,0.7)", fontSize: 9, fontWeight: "900", letterSpacing: 1.1, marginTop: 3 },
-  quickCardGrid: { flexDirection: "row", gap: 9 },
-  quickCard: { flex: 1, minHeight: 83, borderWidth: 1, borderRadius: 17, alignItems: "center", justifyContent: "center", padding: 10, gap: 5 },
-  quickCardValue: { color: "#FFFFFF", fontSize: 15, fontWeight: "900" },
-  quickCardLabel: { color: "#FFFFFF", fontSize: 11, fontWeight: "800", textAlign: "center" },
-  drawerRoot: { flex: 1, flexDirection: "row" },
-  drawerBackdrop: { ...StyleSheet.absoluteFill, backgroundColor: "rgba(0,0,0,0.58)" },
-  drawerPanel: { width: "82%", maxWidth: 340, minHeight: "100%", borderRightWidth: 1, paddingHorizontal: 17, gap: 8, elevation: 24 },
-  drawerHeader: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", marginBottom: 10 },
-  drawerBrand: { color: "#FFFFFF", fontSize: 21, fontWeight: "900", letterSpacing: -0.4 },
-  drawerSubtitle: { color: "rgba(255,255,255,0.68)", fontSize: 11, marginTop: 3 },
-  drawerClose: { width: 40, height: 40, borderRadius: 20, backgroundColor: "rgba(255,255,255,0.12)", alignItems: "center", justifyContent: "center" },
-  drawerDivider: { height: StyleSheet.hairlineWidth, backgroundColor: "rgba(255,255,255,0.23)", marginBottom: 8 },
-  drawerItem: { minHeight: 52, borderRadius: 13, paddingHorizontal: 11, flexDirection: "row", alignItems: "center", gap: 12 },
-  drawerItemText: { flex: 1, color: "#FFFFFF", fontSize: 13, fontWeight: "800" },
-  sheetActionSlot: { height: 56, justifyContent: "center", position: "relative" },
-  availabilityLayer: { position: "absolute", left: 0, right: 0, top: 0 },
-  expandedTitleLayer: { position: "absolute", left: 0, right: 0, top: 0, height: 56, flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: 10 },
-  expandedTitleCopy: { flex: 1, gap: 3 },
-  expandedEyebrow: { fontSize: 9, fontWeight: "900", letterSpacing: 1.5 },
-  expandedTitle: { fontSize: 21, lineHeight: 26, fontWeight: "900", letterSpacing: -0.45 },
-  expandedStatusPill: { minHeight: 36, borderRadius: 18, borderWidth: 1, paddingHorizontal: 11, flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 7 },
-  expandedStatusDot: { width: 7, height: 7, borderRadius: 4 },
-  expandedStatusText: { fontSize: 9, fontWeight: "900", letterSpacing: 0.8 },
-  hubScroll: { flex: 1, marginTop: 3 },
-  hubContent: { paddingTop: 11, paddingBottom: 10, gap: 14 },
-  hubWelcome: { gap: 3, paddingBottom: 1 },
-  hubWelcomeTitle: { fontSize: 18, fontWeight: "900", letterSpacing: -0.3 },
-  hubWelcomeSubtitle: { fontSize: 11, lineHeight: 16, fontWeight: "500" },
-  hubSectionHeader: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: 8, marginTop: 2 },
-  hubSectionEyebrow: { fontSize: 9, fontWeight: "900", letterSpacing: 1.25 },
-  hubSeeAll: { fontSize: 11, fontWeight: "900" },
-  hubSectionHint: { fontSize: 10, fontWeight: "600" },
-  tierCard: { borderWidth: 1, borderRadius: 20, padding: 15, gap: 13 },
-  tierCardTop: { flexDirection: "row", alignItems: "center", gap: 11 },
-  tierIconWrap: { width: 43, height: 43, borderRadius: 14, alignItems: "center", justifyContent: "center", backgroundColor: "rgba(232,197,116,0.13)" },
-  tierCardCopy: { flex: 1, gap: 4 },
-  tierEyebrow: { fontSize: 8, fontWeight: "900", letterSpacing: 1 },
-  tierTitle: { fontSize: 13, fontWeight: "900" },
-  tierPointsRow: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: 10 },
-  tierPointsLabel: { fontSize: 10, fontWeight: "700" },
-  tierPointsValue: { fontSize: 12, fontWeight: "900", letterSpacing: 0.2 },
-  tierProgressTrack: { height: 7, borderRadius: 5, overflow: "hidden" },
-  tierProgressFill: { height: "100%", borderRadius: 5 },
-  tierProgressFooter: { flexDirection: "row", justifyContent: "space-between", gap: 8 },
-  tierProgressCaption: { fontSize: 9, fontWeight: "700" },
-  tierStepsRow: { flexDirection: "row", justifyContent: "space-between", gap: 4 },
-  tierStep: { fontSize: 9, fontWeight: "800" },
-  performanceMetricRow: { flexDirection: "row", gap: 8 },
-  performanceMetric: { flex: 1, minHeight: 83, borderRadius: 15, borderWidth: 1, alignItems: "center", justifyContent: "center", paddingHorizontal: 4, paddingVertical: 9, gap: 4 },
-  performanceMetricValue: { fontSize: 17, fontWeight: "900" },
-  performanceMetricLabel: { fontSize: 9, fontWeight: "800", textAlign: "center" },
-  hubAccessGrid: { flexDirection: "row", flexWrap: "wrap", gap: 9 },
-  hubAccessCard: { flexGrow: 1, flexBasis: "46%", minWidth: "46%", minHeight: 72, borderWidth: 1, borderRadius: 16, paddingHorizontal: 10, paddingVertical: 10, flexDirection: "row", alignItems: "center", gap: 9 },
-  hubAccessIcon: { width: 36, height: 36, borderRadius: 12, alignItems: "center", justifyContent: "center" },
-  hubAccessCopy: { flex: 1, gap: 3 },
-  hubAccessTitle: { fontSize: 11, fontWeight: "900" },
-  hubAccessSubtitle: { fontSize: 9, lineHeight: 13, fontWeight: "600" },
-  hubFooter: { marginTop: 3, paddingTop: 12, paddingBottom: 3, borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: "rgba(130,150,180,0.25)", alignItems: "center", gap: 3 },
-  hubFooterBrand: { fontSize: 10, fontWeight: "900", letterSpacing: 0.5 },
-  hubFooterCaption: { fontSize: 9, fontWeight: "600" },
+
+  hubAccessIcon: {
+    width: 37,
+    height: 37,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+
+  hubAccessCopy: {
+    flex: 1,
+    gap: 3,
+  },
+
+  hubAccessTitle: {
+    fontSize: 12,
+    fontWeight: "900",
+  },
+
+  hubAccessSubtitle: {
+    fontSize: 10,
+    lineHeight: 14,
+    fontWeight: "600",
+  },
+
+  /* Drawer */
+
+  drawerRoot: {
+    flex: 1,
+    flexDirection: "row",
+  },
+
+  drawerBackdrop: {
+    ...StyleSheet.absoluteFill,
+    backgroundColor: "rgba(0,0,0,0.58)",
+  },
+
+  drawerPanel: {
+    width: "82%",
+    maxWidth: 340,
+    minHeight: "100%",
+    borderRightWidth: 1,
+    paddingHorizontal: 17,
+    gap: 8,
+    elevation: 24,
+  },
+
+  drawerHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    marginBottom: 10,
+  },
+
+  drawerBrand: {
+    color: "#FFFFFF",
+    fontSize: 21,
+    fontWeight: "900",
+    letterSpacing: -0.4,
+  },
+
+  drawerSubtitle: {
+    color: "rgba(255,255,255,0.68)",
+    fontSize: 11,
+    marginTop: 3,
+  },
+
+  drawerClose: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: "rgba(255,255,255,0.12)",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+
+  drawerDivider: {
+    height: StyleSheet.hairlineWidth,
+    backgroundColor: "rgba(255,255,255,0.23)",
+    marginBottom: 8,
+  },
+
+  drawerItem: {
+    minHeight: 52,
+    borderRadius: 13,
+    paddingHorizontal: 11,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 12,
+  },
+
+  drawerItemText: {
+    flex: 1,
+    color: "#FFFFFF",
+    fontSize: 13,
+    fontWeight: "800",
+  },
 });
