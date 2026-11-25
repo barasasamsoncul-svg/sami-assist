@@ -5,7 +5,6 @@ import {
   Modal,
   PanResponder,
   Pressable,
-  Share,
   ScrollView,
   StatusBar,
   StyleSheet,
@@ -395,22 +394,6 @@ export function SaMiRunnerDashboardChrome({
   const openSection = (section: RunnerDashboardSection) => {
     setMenuOpen(false);
     onOpenSection(section);
-  };
-
-    const handleInviteFriends = async () => {
-    try {
-      await Share.share({
-        message:
-          "Join me on SaMi Runner. Invite your friends and earn up to KSh 2,000 with SaMi!",
-      });
-    } catch {
-      showOverlay({
-        type: "error",
-        title: "Unable to share invitation",
-        message: "Please try again.",
-        dismissOnBackdrop: true,
-      });
-    }
   };
 
   return (
@@ -1109,7 +1092,6 @@ export function SaMiRunnerDashboardChrome({
               keyboardShouldPersistTaps="handled"
               nestedScrollEnabled
             >
-              
               <HubAccessRow
                 icon="wallet-outline"
                 title="Earnings"
@@ -1165,46 +1147,16 @@ export function SaMiRunnerDashboardChrome({
                 onPress={() => openSection("help")}
               />
 
-           <HubAccessRow
-  icon="options-outline"
-  title="Runner Preferences"
-  subtitle="Your runner preferences"
-  outlineColor={outlineColor}
-  textColor={colors.text}
-  mutedColor={colors.textMuted}
-  iconColor={colors.blue}
-  onPress={() => openSection("menu")}
-/>
-
-<View style={styles.invitePromoCard}>
-  <View style={styles.inviteIconWrap}>
-    <Ionicons name="people-outline" size={22} color="#000535" />
-  </View>
-
-  <Text style={styles.inviteEyebrow}>INVITE & EARN</Text>
-
-  <Text style={styles.inviteTitle}>
-    Earn up to KSh 2,000
-  </Text>
-
-  <Text style={styles.inviteSubtitle}>
-    Invite friends to run with SaMi.
-  </Text>
-
-  <Pressable
-    accessibilityRole="button"
-    onPress={handleInviteFriends}
-    style={({ pressed }) => [
-      styles.inviteAction,
-      { opacity: pressed ? 0.8 : 1 },
-    ]}
-  >
-    <Text style={styles.inviteActionText}>
-      Invite friends to run
-    </Text>
-    <Ionicons name="arrow-forward" size={16} color="#000535" />
-  </Pressable>
-</View>
+              <HubAccessRow
+                icon="grid-outline"
+                title="Account menu"
+                subtitle="Account actions"
+                outlineColor={outlineColor}
+                textColor={colors.text}
+                mutedColor={colors.textMuted}
+                iconColor={colors.blue}
+                onPress={() => openSection("menu")}
+              />
             </ScrollView>
           </Animated.View>
         </Animated.View>
@@ -1888,15 +1840,9 @@ const styles = StyleSheet.create({
     flex: 1,
   },
 
-   quickAccessContent: {
-    flexGrow: 1,
-    justifyContent: "space-between",
+  quickAccessContent: {
     paddingHorizontal: 18,
     paddingTop: 3,
-    gap: 14,
-  },
-
-  quickAccessList: {
     gap: 8,
   },
 
@@ -1933,71 +1879,6 @@ const styles = StyleSheet.create({
     fontSize: 9,
     lineHeight: 13,
     fontWeight: "600",
-  },
-
-    invitePromoCard: {
-    width: "100%",
-    minHeight: 158,
-    marginTop: 12,
-    marginBottom: 4,
-    borderRadius: 19,
-    paddingHorizontal: 16,
-    paddingVertical: 14,
-    backgroundColor: "#000535",
-    alignItems: "center",
-    justifyContent: "center",
-    gap: 6,
-  },
-
-  inviteIconWrap: {
-    width: 39,
-    height: 39,
-    borderRadius: 20,
-    backgroundColor: "#E8C574",
-    alignItems: "center",
-    justifyContent: "center",
-    marginBottom: 2,
-  },
-
-  inviteEyebrow: {
-    color: "#E8C574",
-    fontSize: 8,
-    fontWeight: "900",
-    letterSpacing: 1.4,
-  },
-
-  inviteTitle: {
-    color: "#FFFFFF",
-    fontSize: 17,
-    lineHeight: 22,
-    fontWeight: "900",
-    textAlign: "center",
-  },
-
-  inviteSubtitle: {
-    color: "rgba(255,255,255,0.78)",
-    fontSize: 10,
-    lineHeight: 15,
-    fontWeight: "600",
-    textAlign: "center",
-  },
-
-  inviteAction: {
-    minHeight: 34,
-    marginTop: 5,
-    paddingHorizontal: 13,
-    borderRadius: 18,
-    backgroundColor: "#FFFFFF",
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "center",
-    gap: 8,
-  },
-
-  inviteActionText: {
-    color: "#000535",
-    fontSize: 10,
-    fontWeight: "900",
   },
 
   /* Drawer */
