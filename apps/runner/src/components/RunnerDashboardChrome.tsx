@@ -13,6 +13,7 @@ import {
   Modal,
   PanResponder,
   Pressable,
+  Share,
   ScrollView,
   StatusBar,
   StyleSheet,
@@ -444,6 +445,21 @@ export function SaMiRunnerDashboardChrome({
   const openSection = (section: RunnerDashboardSection) => {
     setMenuOpen(false);
     onOpenSection(section);
+  };
+
+    const handleInviteFriends = () => {
+    void Share.share({
+      title: "Join SaMi Runner",
+      message:
+        "Join me on SaMi Runner. Invite your friends to run with SaMi!",
+    }).catch(() => {
+      showOverlay({
+        type: "error",
+        title: "Unable to share invitation",
+        message: "Please try again.",
+        dismissOnBackdrop: true,
+      });
+    });
   };
 
   /*
@@ -1194,6 +1210,7 @@ export function SaMiRunnerDashboardChrome({
                 keyboardShouldPersistTaps="handled"
                 nestedScrollEnabled
               >
+                <View style={styles.quickAccessRows}>
                 <HubAccessRow
                   icon="wallet-outline"
                   title="Earnings"
@@ -1248,17 +1265,71 @@ export function SaMiRunnerDashboardChrome({
                   iconColor={colors.blue}
                   onPress={() => openSection("help")}
                 />
+<HubAccessRow
+  icon="options-outline"
+  title="Runner Preferences"
+  subtitle="Your runner preferences"
+  outlineColor={outlineColor}
+  textColor={colors.text}
+  mutedColor={colors.textMuted}
+  iconColor={colors.blue}
+  onPress={() => openSection("menu")}
+/>
+</View>
 
-                <HubAccessRow
-                  icon="grid-outline"
-                  title="Account menu"
-                  subtitle="Account actions"
-                  outlineColor={outlineColor}
-                  textColor={colors.text}
-                  mutedColor={colors.textMuted}
-                  iconColor={colors.blue}
-                  onPress={() => openSection("menu")}
-                />
+<Pressable
+  accessibilityRole="button"
+  accessibilityLabel="Invite friends to SaMi Runner and earn"
+  onPress={handleInviteFriends}
+  style={({ pressed }) => [
+    styles.inviteReferralCard,
+    {
+      backgroundColor: navy,
+      borderColor: isDark
+        ? "rgba(255,255,255,0.20)"
+        : "rgba(0,5,53,0.18)",
+      opacity: pressed ? 0.88 : 1,
+    },
+  ]}
+>
+  <View
+    style={[
+      styles.inviteReferralIcon,
+      { backgroundColor: gold },
+    ]}
+  >
+    <Ionicons
+      name="people-outline"
+      size={22}
+      color={navy}
+    />
+  </View>
+
+  <Text style={styles.inviteReferralEyebrow}>
+    INVITE & EARN
+  </Text>
+
+  <Text style={styles.inviteReferralTitle}>
+    Earn up to KSh 2,000
+  </Text>
+
+  <Text style={styles.inviteReferralSubtitle}>
+    Invite friends to run with SaMi.
+  </Text>
+
+  <View style={styles.inviteReferralAction}>
+    <Text style={styles.inviteReferralActionText}>
+      Invite friends to run
+    </Text>
+
+    <Ionicons
+      name="arrow-forward"
+      size={16}
+      color={navy}
+    />
+  </View>
+</Pressable>
+
               </ScrollView>
             </View>
           </Animated.View>
@@ -2196,9 +2267,15 @@ const styles = StyleSheet.create({
     minHeight: 0,
   },
 
-  quickAccessContent: {
-    gap: 9,
+    quickAccessContent: {
+    flexGrow: 1,
+    justifyContent: "space-between",
+    gap: 12,
     paddingBottom: 8,
+  },
+
+  quickAccessRows: {
+    gap: 9,
   },
 
   quickAccessRow: {
@@ -2236,6 +2313,70 @@ const styles = StyleSheet.create({
     fontWeight: "600",
   },
 
+    inviteReferralCard: {
+    width: "100%",
+    minHeight: 154,
+    marginTop: 12,
+    marginBottom: 4,
+    borderWidth: 1,
+    borderRadius: 19,
+    paddingHorizontal: 16,
+    paddingVertical: 14,
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 6,
+  },
+
+  inviteReferralIcon: {
+    width: 39,
+    height: 39,
+    borderRadius: 20,
+    alignItems: "center",
+    justifyContent: "center",
+    marginBottom: 2,
+  },
+
+  inviteReferralEyebrow: {
+    color: "#E8C574",
+    fontSize: 8,
+    fontWeight: "900",
+    letterSpacing: 1.4,
+  },
+
+  inviteReferralTitle: {
+    color: "#FFFFFF",
+    fontSize: 18,
+    lineHeight: 23,
+    fontWeight: "900",
+    textAlign: "center",
+  },
+
+  inviteReferralSubtitle: {
+    color: "rgba(255,255,255,0.78)",
+    fontSize: 10,
+    lineHeight: 15,
+    fontWeight: "600",
+    textAlign: "center",
+  },
+
+  inviteReferralAction: {
+    minHeight: 35,
+    marginTop: 5,
+    paddingHorizontal: 14,
+    borderRadius: 20,
+    backgroundColor: "#FFFFFF",
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 8,
+  },
+
+  inviteReferralActionText: {
+    color: "#000535",
+    fontSize: 10,
+    fontWeight: "900",
+  },
+  
   /*
   |--------------------------------------------------------------------------
   | DASHBOARD MENU
