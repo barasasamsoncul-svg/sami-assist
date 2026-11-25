@@ -6,6 +6,7 @@ import {
   PanResponder,
   Pressable,
   ScrollView,
+  Share,
   StatusBar,
   StyleSheet,
   Text,
@@ -78,13 +79,10 @@ export function SaMiRunnerDashboardChrome({
   const [sliderWidth, setSliderWidth] = useState(0);
 
   /*
-   * One progress value controls the entire sheet transition.
-   *
-   * 0 = compact dashboard overlay.
+   * 0 = compact dashboard.
    * 1 = fully expanded Runner Hub.
    *
-   * The sheet top, compact controls, and Runner Hub all derive
-   * their movement and opacity from this same value.
+   * The whole transition is controlled by this single value.
    */
   const sheetProgress = useRef(
     new Animated.Value(expanded ? 1 : 0),
@@ -94,8 +92,7 @@ export function SaMiRunnerDashboardChrome({
   const dragStartProgress = useRef(expanded ? 1 : 0);
 
   /*
-   * Separate horizontal movement is used only for the online-to-offline
-   * availability slider. It does not control the sheet.
+   * Independent horizontal movement for the online availability slider.
    */
   const offlineSlide = useRef(new Animated.Value(0)).current;
   const offlineRequestPending = useRef(false);
@@ -105,16 +102,15 @@ export function SaMiRunnerDashboardChrome({
 
   const compactSheetHeight = 126 + safeBottom;
 
-  /*
-   * The upper part contains Runner Hub and Performance.
-   * Quick Access occupies the remaining area and has its own ScrollView.
-   */
   const upperRegionHeight = Math.min(
     Math.max(380, windowHeight * 0.68),
     Math.max(240, windowHeight - 150),
   );
 
-  const sheetTravel = Math.max(1, windowHeight - compactSheetHeight);
+  const sheetTravel = Math.max(
+    1,
+    windowHeight - compactSheetHeight,
+  );
 
   const sheetTop = sheetProgress.interpolate({
     inputRange: [0, 1],
@@ -128,10 +124,6 @@ export function SaMiRunnerDashboardChrome({
     extrapolate: "clamp",
   });
 
-  /*
-   * Compact controls fade out as the sheet approaches the middle.
-   * Runner Hub fades in over the same progress range.
-   */
   const compactOpacity = sheetProgress.interpolate({
     inputRange: [0, 0.22, 0.48, 0.62, 1],
     outputRange: [1, 1, 0.28, 0, 0],
@@ -162,10 +154,6 @@ export function SaMiRunnerDashboardChrome({
 
   const sliderMax = Math.max(0, sliderWidth - 42);
 
-  /*
-   * Keep a current reference to the animation value so the pan responder
-   * can continue from the exact position where the finger currently is.
-   */
   useEffect(() => {
     const listenerId = sheetProgress.addListener(({ value }) => {
       sheetProgressCurrent.current = value;
@@ -176,10 +164,6 @@ export function SaMiRunnerDashboardChrome({
     };
   }, [sheetProgress]);
 
-  /*
-   * The parent prop remains the source of truth for whether the sheet
-   * is expanded or collapsed.
-   */
   useEffect(() => {
     Animated.spring(sheetProgress, {
       toValue: expanded ? 1 : 0,
@@ -192,14 +176,8 @@ export function SaMiRunnerDashboardChrome({
   }, [expanded, sheetProgress]);
 
   /*
-   * Vertical sheet gesture.
-   *
-   * The same responder works in both states:
-   * - Compact state: swipe upwards from the bottom overlay.
-   * - Expanded state: swipe downwards from the Runner Hub/Performance area.
-   *
-   * Quick Access is rendered as a separate sibling with its own ScrollView,
-   * so its scrolling does not move or collapse the sheet.
+   * Swipe the upper Runner Hub area to expand or collapse.
+   * Quick Access has a separate ScrollView below it.
    */
   const sheetPanResponder = useMemo(
     () =>
@@ -270,12 +248,8 @@ export function SaMiRunnerDashboardChrome({
   );
 
   /*
-   * Horizontal availability gesture.
-   *
-   * Offline -> Online: tap the blue button.
-   * Online -> Offline: slide the red thumb to the right.
-   *
-   * A left swipe never changes availability.
+   * Online runners slide the red control to the right to go offline.
+   * Offline runners tap the blue control to go online.
    */
   const offlineSliderPanResponder = useMemo(
     () =>
@@ -354,11 +328,6 @@ export function SaMiRunnerDashboardChrome({
     ],
   );
 
-  /*
-   * Reset the horizontal thumb after a successful state change.
-   * If the request fails and the runner remains online, reset it once
-   * the availability request is no longer busy.
-   */
   useEffect(() => {
     if (!isOnline) {
       offlineRequestPending.current = false;
@@ -396,21 +365,35 @@ export function SaMiRunnerDashboardChrome({
     onOpenSection(section);
   };
 
+  /*
+   * The native Android/iOS share sheet is used for the invitation.
+   * No referral code or link is invented here.
+   */
+  const handleInviteFriends = () => {
+    void Share.share({
+      message:
+        "Join me on SaMi Runner. Let's run errands, grow together, and earn with SaMi!",
+    }).catch((shareError: unknown) => {
+      showOverlay({
+        type: "error",
+        title: "Sharing unavailable",
+        message:
+          shareError instanceof Error
+            ? shareError.message
+            : "We could not open the sharing options. Please try again.",
+        dismissOnBackdrop: true,
+      });
+    });
+  };
+
   return (
     <View pointerEvents="box-none" style={styles.root}>
-      {/*
-       * Keep the status bar present throughout the transition.
-       * Its appearance follows the selected app theme.
-       */}
       <StatusBar
         hidden={false}
         barStyle={isDark ? "light-content" : "dark-content"}
       />
 
-      {/*
-       * Dashboard header.
-       * The expanded sheet is rendered above this entire layer.
-       */}
+      {/* Dashboard header */}
       <View
         style={[
           styles.headerRow,
@@ -544,21 +527,12 @@ export function SaMiRunnerDashboardChrome({
             },
           ]}
         >
-          {/*
-           * One sheet gesture surface.
-           *
-           * It covers the full sheet, but Quick Access is a separate
-           * sibling rendered above it. That keeps Quick Access scrolling
-           * independent from sheet expansion and collapse.
-           */}
+          {/* Sheet swipe surface */}
           <Animated.View
             {...sheetPanResponder.panHandlers}
             style={styles.sheetGestureSurface}
           >
-            {/*
-             * Compact controls remain at the bottom of the sheet.
-             * Both controls fade out together using compactOpacity.
-             */}
+            {/* Compact availability and Offers & Rewards */}
             <Animated.View
               pointerEvents={expanded ? "none" : "auto"}
               style={[
@@ -569,10 +543,6 @@ export function SaMiRunnerDashboardChrome({
                 },
               ]}
             >
-              {/*
-               * Offline state:
-               * Tap the blue Go online control.
-               */}
               {!isOnline ? (
                 <Pressable
                   accessibilityRole="button"
@@ -596,11 +566,7 @@ export function SaMiRunnerDashboardChrome({
                     <ActivityIndicator size="small" color={white} />
                   ) : (
                     <>
-                      <Ionicons
-                        name="power"
-                        size={17}
-                        color={white}
-                      />
+                      <Ionicons name="power" size={17} color={white} />
                       <Text style={styles.availabilityButtonText}>
                         Go online
                       </Text>
@@ -608,10 +574,6 @@ export function SaMiRunnerDashboardChrome({
                   )}
                 </Pressable>
               ) : (
-                /*
-                 * Online state:
-                 * The red thumb must be slid to the right to go offline.
-                 */
                 <View
                   {...offlineSliderPanResponder.panHandlers}
                   accessible
@@ -652,10 +614,6 @@ export function SaMiRunnerDashboardChrome({
                 </View>
               )}
 
-              {/*
-               * One combined Offers & Rewards card.
-               * It is deliberately plain, transparent, and outlined.
-               */}
               <Pressable
                 accessibilityRole="button"
                 accessibilityLabel="Open Offers and Rewards"
@@ -726,10 +684,7 @@ export function SaMiRunnerDashboardChrome({
               </Pressable>
             </Animated.View>
 
-            {/*
-             * Runner Hub upper content.
-             * No repeated SaMi Runner branding or duplicate online badge.
-             */}
+            {/* Runner Hub and Performance */}
             <Animated.View
               pointerEvents={expanded ? "auto" : "none"}
               style={[
@@ -940,10 +895,6 @@ export function SaMiRunnerDashboardChrome({
                 </View>
               </Pressable>
 
-              {/*
-               * Keep the existing Rating, Acceptance, and Cancellation
-               * values and meanings.
-               */}
               <View style={styles.performanceMetricRow}>
                 <Pressable
                   accessibilityRole="button"
@@ -1056,10 +1007,7 @@ export function SaMiRunnerDashboardChrome({
             </Animated.View>
           </Animated.View>
 
-          {/*
-           * Quick Access is outside the sheet PanResponder.
-           * Its own ScrollView handles its vertical movement independently.
-           */}
+          {/* Quick Access and referral panel */}
           <Animated.View
             pointerEvents={expanded ? "auto" : "none"}
             style={[
@@ -1092,79 +1040,129 @@ export function SaMiRunnerDashboardChrome({
               keyboardShouldPersistTaps="handled"
               nestedScrollEnabled
             >
-              <HubAccessRow
-                icon="wallet-outline"
-                title="Earnings"
-                subtitle="Payouts and history"
-                outlineColor={outlineColor}
-                textColor={colors.text}
-                mutedColor={colors.textMuted}
-                iconColor={colors.blue}
-                onPress={() => openSection("earnings")}
-              />
+              <View style={styles.quickAccessList}>
+                <HubAccessRow
+                  icon="wallet-outline"
+                  title="Earnings"
+                  subtitle="Payouts and history"
+                  outlineColor={outlineColor}
+                  textColor={colors.text}
+                  mutedColor={colors.textMuted}
+                  iconColor={colors.blue}
+                  onPress={() => openSection("earnings")}
+                />
 
-              <HubAccessRow
-                icon="settings-outline"
-                title="Settings"
-                subtitle="App preferences"
-                outlineColor={outlineColor}
-                textColor={colors.text}
-                mutedColor={colors.textMuted}
-                iconColor={colors.blue}
-                onPress={() => openSection("settings")}
-              />
+                <HubAccessRow
+                  icon="settings-outline"
+                  title="Settings"
+                  subtitle="App preferences"
+                  outlineColor={outlineColor}
+                  textColor={colors.text}
+                  mutedColor={colors.textMuted}
+                  iconColor={colors.blue}
+                  onPress={() => openSection("settings")}
+                />
 
-              <HubAccessRow
-                icon="shield-checkmark-outline"
-                title="Privacy"
-                subtitle="Location and privacy"
-                outlineColor={outlineColor}
-                textColor={colors.text}
-                mutedColor={colors.textMuted}
-                iconColor={colors.blue}
-                onPress={() => openSection("privacy")}
-              />
+                <HubAccessRow
+                  icon="shield-checkmark-outline"
+                  title="Privacy"
+                  subtitle="Location and privacy"
+                  outlineColor={outlineColor}
+                  textColor={colors.text}
+                  mutedColor={colors.textMuted}
+                  iconColor={colors.blue}
+                  onPress={() => openSection("privacy")}
+                />
 
-              <HubAccessRow
-                icon="person-circle-outline"
-                title="Runner profile"
-                subtitle="Profile and documents"
-                outlineColor={outlineColor}
-                textColor={colors.text}
-                mutedColor={colors.textMuted}
-                iconColor={colors.blue}
-                onPress={() => openSection("menu")}
-              />
+                <HubAccessRow
+                  icon="person-circle-outline"
+                  title="Runner profile"
+                  subtitle="Profile and documents"
+                  outlineColor={outlineColor}
+                  textColor={colors.text}
+                  mutedColor={colors.textMuted}
+                  iconColor={colors.blue}
+                  onPress={() => openSection("menu")}
+                />
 
-              <HubAccessRow
-                icon="headset-outline"
-                title="Help & support"
-                subtitle="Get help from SaMi"
-                outlineColor={outlineColor}
-                textColor={colors.text}
-                mutedColor={colors.textMuted}
-                iconColor={colors.blue}
-                onPress={() => openSection("help")}
-              />
+                <HubAccessRow
+                  icon="headset-outline"
+                  title="Help & support"
+                  subtitle="Get help from SaMi"
+                  outlineColor={outlineColor}
+                  textColor={colors.text}
+                  mutedColor={colors.textMuted}
+                  iconColor={colors.blue}
+                  onPress={() => openSection("help")}
+                />
 
-              <HubAccessRow
-                icon="grid-outline"
-                title="Account menu"
-                subtitle="Account actions"
-                outlineColor={outlineColor}
-                textColor={colors.text}
-                mutedColor={colors.textMuted}
-                iconColor={colors.blue}
-                onPress={() => openSection("menu")}
-              />
+                <HubAccessRow
+                  icon="options-outline"
+                  title="Runner Preferences"
+                  subtitle="Profile and runner preferences"
+                  outlineColor={outlineColor}
+                  textColor={colors.text}
+                  mutedColor={colors.textMuted}
+                  iconColor={colors.blue}
+                  onPress={() => openSection("menu")}
+                />
+              </View>
+
+              {/* Centered invite-and-earn panel in the remaining space */}
+              <Pressable
+                accessibilityRole="button"
+                accessibilityLabel="Invite friends to run with SaMi"
+                accessibilityHint="Opens the phone sharing options."
+                onPress={handleInviteFriends}
+                style={({ pressed }) => [
+                  styles.invitePromoCard,
+                  {
+                    backgroundColor: navy,
+                    borderColor: isDark
+                      ? "rgba(255,255,255,0.19)"
+                      : "rgba(0,5,53,0.16)",
+                    opacity: pressed ? 0.9 : 1,
+                  },
+                ]}
+              >
+                <View style={styles.inviteIconWrap}>
+                  <Ionicons
+                    name="people-outline"
+                    size={22}
+                    color="#000535"
+                  />
+                </View>
+
+                <Text style={styles.inviteEyebrow}>
+                  INVITE & EARN
+                </Text>
+
+                <Text style={styles.inviteTitle}>
+                  Earn extra KSh 2,000
+                </Text>
+
+                <Text style={styles.inviteSubtitle}>
+                  Invite friends to run with SaMi.
+                </Text>
+
+                <View style={styles.inviteAction}>
+                  <Text style={styles.inviteActionText}>
+                    Invite friends to run
+                  </Text>
+
+                  <Ionicons
+                    name="arrow-forward"
+                    size={16}
+                    color={navy}
+                  />
+                </View>
+              </Pressable>
             </ScrollView>
           </Animated.View>
         </Animated.View>
       ) : null}
 
-      {/*
-       * Existing menu drawer and its destinations are preserved.
-       */}
+      {/* Existing menu drawer */}
       <Modal
         visible={menuOpen}
         transparent
@@ -1812,7 +1810,7 @@ const styles = StyleSheet.create({
     textAlign: "center",
   },
 
-  /* Quick Access: independent lower section */
+  /* Quick Access */
 
   quickAccessRegion: {
     position: "absolute",
@@ -1841,8 +1839,13 @@ const styles = StyleSheet.create({
   },
 
   quickAccessContent: {
+    flexGrow: 1,
+    justifyContent: "space-between",
     paddingHorizontal: 18,
     paddingTop: 3,
+  },
+
+  quickAccessList: {
     gap: 8,
   },
 
@@ -1879,6 +1882,74 @@ const styles = StyleSheet.create({
     fontSize: 9,
     lineHeight: 13,
     fontWeight: "600",
+  },
+
+  /* Invite and earn card */
+
+  invitePromoCard: {
+    width: "100%",
+    minHeight: 158,
+    marginTop: 16,
+    marginBottom: 4,
+    borderWidth: 1,
+    borderRadius: 19,
+    paddingHorizontal: 16,
+    paddingVertical: 14,
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 6,
+  },
+
+  inviteIconWrap: {
+    width: 39,
+    height: 39,
+    borderRadius: 20,
+    backgroundColor: "#E8C574",
+    alignItems: "center",
+    justifyContent: "center",
+    marginBottom: 2,
+  },
+
+  inviteEyebrow: {
+    color: "#E8C574",
+    fontSize: 8,
+    fontWeight: "900",
+    letterSpacing: 1.4,
+  },
+
+  inviteTitle: {
+    color: "#FFFFFF",
+    fontSize: 17,
+    lineHeight: 22,
+    fontWeight: "900",
+    textAlign: "center",
+    letterSpacing: -0.2,
+  },
+
+  inviteSubtitle: {
+    color: "rgba(255,255,255,0.78)",
+    fontSize: 10,
+    lineHeight: 15,
+    fontWeight: "600",
+    textAlign: "center",
+  },
+
+  inviteAction: {
+    minHeight: 34,
+    marginTop: 5,
+    paddingHorizontal: 13,
+    borderRadius: 18,
+    backgroundColor: "#FFFFFF",
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 8,
+  },
+
+  inviteActionText: {
+    color: "#000535",
+    fontSize: 10,
+    fontWeight: "900",
   },
 
   /* Drawer */
