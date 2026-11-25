@@ -1109,7 +1109,7 @@ export function SaMiRunnerDashboardChrome({
               keyboardShouldPersistTaps="handled"
               nestedScrollEnabled
             >
-              <View style={styles.quickAccessList}>
+              
               <HubAccessRow
                 icon="wallet-outline"
                 title="Earnings"
@@ -1175,7 +1175,7 @@ export function SaMiRunnerDashboardChrome({
   iconColor={colors.blue}
   onPress={() => openSection("menu")}
 />
-</View>
+
 <View style={styles.invitePromoCard}>
   <View style={styles.inviteIconWrap}>
     <Ionicons name="people-outline" size={22} color="#000535" />
@@ -1999,7 +1999,7 @@ const styles = StyleSheet.create({
     fontSize: 10,
     fontWeight: "900",
   },
-  
+
   /* Drawer */
 
   drawerRoot: {
