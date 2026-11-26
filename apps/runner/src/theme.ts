@@ -27,101 +27,178 @@ const THEME_STORAGE_KEY = "sami_runner_theme_mode_v1";
 
 /* =========================================================
    LIGHT PALETTE
-   Designed for daylight visibility and high readability.
+   High-contrast daylight readability.
 ========================================================= */
 
 const light = {
   // Brand
-  navy: "#000535",
-  brandNavy: "#000535",
+  brand: "#00061D",
+  navy: "#00061D",
+  brandNavy: "#00061D",
+  onBrand: "#FFFFFF",
 
-  // Primary accent
+  // Primary action and accent
   blue: "#1558B0",
-  blueAction: "#1558B0",
-  blueSoft: "#EAF1FC",
+  blueAction: "#124F9D",
+  blueSoft: "#E7F0FF",
   onBlue: "#FFFFFF",
 
-  // Backgrounds
-  paper: "#F3F6FA",
+  // Backgrounds and surfaces
+  paper: "#F4F7FB",
   surface: "#FFFFFF",
   surfaceRaised: "#FFFFFF",
+  surfaceSunken: "#EAF0F7",
+  surfaceOverlay: "#FFFFFF",
+  surfaceSelected: "#E8F0FC",
+  surfaceInverse: "#00061D",
 
-  // Borders
-  border: "#C9D3E0",
-  borderStrong: "#8998AA",
+  // Borders and separators
+  border: "#C1CCDA",
+  borderStrong: "#718198",
+  divider: "#D5DEE8",
 
   // Typography
   text: "#101828",
-  textMuted: "#46566B",
-  muted: "#566579",
+  textMuted: "#34445A",
+  muted: "#46566C",
+  textSubtle: "#52647B",
+  textDisabled: "#6B7788",
+
+  // Icons
+  icon: "#24364D",
+  iconMuted: "#52647B",
 
   // Positive states
   success: "#087443",
-  successSoft: "#E8F5EE",
+  successSoft: "#E5F5EC",
+  successStrong: "#065B35",
+  onSuccess: "#FFFFFF",
 
-  // Warnings
-  warning: "#8A4B08",
-  warningSoft: "#FFF2D6",
-  amber: "#F0B64D",
+  // Warning states
+  warning: "#805000",
+  warningSoft: "#FFF3D7",
+  warningStrong: "#684000",
+  amber: "#D99A25",
+  onWarning: "#101828",
 
-  // Errors
-  red: "#B42318",
+  // Error and danger states
+  red: "#A61F18",
+  danger: "#A61F18",
   dangerSoft: "#FDECEC",
+  dangerStrong: "#841A15",
+  onDanger: "#FFFFFF",
+
+  // Information
+  info: "#1558B0",
+  infoSoft: "#E7F0FF",
 
   // Interaction
   focus: "#1558B0",
-  overlay: "rgba(0,5,53,0.56)",
-  shadow: "rgba(16,24,40,0.12)",
+  focusRing: "#1558B0",
+  pressed: "rgba(0,6,29,0.08)",
+  disabled: "#E5EAF1",
+  disabledText: "#68778A",
+
+  // Overlays
+  overlay: "rgba(0,6,29,0.66)",
+  overlaySoft: "rgba(0,6,29,0.28)",
+  overlayStrong: "rgba(0,6,29,0.84)",
+
+  // Elevation and shadows
+  shadow: "rgba(16,24,40,0.14)",
+  shadowStrong: "rgba(16,24,40,0.24)",
 } as const;
+
 
 /* =========================================================
    DARK PALETTE
-   Independently designed for readable dark surfaces.
+   Midnight brand foundation: #00061D.
+   Strong contrast for outdoor visibility.
 ========================================================= */
 
 const dark = {
   // Brand
-  navy: "#EAF0F8",
-  brandNavy: "#000535",
+  brand: "#00061D",
+  navy: "#00061D",
+  brandNavy: "#00061D",
+  onBrand: "#FFFFFF",
 
-  // Primary accent
-  blue: "#9CC5FF",
-  blueAction: "#1D5DAD",
-  blueSoft: "#1B2D45",
+  // Primary action and accent
+  blue: "#B8D7FF",
+  blueAction: "#2268B6",
+  blueSoft: "#19375D",
   onBlue: "#FFFFFF",
 
-  // Backgrounds
+  // Backgrounds and surfaces
   paper: "#00061D",
-  surface: "#00061D",
-  surfaceRaised: "#09142A",
+  surface: "#07132B",
+  surfaceRaised: "#0D1B36",
+  surfaceSunken: "#00030F",
+  surfaceOverlay: "#10213F",
+  surfaceSelected: "#18365F",
+  surfaceInverse: "#F4F7FB",
 
-  // Borders
-  border: "#34465D",
-  borderStrong: "#687B93",
+  // Borders and separators
+  border: "#596D88",
+  borderStrong: "#8799B2",
+  divider: "#3A4D68",
 
   // Typography
-  text: "#F3F6FB",
-  textMuted: "#C0CBD9",
-  muted: "#A2B0C2",
+  text: "#F7FAFF",
+  textMuted: "#DCE5F1",
+  muted: "#C0CCDC",
+  textSubtle: "#AEBBD0",
+  textDisabled: "#8B99AC",
+
+  // Icons
+  icon: "#F1F5FC",
+  iconMuted: "#BCC9DA",
 
   // Positive states
-  success: "#55D696",
-  successSoft: "#15392D",
+  success: "#6DE0A8",
+  successSoft: "#123A2C",
+  successStrong: "#9BF1C5",
+  onSuccess: "#001D12",
 
-  // Warnings
-  warning: "#F4C36A",
-  warningSoft: "#3C301B",
-  amber: "#F7C96B",
+  // Warning states
+  warning: "#FFD37A",
+  warningSoft: "#403016",
+  warningStrong: "#FFE0A0",
+  amber: "#FFD16B",
+  onWarning: "#231700",
 
-  // Errors
-  red: "#FF9292",
-  dangerSoft: "#45252D",
+  // Error and danger states
+  red: "#FF9D9D",
+  danger: "#FF9D9D",
+  dangerSoft: "#47252D",
+  dangerStrong: "#FFC0C0",
+  onDanger: "#2A0808",
+
+  // Information
+  info: "#B8D7FF",
+  infoSoft: "#19375D",
 
   // Interaction
-  focus: "#9CC5FF",
-  overlay: "rgba(0,6,29,0.75)",
-  shadow: "rgba(0,0,0,0.32)",
+  focus: "#B8D7FF",
+  focusRing: "#B8D7FF",
+  pressed: "rgba(255,255,255,0.12)",
+  disabled: "#26354C",
+  disabledText: "#A0AEC1",
+
+  // Overlays
+  overlay: "rgba(0,0,0,0.68)",
+  overlaySoft: "rgba(0,6,29,0.50)",
+  overlayStrong: "rgba(0,0,0,0.84)",
+
+  // Elevation and shadows
+  shadow: "rgba(0,0,0,0.38)",
+  shadowStrong: "rgba(0,0,0,0.58)",
 } as const;
+
+
+/* =========================================================
+   SHARED COLOUR TYPE
+========================================================= */
 
 export type RunnerThemeColors = {
   [K in keyof typeof light]: string;
@@ -161,6 +238,7 @@ export const runnerSpacing = {
   section: 48,
 } as const;
 
+
 export const runnerRadii = {
   xs: 6,
   sm: 10,
@@ -171,10 +249,34 @@ export const runnerRadii = {
   pill: 999,
 } as const;
 
+
+/* =========================================================
+   ELEVATION TOKENS
+========================================================= */
+
+export const runnerElevation = {
+  none: 0,
+  low: 2,
+  medium: 4,
+  high: 8,
+  modal: 16,
+} as const;
+
+
+/* =========================================================
+   TOUCH TARGET TOKENS
+   Designed for reliable outdoor mobile interaction.
+========================================================= */
+
+export const runnerTouchTargets = {
+  minimum: 48,
+  comfortable: 52,
+  primary: 56,
+} as const;
+
+
 /* =========================================================
    ANIMATION TOKENS
-   Shared timing for consistent screen transitions,
-   press feedback and Reanimated interactions.
 ========================================================= */
 
 export const runnerMotion = {
@@ -192,19 +294,29 @@ export const runnerMotion = {
   },
 } as const;
 
+
 /* =========================================================
    TYPOGRAPHY TOKENS
+   Slightly stronger minimum sizes for outdoor readability.
 ========================================================= */
 
 export const runnerTypography = {
   display: 32,
   heading: 26,
-  title: 21,
-  subtitle: 17,
-  body: 15,
-  bodySmall: 14,
-  caption: 12,
-  eyebrow: 11,
+  title: 22,
+  subtitle: 18,
+  body: 16,
+  bodySmall: 15,
+  caption: 13,
+  eyebrow: 12,
+
+  fontWeight: {
+    regular: "400",
+    medium: "500",
+    semibold: "600",
+    bold: "700",
+    heavy: "800",
+  },
 
   lineHeight: {
     compact: 1.2,

@@ -1000,12 +1000,20 @@ export function useRunnerDashboard() {
   const canAcceptOffers =
     authorized && isOnline && !jobBusyId && !signingOut;
 
-  const openDashboardSection = useCallback((section: RunnerDashboardSection) => {
+const openDashboardSection = useCallback(
+  (section: RunnerDashboardSection) => {
+    if (section === "settings") {
+      router.push("/(app)/settings" as never);
+      return;
+    }
+
     router.push({
       pathname: "/(app)/runner-section",
       params: { section },
     } as never);
-  }, []);
+  },
+  [],
+);
 
   return {
     isDashboardFocused, colors, mode, insets, appIsActive, runner, jobs,
