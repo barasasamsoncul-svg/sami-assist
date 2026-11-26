@@ -44,6 +44,17 @@ export default ({ config }: ConfigContext): ExpoConfig => {
     ...(config.plugins ?? []),
   ];
 
+  // Register expo-image without creating duplicate plugin entries.
+const expoImagePluginIndex = plugins.findIndex((plugin) =>
+  Array.isArray(plugin)
+    ? plugin[0] === "expo-image"
+    : plugin === "expo-image",
+);
+
+if (expoImagePluginIndex === -1) {
+  plugins.push("expo-image");
+}
+
   // Google Maps is used only for the idle / online-waiting dashboard map.
   // Keep the key in EAS Environment Variables; do not hardcode it in source.
   // Supported Android key names: EXPO_PUBLIC_GOOGLE_MAPS_API_KEY,
