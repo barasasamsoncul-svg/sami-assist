@@ -7,35 +7,48 @@ import * as SplashScreen from "expo-splash-screen";
 import "@/location/runner-location-service";
 import { RunnerThemeProvider, useRunnerTheme } from "@/theme";
 
-const BRAND_NAVY = "#000535";
-
 void SplashScreen.preventAutoHideAsync();
 
-/** The sole app-level status-bar owner; it follows the persisted Runner theme. */
+/**
+ * The only status-bar owner in SaMi Runner.
+ * It follows the persisted Runner appearance preference.
+ */
 function RunnerRootNavigator() {
-  const { mode } = useRunnerTheme();
+  const { mode, colors } = useRunnerTheme();
   const hasHiddenSplash = useRef(false);
 
   const handleRootLayout = useCallback(() => {
-    if (hasHiddenSplash.current) return;
+    if (hasHiddenSplash.current) {
+      return;
+    }
 
     hasHiddenSplash.current = true;
     void SplashScreen.hideAsync();
   }, []);
 
-  const statusBarStyle = mode === "dark" ? "light-content" : "dark-content";
-  const nativeStatusBarStyle = mode === "dark" ? "light" : "dark";
-
   return (
-    <View style={styles.root} onLayout={handleRootLayout}>
-      <StatusBar barStyle={statusBarStyle} />
+    <View
+      style={[
+        styles.root,
+        { backgroundColor: colors.paper },
+      ]}
+      onLayout={handleRootLayout}
+    >
+      <StatusBar
+        hidden={false}
+        barStyle={
+          mode === "dark"
+            ? "light-content"
+            : "dark-content"
+        }
+      />
+
       <Stack
         screenOptions={{
           headerShown: false,
           contentStyle: {
-            backgroundColor: BRAND_NAVY,
+            backgroundColor: colors.paper,
           },
-          statusBarStyle: nativeStatusBarStyle,
           animation: "none",
         }}
       />
@@ -56,6 +69,5 @@ export default function RootLayout() {
 const styles = StyleSheet.create({
   root: {
     flex: 1,
-    backgroundColor: BRAND_NAVY,
   },
 });

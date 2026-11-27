@@ -1,11 +1,8 @@
-
 import { Stack } from "expo-router";
 import { useRunnerTheme } from "@/theme";
 
 export default function RunnerAuthLayout() {
-  const { colors, mode } = useRunnerTheme();
-
-  const isDark = mode === "dark";
+  const { colors } = useRunnerTheme();
 
   return (
     <Stack
@@ -20,9 +17,6 @@ export default function RunnerAuthLayout() {
         contentStyle: {
           backgroundColor: colors.paper,
         },
-
-        // Follow the user's explicit in-app appearance setting.
-        statusBarStyle: isDark ? "light" : "dark",
 
         // Allow normal back gestures.
         gestureEnabled: true,

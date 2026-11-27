@@ -13,7 +13,6 @@ import {
   Image,
   Pressable,
   ScrollView,
-  StatusBar,
   StyleSheet,
   Text,
   View,
@@ -37,7 +36,13 @@ import type {
   RunnerReviewFeedback,
 } from "@/review";
 
-import { useRunnerTheme } from "@/theme";
+import {
+  runnerRadii,
+  runnerSpacing,
+  runnerTouchTargets,
+  runnerTypography,
+  useRunnerTheme,
+} from "@/theme";
 
 const WORDMARK = require("../../assets/sami-wordmark.png");
 
@@ -446,15 +451,13 @@ function shouldAutoSubmit(
 }
 
 export default function RunnerDocumentsScreen() {
-  const {
-    colors,
-    mode,
-    showOverlay,
-  } = useRunnerTheme();
+ const {
+  colors,
+  showOverlay,
+} = useRunnerTheme();
 
-  const isDark = mode === "dark";
-  const supportingText = isDark ? "#C1CCDA" : "#526176";
-  const actionBlue = colors.blueAction;
+const supportingText = colors.textMuted;
+const actionBlue = colors.blue;
 
   const [data, setData] =
     useState<RunnerOnboardingData | null>(null);
@@ -939,9 +942,7 @@ export default function RunnerDocumentsScreen() {
         }}
       />
 
-      <StatusBar
-        barStyle={isDark ? "light-content" : "dark-content"}
-      />
+      
 
       <View style={styles.container}>
         <ScrollView
@@ -1620,17 +1621,17 @@ const styles = StyleSheet.create({
   },
 
   scrollContent: {
-    paddingHorizontal: 20,
-    paddingTop: 12,
-    paddingBottom: 28,
+    paddingHorizontal: runnerSpacing.lg,
+    paddingTop: runnerSpacing.md,
+    paddingBottom: runnerSpacing.xxxl,
   },
 
   header: {
-    minHeight: 42,
+    minHeight: runnerTouchTargets.minimum,
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
-    marginBottom: 27,
+    marginBottom: runnerSpacing.xl,
   },
 
   wordmark: {
@@ -1639,155 +1640,156 @@ const styles = StyleSheet.create({
   },
 
   helpButton: {
-    minHeight: 38,
-    paddingHorizontal: 13,
+    minHeight: runnerTouchTargets.minimum,
+    paddingHorizontal: runnerSpacing.md,
     borderWidth: 1,
-    borderRadius: 22,
+    borderRadius: runnerRadii.pill,
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "center",
-    gap: 6,
+    gap: runnerSpacing.xs,
   },
 
   helpText: {
-    fontSize: 13,
+    fontSize: runnerTypography.bodySmall,
     fontWeight: "700",
   },
 
   signingUpBlock: {
-    gap: 8,
-    marginBottom: 30,
+    gap: runnerSpacing.sm,
+    marginBottom: runnerSpacing.xl,
   },
 
   eyebrow: {
-    fontSize: 10,
+    fontSize: runnerTypography.caption,
     fontWeight: "800",
     letterSpacing: 0.9,
   },
 
   setupSummary: {
     borderWidth: 1,
-    borderRadius: 12,
+    borderRadius: runnerRadii.md,
     overflow: "hidden",
   },
 
   setupSummaryTrigger: {
-    minHeight: 54,
-    paddingHorizontal: 13,
-    paddingVertical: 9,
+    minHeight: runnerTouchTargets.comfortable,
+    paddingHorizontal: runnerSpacing.md,
+    paddingVertical: runnerSpacing.sm,
     flexDirection: "row",
     alignItems: "center",
-    gap: 10,
+    gap: runnerSpacing.sm,
   },
 
   setupSummaryText: {
     flex: 1,
-    gap: 3,
+    gap: runnerSpacing.xxs,
   },
 
   setupPrimary: {
-    fontSize: 12.5,
+    fontSize: runnerTypography.bodySmall,
     fontWeight: "800",
+    lineHeight: 21,
   },
 
   setupSecondary: {
-    fontSize: 11,
-    lineHeight: 15,
+    fontSize: runnerTypography.caption,
+    lineHeight: 19,
   },
 
   setupDetails: {
     borderTopWidth: StyleSheet.hairlineWidth,
-    paddingHorizontal: 13,
-    paddingTop: 10,
-    paddingBottom: 12,
-    gap: 8,
+    paddingHorizontal: runnerSpacing.md,
+    paddingTop: runnerSpacing.md,
+    paddingBottom: runnerSpacing.md,
+    gap: runnerSpacing.sm,
   },
 
   setupDetailRow: {
     flexDirection: "row",
     justifyContent: "space-between",
     alignItems: "flex-start",
-    gap: 12,
+    gap: runnerSpacing.md,
   },
 
   setupDetailLabel: {
-    fontSize: 11,
+    fontSize: runnerTypography.caption,
   },
 
   setupDetailValue: {
     flex: 1,
     textAlign: "right",
-    fontSize: 11,
+    fontSize: runnerTypography.caption,
     fontWeight: "700",
   },
 
   changeSetupButton: {
-    minHeight: 65,
+    minHeight: runnerTouchTargets.comfortable,
     borderWidth: 1,
-    borderRadius: 12,
-    paddingHorizontal: 12,
-    paddingVertical: 10,
+    borderRadius: runnerRadii.md,
+    paddingHorizontal: runnerSpacing.md,
+    paddingVertical: runnerSpacing.sm,
     flexDirection: "row",
     alignItems: "center",
-    gap: 11,
+    gap: runnerSpacing.md,
   },
 
   changeSetupIcon: {
-    width: 36,
-    height: 36,
-    borderRadius: 11,
+    width: 42,
+    height: 42,
+    borderRadius: runnerRadii.sm,
     alignItems: "center",
     justifyContent: "center",
   },
 
   changeSetupCopy: {
     flex: 1,
-    gap: 3,
+    gap: runnerSpacing.xxs,
   },
 
   changeSetupTitle: {
-    fontSize: 12.5,
+    fontSize: runnerTypography.bodySmall,
     fontWeight: "800",
   },
 
   changeSetupHint: {
-    fontSize: 10.5,
-    lineHeight: 15,
+    fontSize: runnerTypography.caption,
+    lineHeight: 19,
   },
 
   changeSetupWarning: {
-    fontSize: 10.5,
-    lineHeight: 16,
-    marginTop: 1,
+    fontSize: runnerTypography.caption,
+    lineHeight: 20,
+    marginTop: runnerSpacing.xxs,
   },
 
   intro: {
-    gap: 13,
-    marginBottom: 26,
+    gap: runnerSpacing.md,
+    marginBottom: runnerSpacing.xl,
   },
 
   title: {
-    fontSize: 28,
-    lineHeight: 34,
+    fontSize: runnerTypography.heading,
+    lineHeight: 35,
     fontWeight: "800",
-    letterSpacing: -0.7,
+    letterSpacing: -0.5,
   },
 
   subtitle: {
-    fontSize: 13.5,
-    lineHeight: 20,
+    fontSize: runnerTypography.bodySmall,
+    lineHeight: 23,
   },
 
   progressSegments: {
     flexDirection: "row",
-    gap: 7,
-    marginTop: 5,
+    gap: runnerSpacing.xs,
+    marginTop: runnerSpacing.xs,
   },
 
   progressSegment: {
     flex: 1,
-    height: 7,
-    borderRadius: 2,
+    height: 8,
+    borderRadius: runnerRadii.pill,
   },
 
   documentList: {
@@ -1795,126 +1797,128 @@ const styles = StyleSheet.create({
   },
 
   documentRow: {
-    minHeight: 74,
-    paddingVertical: 13,
+    minHeight: 84,
+    paddingVertical: runnerSpacing.md,
     flexDirection: "row",
     alignItems: "center",
-    gap: 12,
+    gap: runnerSpacing.md,
     borderBottomWidth: StyleSheet.hairlineWidth,
   },
 
   documentIconWrap: {
-    width: 28,
+    width: 34,
     alignItems: "center",
     justifyContent: "center",
   },
 
   documentCopy: {
     flex: 1,
-    gap: 4,
+    gap: runnerSpacing.xs,
   },
 
   documentTitle: {
-    fontSize: 14,
-    lineHeight: 19,
+    fontSize: runnerTypography.body,
+    lineHeight: 23,
     fontWeight: "700",
   },
 
   documentHint: {
-    fontSize: 11.5,
-    lineHeight: 16,
+    fontSize: runnerTypography.caption,
+    lineHeight: 20,
   },
 
   documentRight: {
     alignItems: "flex-end",
     justifyContent: "center",
-    gap: 4,
-    maxWidth: 100,
+    gap: runnerSpacing.xs,
+    maxWidth: 120,
   },
 
   documentStatus: {
-    fontSize: 10.5,
-    lineHeight: 14,
+    fontSize: runnerTypography.caption,
+    lineHeight: 19,
     fontWeight: "800",
     textAlign: "right",
   },
 
   loadingState: {
-    minHeight: 100,
+    minHeight: 120,
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "center",
-    gap: 10,
+    gap: runnerSpacing.md,
   },
 
   loadingText: {
-    fontSize: 12,
+    fontSize: runnerTypography.bodySmall,
   },
 
   loadError: {
-    paddingVertical: 18,
-    gap: 12,
+    paddingVertical: runnerSpacing.lg,
+    gap: runnerSpacing.md,
   },
 
   errorText: {
-    fontSize: 13,
-    lineHeight: 19,
+    fontSize: runnerTypography.bodySmall,
+    lineHeight: 23,
   },
 
   retryButton: {
     alignSelf: "flex-start",
-    paddingVertical: 8,
-    paddingRight: 12,
+    minHeight: runnerTouchTargets.minimum,
+    justifyContent: "center",
+    paddingVertical: runnerSpacing.sm,
+    paddingRight: runnerSpacing.md,
   },
 
   retryText: {
-    fontSize: 13,
+    fontSize: runnerTypography.bodySmall,
     fontWeight: "800",
   },
 
   feedbackHint: {
-    marginTop: 14,
-    fontSize: 11,
-    lineHeight: 16,
+    marginTop: runnerSpacing.md,
+    fontSize: runnerTypography.caption,
+    lineHeight: 20,
   },
 
   applicationFeedback: {
-    marginTop: 18,
+    marginTop: runnerSpacing.lg,
     borderLeftWidth: 3,
-    paddingLeft: 11,
-    gap: 5,
+    paddingLeft: runnerSpacing.md,
+    gap: runnerSpacing.sm,
   },
 
   applicationFeedbackTitle: {
-    fontSize: 12,
+    fontSize: runnerTypography.bodySmall,
     fontWeight: "800",
   },
 
   applicationFeedbackText: {
-    fontSize: 12,
-    lineHeight: 18,
+    fontSize: runnerTypography.bodySmall,
+    lineHeight: 22,
   },
 
   reviewNotice: {
-    marginTop: 20,
-    borderRadius: 14,
-    padding: 13,
+    marginTop: runnerSpacing.xl,
+    borderRadius: runnerRadii.lg,
+    padding: runnerSpacing.md,
     flexDirection: "row",
     alignItems: "flex-start",
-    gap: 10,
+    gap: runnerSpacing.md,
   },
 
   reviewNoticeText: {
     flex: 1,
-    fontSize: 12,
-    lineHeight: 18,
+    fontSize: runnerTypography.bodySmall,
+    lineHeight: 23,
     fontWeight: "600",
   },
 
   footerNote: {
-    marginTop: 20,
+    marginTop: runnerSpacing.xl,
     textAlign: "center",
-    fontSize: 11.5,
-    lineHeight: 17,
+    fontSize: runnerTypography.bodySmall,
+    lineHeight: 22,
   },
 });

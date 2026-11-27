@@ -1,4 +1,5 @@
 import { Stack } from "expo-router";
+
 import { useRunnerTheme } from "@/theme";
 
 export default function RunnerAppLayout() {
@@ -10,24 +11,21 @@ export default function RunnerAppLayout() {
       screenOptions={{
         headerShown: false,
 
-        // Fade is right for a map-first app — a slide over the live map
-        // would feel like the map itself is sliding.
+        // Preserve the map-first navigation transition.
         animation: "fade",
         animationDuration: 220,
 
-        // Match the theme so there's no white flash during transitions.
-        // Without this, the OS background renders for ~80ms before the
-        // screen mounts — very visible when leaving the map dashboard.
-        contentStyle: { backgroundColor: colors.paper },
-
-       // Screen readers should focus the new screen's content, not
-// the navigation shell. Each screen's first focusable element
-// becomes the initial focus target.
-statusBarStyle: colors.paper === "#080F1D" ? "light" : "dark",
+        // Prevent background flashes between Runner screens.
+        contentStyle: {
+          backgroundColor: colors.paper,
+        },
       }}
     >
-      {/* Keep the map-first Home route active under pushed Runner pages. */}
-      <Stack.Screen name="index" activityEnabled={false} />
+      {/* Keep Home active beneath pushed Runner screens. */}
+      <Stack.Screen
+        name="index"
+        activityEnabled={false}
+      />
     </Stack>
   );
 }

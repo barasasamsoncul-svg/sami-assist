@@ -5,31 +5,55 @@ import { styles } from "../styles";
 import { IconButton } from "./RunnerDashboardPrimitives";
 import type { useRunnerDashboard } from "../useRunnerDashboard";
 import { RunnerDashboardGoogleMap } from "./RunnerDashboardGoogleMap";
-import { DEFAULT_COORDINATES, type NavigationMode } from "../types";
+import type { NavigationMode } from "../types";
 
 type Props = { dashboard: ReturnType<typeof useRunnerDashboard> };
 
 export function RunnerDashboardMapLayer({ dashboard }: Props) {
   const {
-    colors, insets, authorized, activeRouteTarget, activeJobIsTrackable, routePanelStatusText,
-    routeState, routeInstruction, routeSecondaryInstruction, voiceGuidanceMuted,
-    setVoiceGuidanceMuted, nextManeuverDistance, routeRemainingDistance,
-    routeRemainingTime, location, locationQualityLabel, locationAccuracyLabel,
-    workspaceExpanded, locationBusy, setCameraFollowing, locateMe,
-    mapScreenActive, mapStyleURL, navigationActive, cameraFollowing,
-    mapRenderRevision, mapCameraRef, rememberMapCamera,
-    mapRecenterRequestId, displayCoordinates, isOnline, runner,
-    setMapReady, setMapError, setNavigationMode, setRouteState, setVoiceInstruction,
+    colors,
+    mode,
+    insets,
+    authorized,
+    activeRouteTarget,
+    activeJobIsTrackable,
+    routePanelStatusText,
+    routeState,
+    routeInstruction,
+    routeSecondaryInstruction,
+    voiceGuidanceMuted,
+    setVoiceGuidanceMuted,
+    nextManeuverDistance,
+    routeRemainingDistance,
+    routeRemainingTime,
+    location,
+    locationQualityLabel,
+    locationAccuracyLabel,
+    workspaceExpanded,
+    locationBusy,
+    setCameraFollowing,
+    locateMe,
+    mapScreenActive,
+    mapStyleURL,
+    navigationActive,
+    cameraFollowing,
+    mapCameraRef,
+    rememberMapCamera,
+    mapRecenterRequestId,
+    displayCoordinates,
+    isOnline,
+    setMapReady,
+    setMapError,
+    setNavigationMode,
+    setRouteState,
+    setVoiceInstruction,
     routeProfile,
   } = dashboard;
 
   return (
     <>
       {activeJobIsTrackable ? (
-        <>
-          {/* MAPBOX NAVIGATION CANVAS — active pickup/delivery only */}
-          <SaMiMapboxView
-          key={mapRenderRevision}
+        <SaMiMapboxView
           style={StyleSheet.absoluteFill}
           accessToken={
             process.env.EXPO_PUBLIC_MAPBOX_ACCESS_TOKEN?.trim() ?? ""
@@ -61,18 +85,10 @@ export function RunnerDashboardMapLayer({ dashboard }: Props) {
           }
           puckBearing="course"
           locationPulsingEnabled={Boolean(isOnline && authorized)}
-          hasRouteDestination={Boolean(
-            authorized && activeRouteTarget,
-          )}
-          routeDestinationLatitude={
-            activeRouteTarget?.latitude ?? 0
-          }
-          routeDestinationLongitude={
-            activeRouteTarget?.longitude ?? 0
-          }
-          routeDestinationLabel={
-            activeRouteTarget?.label ?? ""
-          }
+          hasRouteDestination={Boolean(authorized && activeRouteTarget)}
+          routeDestinationLatitude={activeRouteTarget?.latitude ?? 0}
+          routeDestinationLongitude={activeRouteTarget?.longitude ?? 0}
+          routeDestinationLabel={activeRouteTarget?.label ?? ""}
           routeProfile={routeProfile}
           voiceGuidanceMuted={voiceGuidanceMuted}
           onMapReady={() => {
@@ -83,12 +99,12 @@ export function RunnerDashboardMapLayer({ dashboard }: Props) {
             rememberMapCamera(event.nativeEvent);
           }}
           onMapError={(event) => {
+            // Keep the native diagnostic internally. A transient network/map
+            // tile failure must not interrupt the Runner's dashboard flow.
             setMapError(event.nativeEvent.message);
           }}
           onNavigationStatusChanged={(event) => {
-            setNavigationMode(
-              event.nativeEvent.mode as NavigationMode,
-            );
+            setNavigationMode(event.nativeEvent.mode as NavigationMode);
           }}
           onRouteChanged={(event) => {
             setRouteState(event.nativeEvent);
@@ -96,16 +112,16 @@ export function RunnerDashboardMapLayer({ dashboard }: Props) {
           onVoiceInstructionChanged={(event) => {
             setVoiceInstruction(event.nativeEvent);
           }}
-          />
-        </>
+        />
       ) : (
         <RunnerDashboardGoogleMap
-          key={mapRenderRevision}
           location={location}
           fallbackCoordinates={displayCoordinates}
           cameraFollowing={cameraFollowing}
           recenterRequestId={mapRecenterRequestId}
           screenActive={mapScreenActive}
+          isOnline={Boolean(isOnline && authorized)}
+          isDark={mode === "dark"}
           onCameraFollowInterrupted={() => setCameraFollowing(false)}
           onMapReady={() => {
             setMapReady(true);
@@ -115,7 +131,6 @@ export function RunnerDashboardMapLayer({ dashboard }: Props) {
       )}
 
       {/* TURN-BY-TURN MANEUVER CARD */}
-
       {authorized && activeRouteTarget ? (
         <View
           style={[
@@ -134,11 +149,7 @@ export function RunnerDashboardMapLayer({ dashboard }: Props) {
                 { backgroundColor: colors.blueSoft },
               ]}
             >
-              <Ionicons
-                name="navigate"
-                size={25}
-                color={colors.blue}
-              />
+              <Ionicons name="navigate" size={25} color={colors.blue} />
             </View>
 
             <View style={styles.maneuverCopy}>
@@ -161,15 +172,13 @@ export function RunnerDashboardMapLayer({ dashboard }: Props) {
                 {routeState.status === "active"
                   ? routeInstruction
                   : routeState.status === "error"
-                    ? routeState.message ||
-                      "Route could not be calculated"
+                    ? routeState.message || "Route could not be calculated"
                     : routeState.status === "requesting"
                       ? "Finding the best route..."
                       : "Waiting for your GPS position..."}
               </Text>
 
-              {routeState.status === "active" &&
-              routeSecondaryInstruction ? (
+              {routeState.status === "active" && routeSecondaryInstruction ? (
                 <Text
                   style={[
                     styles.maneuverSecondary,
@@ -184,17 +193,13 @@ export function RunnerDashboardMapLayer({ dashboard }: Props) {
 
             <Pressable
               accessibilityRole="switch"
-              accessibilityState={{
-                checked: !voiceGuidanceMuted,
-              }}
+              accessibilityState={{ checked: !voiceGuidanceMuted }}
               accessibilityLabel={
                 voiceGuidanceMuted
                   ? "Unmute voice navigation"
                   : "Mute voice navigation"
               }
-              onPress={() => {
-                setVoiceGuidanceMuted((current) => !current);
-              }}
+              onPress={() => setVoiceGuidanceMuted((current) => !current)}
               style={({ pressed }) => [
                 styles.voiceToggle,
                 {
@@ -213,11 +218,7 @@ export function RunnerDashboardMapLayer({ dashboard }: Props) {
                     : "volume-high-outline"
                 }
                 size={21}
-                color={
-                  voiceGuidanceMuted
-                    ? colors.textMuted
-                    : colors.blue
-                }
+                color={voiceGuidanceMuted ? colors.textMuted : colors.blue}
               />
             </Pressable>
           </View>
@@ -238,7 +239,6 @@ export function RunnerDashboardMapLayer({ dashboard }: Props) {
                 >
                   NEXT TURN
                 </Text>
-
                 <Text
                   style={[
                     styles.maneuverMetricValue,
@@ -260,7 +260,6 @@ export function RunnerDashboardMapLayer({ dashboard }: Props) {
                 >
                   REMAINING
                 </Text>
-
                 <Text
                   style={[
                     styles.maneuverMetricValue,
@@ -280,7 +279,6 @@ export function RunnerDashboardMapLayer({ dashboard }: Props) {
                 >
                   ETA
                 </Text>
-
                 <Text
                   style={[
                     styles.maneuverMetricValue,
@@ -307,7 +305,6 @@ export function RunnerDashboardMapLayer({ dashboard }: Props) {
       ) : null}
 
       {/* MAP CONTROLS */}
-
       <View
         style={[
           styles.mapControls,
@@ -332,8 +329,7 @@ export function RunnerDashboardMapLayer({ dashboard }: Props) {
         />
       </View>
 
-      {/* LOCATION QUALITY */}
-
+      {/* LOCATION QUALITY — intentionally hidden from the dashboard chrome */}
       <View
         style={[
           styles.locationIndicator,
@@ -357,7 +353,6 @@ export function RunnerDashboardMapLayer({ dashboard }: Props) {
             },
           ]}
         />
-
         <View style={styles.locationIndicatorCopy}>
           <Text
             style={[
@@ -367,7 +362,6 @@ export function RunnerDashboardMapLayer({ dashboard }: Props) {
           >
             {locationQualityLabel}
           </Text>
-
           <Text
             style={[
               styles.locationIndicatorSubtitle,
@@ -378,9 +372,6 @@ export function RunnerDashboardMapLayer({ dashboard }: Props) {
           </Text>
         </View>
       </View>
-
-
     </>
   );
 }
-

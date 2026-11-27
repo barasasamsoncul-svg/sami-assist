@@ -13,7 +13,7 @@ import {
 } from "react-native";
 
 import { SafeAreaView } from "react-native-safe-area-context";
-import { router, useLocalSearchParams } from "expo-router";
+import { Stack, router, useLocalSearchParams } from "expo-router";
 
 import {
   getRunnerOnboarding,
@@ -38,7 +38,7 @@ function firstParam(value?: string | string[]): string {
 }
 
 export default function LaunchScreen() {
-  const { colors } = useRunnerTheme();
+  const { colors, mode } = useRunnerTheme();
   const params = useLocalSearchParams<{
     signedOut?: string | string[];
   }>();
@@ -53,6 +53,17 @@ export default function LaunchScreen() {
   const mountedRef = useRef(true);
   const launchCompletedRef = useRef(false);
   const restoreInFlightRef = useRef(false);
+
+  const isBrandStage =
+    stage === "animation" ||
+    stage === "restoring" ||
+    stage === "welcome";
+
+  const statusBarStyle =
+    isBrandStage || mode === "dark" ? "light" : "dark";
+  const statusBarBackgroundColor = isBrandStage
+    ? BRAND_NAVY
+    : colors.paper;
 
   useEffect(() => {
     mountedRef.current = true;
@@ -177,8 +188,7 @@ export default function LaunchScreen() {
     launchCompletedRef.current = true;
     setStage("restoring");
 
-    // Session restoration starts only after the full launch animation.
-    // The animation remains on screen while the server resolves the route.
+    // Session restoration starts only after the one-shot launch animation.
     void restoreRunnerSession();
   }, [restoreRunnerSession]);
 
@@ -189,7 +199,7 @@ export default function LaunchScreen() {
   }, []);
 
   // Fallback protects against an animation image that fails to report
-  // its display event. It still preserves the animation-first flow.
+  // its display event. Switching to restoring also stops image playback.
   useEffect(() => {
     if (stage !== "animation") return;
 
@@ -202,102 +212,130 @@ export default function LaunchScreen() {
 
   if (stage === "welcome") {
     return (
-      <WelcomeScreen
-        onGetStarted={handleGetStarted}
-        onSignIn={handleSignIn}
-      />
+      <>
+        <Stack.Screen
+          options={{
+            statusBarStyle,
+            statusBarBackgroundColor,
+            statusBarTranslucent: false,
+          }}
+        />
+        <WelcomeScreen
+          onGetStarted={handleGetStarted}
+          onSignIn={handleSignIn}
+        />
+      </>
     );
   }
 
   if (stage === "animation" || stage === "restoring") {
     return (
-      <View style={styles.launch}>
-        <SaMiLaunchAnimation
-          onComplete={handleAnimationComplete}
+      <>
+        <Stack.Screen
+          options={{
+            statusBarStyle,
+            statusBarBackgroundColor,
+            statusBarTranslucent: false,
+          }}
         />
-      </View>
+        <View style={styles.launch}>
+          <SaMiLaunchAnimation
+            isPlaying={stage === "animation"}
+            onComplete={handleAnimationComplete}
+          />
+        </View>
+      </>
     );
   }
 
   return (
-    <SafeAreaView
-      style={[
-        styles.statusRoot,
-        { backgroundColor: colors.paper },
-      ]}
-      edges={["top", "bottom"]}
-    >
-      <View
+    <>
+      <Stack.Screen
+        options={{
+          statusBarStyle,
+          statusBarBackgroundColor,
+          statusBarTranslucent: false,
+        }}
+      />
+      <SafeAreaView
         style={[
-          styles.statusCard,
-          {
-            backgroundColor: colors.surface,
-            borderColor: colors.border,
-          },
+          styles.statusRoot,
+          { backgroundColor: colors.paper },
         ]}
+        edges={["top", "bottom"]}
       >
         <View
           style={[
-            styles.statusIcon,
-            { backgroundColor: colors.warningSoft },
-          ]}
-        >
-          <Text
-            style={[
-              styles.statusIconText,
-              { color: colors.warning },
-            ]}
-          >
-            !
-          </Text>
-        </View>
-
-        <Text
-          accessibilityRole="header"
-          style={[
-            styles.title,
-            { color: colors.text },
-          ]}
-        >
-          Unable to check your account
-        </Text>
-
-        <Text
-          style={[
-            styles.message,
-            { color: colors.textMuted },
-          ]}
-        >
-          {errorMessage ||
-            "We could not verify your Runner session. Check your connection and try again."}
-        </Text>
-
-        <Pressable
-          accessibilityRole="button"
-          onPress={handleRetry}
-          style={({ pressed }) => [
-            styles.primaryButton,
+            styles.statusCard,
             {
-              backgroundColor: colors.blueAction,
-              opacity: pressed ? 0.8 : 1,
+              backgroundColor: colors.surface,
+              borderColor: colors.border,
             },
           ]}
         >
-          <Text style={styles.primaryButtonText}>
-            Try again
-          </Text>
-        </Pressable>
-      </View>
+          <View
+            style={[
+              styles.statusIcon,
+              { backgroundColor: colors.warningSoft },
+            ]}
+          >
+            <Text
+              style={[
+                styles.statusIconText,
+                { color: colors.warning },
+              ]}
+            >
+              !
+            </Text>
+          </View>
 
-      <Text
-        style={[
-          styles.brand,
-          { color: colors.textMuted },
-        ]}
-      >
-        SaMi Runner
-      </Text>
-    </SafeAreaView>
+          <Text
+            accessibilityRole="header"
+            style={[
+              styles.title,
+              { color: colors.text },
+            ]}
+          >
+            Unable to check your account
+          </Text>
+
+          <Text
+            style={[
+              styles.message,
+              { color: colors.textMuted },
+            ]}
+          >
+            {errorMessage ||
+              "We could not verify your Runner session. Check your connection and try again."}
+          </Text>
+
+          <Pressable
+            accessibilityRole="button"
+            onPress={handleRetry}
+            style={({ pressed }) => [
+              styles.primaryButton,
+              {
+                backgroundColor: colors.blueAction,
+                opacity: pressed ? 0.8 : 1,
+              },
+            ]}
+          >
+            <Text style={styles.primaryButtonText}>
+              Try again
+            </Text>
+          </Pressable>
+        </View>
+
+        <Text
+          style={[
+            styles.brand,
+            { color: colors.textMuted },
+          ]}
+        >
+          SaMi Runner
+        </Text>
+      </SafeAreaView>
+    </>
   );
 }
 

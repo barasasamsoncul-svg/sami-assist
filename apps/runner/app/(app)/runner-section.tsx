@@ -1,10 +1,8 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   ActivityIndicator,
-  Alert,
   Pressable,
   ScrollView,
-  StatusBar,
   StyleSheet,
   Text,
   View,
@@ -12,7 +10,15 @@ import {
 import { router, useLocalSearchParams } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-import { useRunnerTheme } from "@/theme";
+import {
+  runnerRadii,
+  runnerSpacing,
+  runnerTouchTargets,
+  runnerTypography,
+  useRunnerTheme,
+  type RunnerThemeColors,
+  type RunnerThemeMode,
+} from "@/theme";
 
 import {
   acceptRunnerJob,
@@ -22,22 +28,16 @@ import {
   type RunnerJob,
 } from "@/api";
 
-const COLORS = {
-  navy: "#000535",
-  panel: "#06132C",
-  raised: "#0A1C3A",
-  border: "#294A78",
-  blue: "#3485F5",
-  blueSoft: "#16345B",
-  text: "#F6F8FC",
-  muted: "#AAB9CF",
-  quiet: "#71839F",
-  gold: "#E9B64E",
-  red: "#E2767D",
-  white: "#FFFFFF",
-};
-
-type Section = "offers" | "rating" | "acceptance" | "menu" | "help" | "performance" | "earnings" | "settings" | "privacy";
+type Section =
+  | "offers"
+  | "rating"
+  | "acceptance"
+  | "menu"
+  | "help"
+  | "performance"
+  | "earnings"
+  | "settings"
+  | "privacy";
 
 function isRunnerSessionError(message: string): boolean {
   return /\b401\b|session has expired|sign in to continue/i.test(message);
@@ -60,8 +60,11 @@ const TITLES: Record<Section, string> = {
   help: "Help & support",
 };
 
-function formatMoney(amount: number | null, currency: string) {
-  if (amount === null || !Number.isFinite(amount)) return "Payout unavailable";
+function formatMoney(amount: number | null, currency: string): string {
+  if (amount === null || !Number.isFinite(amount)) {
+    return "Payout unavailable";
+  }
+
   return `${currency} ${amount.toLocaleString("en-KE", {
     minimumFractionDigits: 0,
     maximumFractionDigits: 2,
@@ -71,10 +74,29 @@ function formatMoney(amount: number | null, currency: string) {
 export default function RunnerDashboardSectionScreen() {
   const params = useLocalSearchParams<{ section?: string }>();
   const insets = useSafeAreaInsets();
-  const { colors: themeColors, mode, setMode } = useRunnerTheme();
+
+  const {
+    colors,
+    mode,
+    setMode,
+    showOverlay,
+  } = useRunnerTheme();
+
   const rawSection = String(params.section ?? "offers");
-  const section: Section = (["offers", "rating", "acceptance", "menu", "help", "performance", "earnings", "settings", "privacy"] as string[])
-    .includes(rawSection)
+
+  const section: Section = (
+    [
+      "offers",
+      "rating",
+      "acceptance",
+      "menu",
+      "help",
+      "performance",
+      "earnings",
+      "settings",
+      "privacy",
+    ] as string[]
+  ).includes(rawSection)
     ? (rawSection as Section)
     : "offers";
 
@@ -83,122 +105,225 @@ export default function RunnerDashboardSectionScreen() {
   const [loading, setLoading] = useState(section === "offers");
   const [refreshing, setRefreshing] = useState(false);
   const [busyJobId, setBusyJobId] = useState("");
-  const [error, setError] = useState("");
   const [signingOut, setSigningOut] = useState(false);
 
   const pageTitle = TITLES[section];
 
-  const loadOffers = useCallback(async (refresh = false) => {
-    if (refresh) setRefreshing(true);
-    else setLoading(true);
-    setError("");
-
-    try {
-      const [me, jobs] = await Promise.all([getRunnerMe(), getRunnerJobs()]);
-      setIsOnline(me.runner.availability.isOnline);
-      setOffers(Array.isArray(jobs.offers) ? jobs.offers : []);
-    } catch (cause) {
-      const message = cause instanceof Error ? cause.message : "Offers could not be loaded.";
-      if (isRunnerSessionError(message)) {
-        returnToRunnerSignIn();
-        return;
+  const loadOffers = useCallback(
+    async (refresh = false) => {
+      if (refresh) {
+        setRefreshing(true);
+      } else {
+        setLoading(true);
       }
-      setError(message);
-    } finally {
-      setLoading(false);
-      setRefreshing(false);
-    }
-  }, []);
+
+      try {
+        const [me, jobs] = await Promise.all([
+          getRunnerMe(),
+          getRunnerJobs(),
+        ]);
+
+        setIsOnline(me.runner.availability.isOnline);
+        setOffers(Array.isArray(jobs.offers) ? jobs.offers : []);
+      } catch (cause) {
+        const message =
+          cause instanceof Error
+            ? cause.message
+            : "Offers could not be loaded.";
+
+        if (isRunnerSessionError(message)) {
+          returnToRunnerSignIn();
+          return;
+        }
+
+        showOverlay({
+          type: "error",
+          title: "Offers unavailable",
+          message,
+          primaryAction: {
+            label: "Try again",
+            onClick: () => {
+              void loadOffers(true);
+            },
+          },
+          secondaryAction: {
+            label: "Close",
+          },
+        });
+      } finally {
+        setLoading(false);
+        setRefreshing(false);
+      }
+    },
+    [showOverlay],
+  );
 
   useEffect(() => {
-    if (section === "offers") void loadOffers();
+    if (section === "offers") {
+      void loadOffers();
+    }
   }, [section, loadOffers]);
 
-  const handleAccept = useCallback(async (job: RunnerJob) => {
-    if (!isOnline) {
-      Alert.alert("You're offline", "Go online from your dashboard before accepting an errand.");
-      return;
-    }
-    if (busyJobId) return;
-
-    setBusyJobId(job.id);
-    setError("");
-    try {
-      await acceptRunnerJob(job.id);
-      Alert.alert("Errand accepted", `${job.publicCode} has been added to your active errands.`, [
-        { text: "Continue", onPress: () => router.back() },
-      ]);
-      await loadOffers(true);
-    } catch (cause) {
-      const message = cause instanceof Error ? cause.message : "This errand could not be accepted.";
-      if (isRunnerSessionError(message)) {
-        returnToRunnerSignIn();
+  const handleAccept = useCallback(
+    async (job: RunnerJob) => {
+      if (!isOnline) {
+        showOverlay({
+          type: "warning",
+          title: "You're offline",
+          message:
+            "Go online from your dashboard before accepting an errand.",
+          primaryAction: {
+            label: "Understood",
+          },
+        });
         return;
       }
-      setError(message);
-    } finally {
-      setBusyJobId("");
-    }
-  }, [busyJobId, isOnline, loadOffers]);
+
+      if (busyJobId) {
+        return;
+      }
+
+      setBusyJobId(job.id);
+
+      try {
+        await acceptRunnerJob(job.id);
+
+        showOverlay({
+          type: "success",
+          title: "Errand accepted",
+          message: `${job.publicCode} has been added to your active errands.`,
+          primaryAction: {
+            label: "Continue",
+            onClick: () => router.back(),
+          },
+        });
+
+        void loadOffers(true);
+      } catch (cause) {
+        const message =
+          cause instanceof Error
+            ? cause.message
+            : "This errand could not be accepted.";
+
+        if (isRunnerSessionError(message)) {
+          returnToRunnerSignIn();
+          return;
+        }
+
+        showOverlay({
+          type: "error",
+          title: "Could not accept errand",
+          message,
+          primaryAction: {
+            label: "Close",
+          },
+        });
+      } finally {
+        setBusyJobId("");
+      }
+    },
+    [busyJobId, isOnline, loadOffers, showOverlay],
+  );
 
   const handleSignOut = useCallback(() => {
-    if (signingOut) return;
-    Alert.alert("Sign out", "Are you sure you want to sign out of SaMi Runner?", [
-      { text: "Cancel", style: "cancel" },
-      {
-        text: "Sign out",
-        style: "destructive",
-        onPress: async () => {
+    if (signingOut) {
+      return;
+    }
+
+    showOverlay({
+      type: "confirmation",
+      title: "Sign out?",
+      message: "Are you sure you want to sign out of SaMi Runner?",
+      primaryAction: {
+        label: "Sign out",
+        tone: "danger",
+        onClick: () => {
           setSigningOut(true);
-          try {
-            await clearRunnerSession();
-          } finally {
-            router.dismissAll();
-            router.replace({ pathname: "/", params: { signedOut: "1" } });
-          }
+
+          void clearRunnerSession()
+            .catch(() => undefined)
+            .finally(() => {
+              setSigningOut(false);
+              router.dismissAll();
+              router.replace({
+                pathname: "/",
+                params: { signedOut: "1" },
+              });
+            });
         },
       },
-    ]);
-  }, [signingOut]);
+      secondaryAction: {
+        label: "Cancel",
+      },
+    });
+  }, [showOverlay, signingOut]);
 
   const emptyCopy = useMemo(() => {
     if (section === "rating") {
       return "Customer rating data is not currently exposed by the Runner API. This page is ready for the rating history when that service is connected.";
     }
+
     if (section === "acceptance") {
       return "Offer acceptance statistics are not currently exposed by the Runner API. This page is ready for the live acceptance rate and its history when that service is connected.";
     }
+
     if (section === "help") {
       return "Support details have not yet been connected to the Runner app. This space is reserved for SaMi support channels and help topics.";
     }
+
     return "Choose an option below.";
   }, [section]);
 
   return (
-    <View style={[styles.root, { backgroundColor: themeColors.paper }]}>
-      <StatusBar barStyle={mode === "dark" ? "light-content" : "dark-content"} />
-      <View style={[styles.header, { paddingTop: insets.top + 8, backgroundColor: themeColors.surface, borderBottomColor: themeColors.border }]}>
+    <View style={[styles.root, { backgroundColor: colors.paper }]}>
+      <View
+        style={[
+          styles.header,
+          {
+            paddingTop: insets.top + runnerSpacing.xs,
+            backgroundColor: colors.surface,
+            borderBottomColor: colors.divider,
+          },
+        ]}
+      >
         <Pressable
           accessibilityRole="button"
           accessibilityLabel="Go back to dashboard"
           onPress={() => router.back()}
-          style={styles.backButton}
+          style={[
+            styles.headerButton,
+            {
+              backgroundColor: colors.surfaceRaised,
+              borderColor: colors.border,
+            },
+          ]}
         >
-          <Ionicons name="arrow-back" size={21} color={COLORS.text} />
+          <Ionicons name="arrow-back" size={21} color={colors.icon} />
         </Pressable>
-        <Text style={[styles.headerTitle, { color: themeColors.text }]}>{pageTitle}</Text>
+
+        <Text style={[styles.headerTitle, { color: colors.text }]}>
+          {pageTitle}
+        </Text>
+
         {section === "offers" ? (
           <Pressable
             accessibilityRole="button"
             accessibilityLabel="Refresh offers"
             disabled={refreshing}
             onPress={() => void loadOffers(true)}
-            style={styles.backButton}
+            style={[
+              styles.headerButton,
+              {
+                backgroundColor: colors.surfaceRaised,
+                borderColor: colors.border,
+                opacity: refreshing ? 0.6 : 1,
+              },
+            ]}
           >
             {refreshing ? (
-              <ActivityIndicator color={COLORS.text} size="small" />
+              <ActivityIndicator color={colors.icon} size="small" />
             ) : (
-              <Ionicons name="refresh" size={19} color={COLORS.text} />
+              <Ionicons name="refresh" size={19} color={colors.icon} />
             )}
           </Pressable>
         ) : (
@@ -209,39 +334,107 @@ export default function RunnerDashboardSectionScreen() {
       <ScrollView
         contentContainerStyle={[
           styles.content,
-          { paddingBottom: insets.bottom + 28 },
+          { paddingBottom: insets.bottom + runnerSpacing.xl },
         ]}
         showsVerticalScrollIndicator={false}
       >
         {section === "offers" ? (
           <>
-            <View style={styles.introCard}>
-              <View style={styles.introIcon}>
-                <Ionicons name="gift-outline" size={25} color={COLORS.text} />
+            <View
+              style={[
+                styles.introCard,
+                {
+                  backgroundColor: colors.surface,
+                  borderColor: colors.border,
+                },
+              ]}
+            >
+              <View
+                style={[
+                  styles.introIcon,
+                  { backgroundColor: colors.blueSoft },
+                ]}
+              >
+                <Ionicons
+                  name="gift-outline"
+                  size={25}
+                  color={colors.blue}
+                />
               </View>
+
               <View style={styles.flexOne}>
-                <Text style={styles.introTitle}>SaMi offers and opportunities</Text>
-                <Text style={styles.introCopy}>
-                  View eligible errand offers. New promotions and rewards will appear here when available.
+                <Text style={[styles.introTitle, { color: colors.text }]}>
+                  SaMi offers and opportunities
+                </Text>
+
+                <Text
+                  style={[
+                    styles.introCopy,
+                    { color: colors.textMuted },
+                  ]}
+                >
+                  View eligible errand offers. New promotions and rewards
+                  will appear here when available.
                 </Text>
               </View>
             </View>
 
             <View style={styles.sectionHeaderRow}>
-              <Text style={styles.sectionHeading}>Available errands</Text>
-              <Text style={styles.sectionCount}>{offers.length}</Text>
+              <Text style={[styles.sectionHeading, { color: colors.text }]}>
+                Available errands
+              </Text>
+
+              <Text
+                style={[
+                  styles.sectionCount,
+                  { color: colors.textMuted },
+                ]}
+              >
+                {offers.length}
+              </Text>
             </View>
 
             {loading ? (
-              <View style={styles.loadingCard}>
-                <ActivityIndicator color={COLORS.blue} size="large" />
-                <Text style={styles.mutedCopy}>Loading eligible errandsâ€¦</Text>
+              <View
+                style={[
+                  styles.loadingCard,
+                  {
+                    backgroundColor: colors.surface,
+                    borderColor: colors.border,
+                  },
+                ]}
+              >
+                <ActivityIndicator color={colors.blue} size="large" />
+                <Text style={[styles.bodyText, { color: colors.textMuted }]}>
+                  Loading eligible errands…
+                </Text>
               </View>
             ) : offers.length === 0 ? (
-              <View style={styles.emptyCard}>
-                <Ionicons name="briefcase-outline" size={28} color={COLORS.muted} />
-                <Text style={styles.cardTitle}>No available errands</Text>
-                <Text style={styles.mutedCopy}>
+              <View
+                style={[
+                  styles.emptyCard,
+                  {
+                    backgroundColor: colors.surface,
+                    borderColor: colors.border,
+                  },
+                ]}
+              >
+                <Ionicons
+                  name="briefcase-outline"
+                  size={30}
+                  color={colors.iconMuted}
+                />
+
+                <Text style={[styles.cardTitle, { color: colors.text }]}>
+                  No available errands
+                </Text>
+
+                <Text
+                  style={[
+                    styles.bodyText,
+                    { color: colors.textMuted, textAlign: "center" },
+                  ]}
+                >
                   {isOnline
                     ? "There are no eligible errand offers for your account right now."
                     : "Go online from your dashboard to become available for eligible errands."}
@@ -249,228 +442,605 @@ export default function RunnerDashboardSectionScreen() {
               </View>
             ) : (
               offers.map((job) => (
-                <View key={job.id} style={styles.jobCard}>
+                <View
+                  key={job.id}
+                  style={[
+                    styles.jobCard,
+                    {
+                      backgroundColor: colors.surface,
+                      borderColor: colors.border,
+                    },
+                  ]}
+                >
                   <View style={styles.jobHeader}>
                     <View style={styles.flexOne}>
-                      <Text style={styles.jobCode}>{job.publicCode}</Text>
-                      <Text style={styles.jobTitle}>{job.title}</Text>
+                      <Text
+                        style={[
+                          styles.jobCode,
+                          { color: colors.textSubtle },
+                        ]}
+                      >
+                        {job.publicCode}
+                      </Text>
+
+                      <Text
+                        style={[styles.jobTitle, { color: colors.text }]}
+                      >
+                        {job.title}
+                      </Text>
                     </View>
-                    <Text style={styles.payout}>
-                      {formatMoney(job.runnerPayoutAmount, job.currency)}
+
+                    <Text
+                      style={[styles.payout, { color: colors.success }]}
+                    >
+                      {formatMoney(
+                        job.runnerPayoutAmount,
+                        job.currency,
+                      )}
                     </Text>
                   </View>
-                  <Text style={styles.jobDescription} numberOfLines={3}>
+
+                  <Text
+                    style={[
+                      styles.jobDescription,
+                      { color: colors.textMuted },
+                    ]}
+                    numberOfLines={3}
+                  >
                     {job.description}
                   </Text>
-                  <View style={styles.routeBlock}>
+
+                  <View
+                    style={[
+                      styles.routeBlock,
+                      {
+                        backgroundColor: colors.surfaceSunken,
+                        borderColor: colors.divider,
+                      },
+                    ]}
+                  >
                     <View style={styles.routeLine}>
-                      <Ionicons name="radio-button-on" size={15} color={COLORS.blue} />
+                      <Ionicons
+                        name="radio-button-on"
+                        size={17}
+                        color={colors.blue}
+                      />
+
                       <View style={styles.flexOne}>
-                        <Text style={styles.routeLabel}>PICKUP</Text>
-                        <Text style={styles.routeValue}>{job.pickupLabel}</Text>
+                        <Text
+                          style={[
+                            styles.routeLabel,
+                            { color: colors.textSubtle },
+                          ]}
+                        >
+                          PICKUP
+                        </Text>
+
+                        <Text
+                          style={[
+                            styles.routeValue,
+                            { color: colors.text },
+                          ]}
+                        >
+                          {job.pickupLabel}
+                        </Text>
                       </View>
                     </View>
+
+                    <View
+                      style={[
+                        styles.routeSeparator,
+                        { backgroundColor: colors.divider },
+                      ]}
+                    />
+
                     <View style={styles.routeLine}>
-                      <Ionicons name="location" size={15} color={COLORS.blue} />
+                      <Ionicons
+                        name="location"
+                        size={17}
+                        color={colors.blue}
+                      />
+
                       <View style={styles.flexOne}>
-                        <Text style={styles.routeLabel}>DELIVERY</Text>
-                        <Text style={styles.routeValue}>{job.destinationLabel}</Text>
+                        <Text
+                          style={[
+                            styles.routeLabel,
+                            { color: colors.textSubtle },
+                          ]}
+                        >
+                          DELIVERY
+                        </Text>
+
+                        <Text
+                          style={[
+                            styles.routeValue,
+                            { color: colors.text },
+                          ]}
+                        >
+                          {job.destinationLabel}
+                        </Text>
                       </View>
                     </View>
                   </View>
+
                   <Pressable
                     accessibilityRole="button"
                     disabled={Boolean(busyJobId)}
                     onPress={() => void handleAccept(job)}
                     style={({ pressed }) => [
                       styles.primaryButton,
-                      { opacity: busyJobId ? 0.55 : pressed ? 0.82 : 1 },
+                      {
+                        backgroundColor: colors.blueAction,
+                        opacity: busyJobId
+                          ? 0.55
+                          : pressed
+                            ? 0.82
+                            : 1,
+                      },
                     ]}
                   >
                     {busyJobId === job.id ? (
-                      <ActivityIndicator color={COLORS.white} size="small" />
+                      <ActivityIndicator
+                        color={colors.onBlue}
+                        size="small"
+                      />
                     ) : (
-                      <Ionicons name="checkmark-circle-outline" size={18} color={COLORS.white} />
+                      <Ionicons
+                        name="checkmark-circle-outline"
+                        size={20}
+                        color={colors.onBlue}
+                      />
                     )}
-                    <Text style={styles.primaryButtonText}>Accept errand</Text>
+
+                    <Text
+                      style={[
+                        styles.primaryButtonText,
+                        { color: colors.onBlue },
+                      ]}
+                    >
+                      Accept errand
+                    </Text>
                   </Pressable>
                 </View>
               ))
             )}
           </>
         ) : section === "performance" ? (
-          <PerformanceOverview colors={themeColors} />
+          <PerformanceOverview colors={colors} />
         ) : section === "earnings" ? (
-          <EarningsOverview colors={themeColors} />
+          <EarningsOverview colors={colors} />
         ) : section === "settings" ? (
-          <SettingsOverview colors={themeColors} mode={mode} setMode={setMode} />
+          <SettingsOverview
+            colors={colors}
+            mode={mode}
+            setMode={setMode}
+          />
         ) : section === "privacy" ? (
-          <PrivacyOverview colors={themeColors} />
+          <PrivacyOverview colors={colors} />
         ) : section === "menu" ? (
           <>
-            <View style={styles.introCard}>
-              <View style={styles.introIcon}>
-                <Ionicons name="grid-outline" size={24} color={COLORS.text} />
+            <View
+              style={[
+                styles.introCard,
+                {
+                  backgroundColor: colors.surface,
+                  borderColor: colors.border,
+                },
+              ]}
+            >
+              <View
+                style={[
+                  styles.introIcon,
+                  { backgroundColor: colors.blueSoft },
+                ]}
+              >
+                <Ionicons
+                  name="grid-outline"
+                  size={24}
+                  color={colors.blue}
+                />
               </View>
+
               <View style={styles.flexOne}>
-                <Text style={styles.introTitle}>Your Runner account</Text>
-                <Text style={styles.introCopy}>Account and app actions.</Text>
+                <Text style={[styles.introTitle, { color: colors.text }]}>
+                  Your Runner account
+                </Text>
+
+                <Text
+                  style={[
+                    styles.introCopy,
+                    { color: colors.textMuted },
+                  ]}
+                >
+                  Account and app actions.
+                </Text>
               </View>
             </View>
-            <Pressable
-              style={styles.menuRow}
+
+            <MenuRow
+              colors={colors}
+              icon="person-circle-outline"
+              label="Runner profile"
               onPress={() => router.push("/(app)/profile-setup" as never)}
-            >
-              <Ionicons name="person-circle-outline" size={22} color={COLORS.blue} />
-              <Text style={styles.menuRowText}>Runner profile</Text>
-              <Ionicons name="chevron-forward" size={18} color={COLORS.muted} />
-            </Pressable>
-            <Pressable style={styles.menuRow} onPress={() => router.push({ pathname: "/(app)/runner-section" as never, params: { section: "help" } } as never)}>
-              <Ionicons name="headset-outline" size={22} color={COLORS.blue} />
-              <Text style={styles.menuRowText}>Help & support</Text>
-              <Ionicons name="chevron-forward" size={18} color={COLORS.muted} />
-            </Pressable>            <Pressable style={styles.menuRow} onPress={() => router.push({ pathname: "/(app)/runner-section" as never, params: { section: "settings" } } as never)}>
-              <Ionicons name="settings-outline" size={22} color={COLORS.blue} />
-              <Text style={styles.menuRowText}>Settings</Text>
-              <Ionicons name="chevron-forward" size={18} color={COLORS.muted} />
-            </Pressable>
-            <Pressable style={styles.menuRow} onPress={() => router.push({ pathname: "/(app)/runner-section" as never, params: { section: "privacy" } } as never)}>
-              <Ionicons name="shield-checkmark-outline" size={22} color={COLORS.blue} />
-              <Text style={styles.menuRowText}>Privacy</Text>
-              <Ionicons name="chevron-forward" size={18} color={COLORS.muted} />
-            </Pressable>
-            <Pressable style={[styles.menuRow, styles.signOutRow]} onPress={handleSignOut} disabled={signingOut}>
-              {signingOut ? (
-                <ActivityIndicator color={COLORS.red} size="small" />
-              ) : (
-                <Ionicons name="log-out-outline" size={22} color={COLORS.red} />
-              )}
-              <Text style={[styles.menuRowText, { color: COLORS.red }]}>Sign out</Text>
-              <Ionicons name="chevron-forward" size={18} color={COLORS.red} />
-            </Pressable>
+            />
+
+            <MenuRow
+              colors={colors}
+              icon="headset-outline"
+              label="Help & support"
+              onPress={() =>
+                router.push({
+                  pathname: "/(app)/runner-section" as never,
+                  params: { section: "help" },
+                } as never)
+              }
+            />
+
+            <MenuRow
+              colors={colors}
+              icon="settings-outline"
+              label="Settings"
+              onPress={() =>
+                router.push({
+                  pathname: "/(app)/runner-section" as never,
+                  params: { section: "settings" },
+                } as never)
+              }
+            />
+
+            <MenuRow
+              colors={colors}
+              icon="shield-checkmark-outline"
+              label="Privacy"
+              onPress={() =>
+                router.push({
+                  pathname: "/(app)/runner-section" as never,
+                  params: { section: "privacy" },
+                } as never)
+              }
+            />
+
+            <MenuRow
+              colors={colors}
+              icon="log-out-outline"
+              label={signingOut ? "Signing out…" : "Sign out"}
+              danger
+              disabled={signingOut}
+              onPress={handleSignOut}
+            />
           </>
         ) : (
-          <View style={styles.emptyCard}>
+          <View
+            style={[
+              styles.emptyCard,
+              {
+                backgroundColor: colors.surface,
+                borderColor: colors.border,
+              },
+            ]}
+          >
             <Ionicons
-              name={section === "rating" ? "star-outline" : section === "acceptance" ? "trending-up-outline" : "headset-outline"}
-              size={30}
-              color={COLORS.blue}
+              name={
+                section === "rating"
+                  ? "star-outline"
+                  : section === "acceptance"
+                    ? "trending-up-outline"
+                    : "headset-outline"
+              }
+              size={32}
+              color={colors.blue}
             />
-            <Text style={styles.cardTitle}>{pageTitle}</Text>
-            <Text style={styles.mutedCopy}>{emptyCopy}</Text>
+
+            <Text style={[styles.cardTitle, { color: colors.text }]}>
+              {pageTitle}
+            </Text>
+
+            <Text
+              style={[
+                styles.bodyText,
+                { color: colors.textMuted, textAlign: "center" },
+              ]}
+            >
+              {emptyCopy}
+            </Text>
           </View>
         )}
-
-        {error ? (
-          <View style={styles.errorCard}>
-            <Ionicons name="alert-circle-outline" size={18} color={COLORS.red} />
-            <Text style={styles.errorText}>{error}</Text>
-          </View>
-        ) : null}
       </ScrollView>
     </View>
   );
 }
 
-type RunnerSectionColors = {
-  paper: string;
-  surface: string;
-  surfaceRaised: string;
-  border: string;
-  text: string;
-  textMuted: string;
-  blue: string;
-  blueSoft: string;
-  success: string;
-  successSoft: string;
-  red: string;
-  warning: string;
-  warningSoft: string;
-  amber: string;
-};
+function MenuRow({
+  colors,
+  icon,
+  label,
+  onPress,
+  danger = false,
+  disabled = false,
+}: {
+  colors: RunnerThemeColors;
+  icon: React.ComponentProps<typeof Ionicons>["name"];
+  label: string;
+  onPress: () => void;
+  danger?: boolean;
+  disabled?: boolean;
+}) {
+  const iconColor = danger ? colors.red : colors.blue;
+  const textColor = danger ? colors.red : colors.text;
 
-function PerformanceOverview({ colors }: { colors: RunnerSectionColors }) {
+  return (
+    <Pressable
+      accessibilityRole="button"
+      disabled={disabled}
+      onPress={onPress}
+      style={({ pressed }) => [
+        styles.menuRow,
+        {
+          borderBottomColor: colors.divider,
+          opacity: disabled ? 0.55 : pressed ? 0.7 : 1,
+        },
+      ]}
+    >
+      <Ionicons name={icon} size={23} color={iconColor} />
+
+      <Text style={[styles.menuRowText, { color: textColor }]}>
+        {label}
+      </Text>
+
+      <Ionicons
+        name="chevron-forward"
+        size={19}
+        color={danger ? colors.red : colors.iconMuted}
+      />
+    </Pressable>
+  );
+}
+
+function PerformanceOverview({
+  colors,
+}: {
+  colors: RunnerThemeColors;
+}) {
   const metrics = [
-    { icon: "star-outline" as const, label: "CUSTOMER RATING", value: "— / 5", color: "#C18B2F" },
-    { icon: "trending-up-outline" as const, label: "ACCEPTANCE RATE", value: "—%", color: colors.blue },
-    { icon: "close-circle-outline" as const, label: "CANCELLATION RATE", value: "—%", color: colors.red },
+    {
+      icon: "star-outline" as const,
+      label: "Customer rating",
+      value: "— / 5",
+      color: colors.amber,
+    },
+    {
+      icon: "trending-up-outline" as const,
+      label: "Acceptance rate",
+      value: "—%",
+      color: colors.blue,
+    },
+    {
+      icon: "close-circle-outline" as const,
+      label: "Cancellation rate",
+      value: "—%",
+      color: colors.red,
+    },
   ];
 
   return (
-    <View style={{ gap: 14 }}>
-      <View style={{ backgroundColor: colors.surface, borderColor: colors.border, borderWidth: 1, borderRadius: 20, padding: 16, gap: 14 }}>
-        <View style={{ flexDirection: "row", alignItems: "center", gap: 11 }}>
-          <View style={{ width: 44, height: 44, borderRadius: 14, backgroundColor: colors.warningSoft, alignItems: "center", justifyContent: "center" }}>
-            <Ionicons name="trophy-outline" size={23} color={colors.warning} />
+    <View style={styles.overviewStack}>
+      <View
+        style={[
+          styles.overviewCard,
+          {
+            backgroundColor: colors.surface,
+            borderColor: colors.border,
+          },
+        ]}
+      >
+        <View style={styles.overviewHeadingRow}>
+          <View
+            style={[
+              styles.overviewIcon,
+              { backgroundColor: colors.warningSoft },
+            ]}
+          >
+            <Ionicons
+              name="trophy-outline"
+              size={24}
+              color={colors.warning}
+            />
           </View>
-          <View style={{ flex: 1, gap: 3 }}>
-            <Text style={{ color: colors.textMuted, fontSize: 9, fontWeight: "900", letterSpacing: 1 }}>SAMI PERFORMANCE TIERS</Text>
-            <Text style={{ color: colors.text, fontSize: 17, fontWeight: "900" }}>Silver tier</Text>
+
+          <View style={styles.flexOne}>
+            <Text
+              style={[
+                styles.eyebrow,
+                { color: colors.textMuted },
+              ]}
+            >
+              SAMI PERFORMANCE TIERS
+            </Text>
+
+            <Text style={[styles.overviewTitle, { color: colors.text }]}>
+              Silver tier
+            </Text>
           </View>
         </View>
-        <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center" }}>
-          <Text style={{ color: colors.textMuted, fontSize: 11, fontWeight: "700" }}>Points progress</Text>
-          <Text style={{ color: colors.text, fontSize: 13, fontWeight: "900" }}>200 / 1,000 PTS</Text>
+
+        <View style={styles.pointsRow}>
+          <Text style={[styles.secondaryText, { color: colors.textMuted }]}>
+            Points progress
+          </Text>
+
+          <Text style={[styles.pointsValue, { color: colors.text }]}>
+            200 / 1,000 PTS
+          </Text>
         </View>
-        <View style={{ height: 8, borderRadius: 6, backgroundColor: colors.border, overflow: "hidden" }}>
-          <View style={{ width: "20%", height: "100%", borderRadius: 6, backgroundColor: colors.amber }} />
+
+        <View
+          style={[
+            styles.progressTrack,
+            { backgroundColor: colors.surfaceSunken },
+          ]}
+        >
+          <View
+            style={[
+              styles.progressFill,
+              { backgroundColor: colors.amber },
+            ]}
+          />
         </View>
-        <View style={{ flexDirection: "row", justifyContent: "space-between" }}>
-          <Text style={{ color: colors.textMuted, fontSize: 10, fontWeight: "700" }}>800 points to Gold</Text>
-          <Text style={{ color: colors.textMuted, fontSize: 10, fontWeight: "700" }}>20% complete</Text>
+
+        <View style={styles.pointsRow}>
+          <Text style={[styles.secondaryText, { color: colors.textMuted }]}>
+            800 points to Gold
+          </Text>
+
+          <Text style={[styles.secondaryText, { color: colors.textMuted }]}>
+            20% complete
+          </Text>
         </View>
-        <View style={{ flexDirection: "row", justifyContent: "space-between", gap: 4 }}>
-          {(["Silver", "Gold", "Platinum", "Diamond"] as const).map((tier) => (
-            <Text key={tier} style={{ color: colors.textMuted, fontSize: 9, fontWeight: "800" }}>{tier}</Text>
-          ))}
+
+        <View
+          style={[
+            styles.tierLabels,
+            { borderTopColor: colors.divider },
+          ]}
+        >
+          {(["Silver", "Gold", "Platinum", "Diamond"] as const).map(
+            (tier) => (
+              <Text
+                key={tier}
+                style={[
+                  styles.tierLabel,
+                  { color: colors.textMuted },
+                ]}
+              >
+                {tier}
+              </Text>
+            ),
+          )}
         </View>
-        <Text style={{ color: colors.textMuted, fontSize: 11, lineHeight: 17 }}>
-          This tier layout is ready for live points and progression from the SaMi performance service.
+
+        <Text style={[styles.secondaryText, { color: colors.textMuted }]}>
+          This tier layout is ready for live points and progression from the
+          SaMi performance service.
         </Text>
       </View>
 
-      <View style={{ gap: 9 }}>
-        <Text style={{ color: colors.text, fontSize: 14, fontWeight: "900" }}>Performance overview</Text>
-        <View style={{ flexDirection: "row", gap: 8 }}>
-          {metrics.map((metric) => (
-            <View key={metric.label} style={{ flex: 1, minHeight: 111, backgroundColor: colors.surface, borderColor: colors.border, borderWidth: 1, borderRadius: 15, padding: 10, justifyContent: "center", alignItems: "center", gap: 7 }}>
-              <Ionicons name={metric.icon} size={19} color={metric.color} />
-              <Text style={{ color: colors.text, fontSize: 18, fontWeight: "900" }}>{metric.value}</Text>
-              <Text style={{ color: colors.textMuted, fontSize: 8, fontWeight: "900", textAlign: "center" }}>{metric.label}</Text>
+      <View style={styles.subsection}>
+        <Text style={[styles.subsectionTitle, { color: colors.text }]}>
+          Performance overview
+        </Text>
+
+        <View
+          style={[
+            styles.metricList,
+            {
+              backgroundColor: colors.surface,
+              borderColor: colors.border,
+            },
+          ]}
+        >
+          {metrics.map((metric, index) => (
+            <View key={metric.label}>
+              {index > 0 ? (
+                <View
+                  style={[
+                    styles.separator,
+                    { backgroundColor: colors.divider },
+                  ]}
+                />
+              ) : null}
+
+              <View style={styles.metricRow}>
+                <Ionicons
+                  name={metric.icon}
+                  size={22}
+                  color={metric.color}
+                />
+
+                <Text
+                  style={[
+                    styles.metricLabel,
+                    { color: colors.textMuted },
+                  ]}
+                >
+                  {metric.label}
+                </Text>
+
+                <Text
+                  style={[
+                    styles.metricValue,
+                    { color: colors.text },
+                  ]}
+                >
+                  {metric.value}
+                </Text>
+              </View>
             </View>
           ))}
         </View>
       </View>
 
-      <View style={{ backgroundColor: colors.surface, borderColor: colors.border, borderWidth: 1, borderRadius: 16, padding: 14, flexDirection: "row", alignItems: "flex-start", gap: 9 }}>
-        <Ionicons name="information-circle-outline" size={19} color={colors.blue} />
-        <Text style={{ flex: 1, color: colors.textMuted, fontSize: 11, lineHeight: 17 }}>
-          Live customer ratings, acceptance rate, cancellations and tier points are not currently returned by the Runner API. These values are intentionally shown as unavailable rather than estimated.
-        </Text>
-      </View>
+      <InformationRow
+        colors={colors}
+        icon="information-circle-outline"
+        message="Live customer ratings, acceptance rate, cancellations and tier points are not currently returned by the Runner API. These values are intentionally shown as unavailable rather than estimated."
+      />
     </View>
   );
 }
 
-function EarningsOverview({ colors }: { colors: RunnerSectionColors }) {
+function EarningsOverview({
+  colors,
+}: {
+  colors: RunnerThemeColors;
+}) {
   return (
-    <View style={{ gap: 13 }}>
-      <View style={{ backgroundColor: colors.surface, borderColor: colors.border, borderWidth: 1, borderRadius: 20, padding: 18, gap: 8 }}>
-        <View style={{ width: 46, height: 46, borderRadius: 15, backgroundColor: colors.blueSoft, alignItems: "center", justifyContent: "center" }}>
-          <Ionicons name="wallet-outline" size={23} color={colors.blue} />
+    <View style={styles.overviewStack}>
+      <View
+        style={[
+          styles.overviewCard,
+          {
+            backgroundColor: colors.surface,
+            borderColor: colors.border,
+          },
+        ]}
+      >
+        <View
+          style={[
+            styles.overviewIcon,
+            { backgroundColor: colors.blueSoft },
+          ]}
+        >
+          <Ionicons
+            name="wallet-outline"
+            size={24}
+            color={colors.blue}
+          />
         </View>
-        <Text style={{ color: colors.textMuted, fontSize: 9, fontWeight: "900", letterSpacing: 1 }}>EARNINGS OVERVIEW</Text>
-        <Text style={{ color: colors.text, fontSize: 28, fontWeight: "900" }}>—</Text>
-        <Text style={{ color: colors.textMuted, fontSize: 12, lineHeight: 18 }}>
-          Your earnings total and payout history will appear here when the Runner earnings service is connected.
+
+        <Text
+          style={[
+            styles.eyebrow,
+            { color: colors.textMuted },
+          ]}
+        >
+          EARNINGS OVERVIEW
+        </Text>
+
+        <Text style={[styles.earningsValue, { color: colors.text }]}>
+          —
+        </Text>
+
+        <Text style={[styles.bodyText, { color: colors.textMuted }]}>
+          Your earnings total and payout history will appear here when the
+          Runner earnings service is connected.
         </Text>
       </View>
-      <View style={{ backgroundColor: colors.surface, borderColor: colors.border, borderWidth: 1, borderRadius: 16, padding: 14, flexDirection: "row", alignItems: "flex-start", gap: 9 }}>
-        <Ionicons name="information-circle-outline" size={19} color={colors.blue} />
-        <Text style={{ flex: 1, color: colors.textMuted, fontSize: 11, lineHeight: 17 }}>
-          No earnings amount or payout history is currently provided by the Runner API. No estimated totals are displayed.
-        </Text>
-      </View>
+
+      <InformationRow
+        colors={colors}
+        icon="information-circle-outline"
+        message="No earnings amount or payout history is currently provided by the Runner API. No estimated totals are displayed."
+      />
     </View>
   );
 }
@@ -480,138 +1050,637 @@ function SettingsOverview({
   mode,
   setMode,
 }: {
-  colors: RunnerSectionColors;
-  mode: "light" | "dark";
-  setMode: (mode: "light" | "dark") => Promise<void>;
+  colors: RunnerThemeColors;
+  mode: RunnerThemeMode;
+  setMode: (mode: RunnerThemeMode) => Promise<void>;
 }) {
   return (
-    <View style={{ gap: 13 }}>
-      <View style={{ backgroundColor: colors.surface, borderColor: colors.border, borderWidth: 1, borderRadius: 18, padding: 15, gap: 12 }}>
-        <Text style={{ color: colors.text, fontSize: 15, fontWeight: "900" }}>Appearance</Text>
-        <Text style={{ color: colors.textMuted, fontSize: 11, lineHeight: 16 }}>Choose how SaMi Runner looks. Your preference is saved on this device.</Text>
-        <View style={{ flexDirection: "row", gap: 9 }}>
+    <View style={styles.overviewStack}>
+      <View
+        style={[
+          styles.overviewCard,
+          {
+            backgroundColor: colors.surface,
+            borderColor: colors.border,
+          },
+        ]}
+      >
+        <Text style={[styles.subsectionTitle, { color: colors.text }]}>
+          Appearance
+        </Text>
+
+        <Text style={[styles.bodyText, { color: colors.textMuted }]}>
+          Choose how SaMi Runner looks. Your preference is saved on this
+          device.
+        </Text>
+
+        <View style={styles.appearanceOptions}>
           {(["light", "dark"] as const).map((choice) => {
             const selected = mode === choice;
+
             return (
               <Pressable
                 key={choice}
                 accessibilityRole="button"
                 accessibilityState={{ selected }}
                 onPress={() => void setMode(choice)}
-                style={{ flex: 1, minHeight: 48, borderRadius: 13, borderWidth: 1, borderColor: selected ? colors.blue : colors.border, backgroundColor: selected ? colors.blueSoft : colors.surfaceRaised, alignItems: "center", justifyContent: "center", flexDirection: "row", gap: 7 }}
+                style={({ pressed }) => [
+                  styles.appearanceOption,
+                  {
+                    backgroundColor: selected
+                      ? colors.blueSoft
+                      : colors.surfaceRaised,
+                    borderColor: selected
+                      ? colors.blue
+                      : colors.border,
+                    opacity: pressed ? 0.75 : 1,
+                  },
+                ]}
               >
-                <Ionicons name={choice === "light" ? "sunny-outline" : "moon-outline"} size={17} color={selected ? colors.blue : colors.textMuted} />
-                <Text style={{ color: selected ? colors.blue : colors.text, fontSize: 12, fontWeight: "900", textTransform: "capitalize" }}>{choice}</Text>
-                {selected ? <Ionicons name="checkmark-circle" size={15} color={colors.blue} /> : null}
+                <Ionicons
+                  name={
+                    choice === "light"
+                      ? "sunny-outline"
+                      : "moon-outline"
+                  }
+                  size={19}
+                  color={selected ? colors.blue : colors.iconMuted}
+                />
+
+                <Text
+                  style={[
+                    styles.appearanceLabel,
+                    {
+                      color: selected ? colors.blue : colors.text,
+                    },
+                  ]}
+                >
+                  {choice === "light" ? "Light" : "Dark"}
+                </Text>
+
+                {selected ? (
+                  <Ionicons
+                    name="checkmark-circle"
+                    size={18}
+                    color={colors.blue}
+                  />
+                ) : null}
               </Pressable>
             );
           })}
         </View>
       </View>
-      <Pressable onPress={() => router.push("/(app)/profile-setup" as never)} accessibilityRole="button" style={{ backgroundColor: colors.surface, borderColor: colors.border, borderWidth: 1, borderRadius: 16, padding: 14, flexDirection: "row", alignItems: "center", gap: 10 }}>
-        <Ionicons name="person-circle-outline" size={22} color={colors.blue} />
-        <View style={{ flex: 1 }}>
-          <Text style={{ color: colors.text, fontSize: 13, fontWeight: "900" }}>Runner profile</Text>
-          <Text style={{ color: colors.textMuted, fontSize: 10, marginTop: 2 }}>Personal details and documents</Text>
+
+      <Pressable
+        onPress={() => router.push("/(app)/profile-setup" as never)}
+        accessibilityRole="button"
+        style={({ pressed }) => [
+          styles.profileLink,
+          {
+            backgroundColor: colors.surface,
+            borderColor: colors.border,
+            opacity: pressed ? 0.75 : 1,
+          },
+        ]}
+      >
+        <Ionicons
+          name="person-circle-outline"
+          size={23}
+          color={colors.blue}
+        />
+
+        <View style={styles.flexOne}>
+          <Text style={[styles.profileLinkTitle, { color: colors.text }]}>
+            Runner profile
+          </Text>
+
+          <Text
+            style={[
+              styles.secondaryText,
+              { color: colors.textMuted },
+            ]}
+          >
+            Personal details and documents
+          </Text>
         </View>
-        <Ionicons name="chevron-forward" size={17} color={colors.textMuted} />
+
+        <Ionicons
+          name="chevron-forward"
+          size={19}
+          color={colors.iconMuted}
+        />
       </Pressable>
     </View>
   );
 }
 
-function PrivacyOverview({ colors }: { colors: RunnerSectionColors }) {
+function PrivacyOverview({
+  colors,
+}: {
+  colors: RunnerThemeColors;
+}) {
   return (
-    <View style={{ gap: 13 }}>
-      <View style={{ backgroundColor: colors.surface, borderColor: colors.border, borderWidth: 1, borderRadius: 18, padding: 16, gap: 11 }}>
-        <View style={{ width: 45, height: 45, borderRadius: 14, backgroundColor: colors.blueSoft, alignItems: "center", justifyContent: "center" }}>
-          <Ionicons name="location-outline" size={23} color={colors.blue} />
+    <View style={styles.overviewStack}>
+      <View
+        style={[
+          styles.overviewCard,
+          {
+            backgroundColor: colors.surface,
+            borderColor: colors.border,
+          },
+        ]}
+      >
+        <View
+          style={[
+            styles.overviewIcon,
+            { backgroundColor: colors.blueSoft },
+          ]}
+        >
+          <Ionicons
+            name="location-outline"
+            size={24}
+            color={colors.blue}
+          />
         </View>
-        <Text style={{ color: colors.text, fontSize: 16, fontWeight: "900" }}>Location sharing</Text>
-        <Text style={{ color: colors.textMuted, fontSize: 12, lineHeight: 19 }}>
-          SaMi Runner uses your location while you are online or completing an accepted errand. This supports dispatch and live errand progress for customers.
+
+        <Text style={[styles.overviewTitle, { color: colors.text }]}>
+          Location sharing
         </Text>
-        <View style={{ height: 1, backgroundColor: colors.border }} />
-        <Text style={{ color: colors.success, fontSize: 12, fontWeight: "900" }}>Tracking stops when you go offline or finish your errand.</Text>
-      </View>
-      <View style={{ backgroundColor: colors.surface, borderColor: colors.border, borderWidth: 1, borderRadius: 16, padding: 14, flexDirection: "row", alignItems: "flex-start", gap: 9 }}>
-        <Ionicons name="shield-checkmark-outline" size={19} color={colors.success} />
-        <Text style={{ flex: 1, color: colors.textMuted, fontSize: 11, lineHeight: 17 }}>
-          You can review and change location permissions in your Android app settings. SaMi Runner's availability controls determine when work-related location tracking is active.
+
+        <Text style={[styles.bodyText, { color: colors.textMuted }]}>
+          SaMi Runner uses your location while you are online or completing
+          an accepted errand. This supports dispatch and live errand progress
+          for customers.
         </Text>
+
+        <View
+          style={[
+            styles.separator,
+            { backgroundColor: colors.divider },
+          ]}
+        />
+
+        <View style={styles.privacyStatus}>
+          <Ionicons
+            name="checkmark-circle-outline"
+            size={19}
+            color={colors.success}
+          />
+
+          <Text
+            style={[
+              styles.privacyStatusText,
+              { color: colors.success },
+            ]}
+          >
+            Tracking stops when you go offline or finish your errand.
+          </Text>
+        </View>
       </View>
+
+      <InformationRow
+        colors={colors}
+        icon="shield-checkmark-outline"
+        message="You can review and change location permissions in your Android app settings. SaMi Runner's availability controls determine when work-related location tracking is active."
+        positive
+      />
     </View>
   );
 }
+
+function InformationRow({
+  colors,
+  icon,
+  message,
+  positive = false,
+}: {
+  colors: RunnerThemeColors;
+  icon: React.ComponentProps<typeof Ionicons>["name"];
+  message: string;
+  positive?: boolean;
+}) {
+  return (
+    <View
+      style={[
+        styles.informationRow,
+        {
+          borderBottomColor: colors.divider,
+        },
+      ]}
+    >
+      <Ionicons
+        name={icon}
+        size={21}
+        color={positive ? colors.success : colors.blue}
+      />
+
+      <Text style={[styles.secondaryText, { color: colors.textMuted }]}>
+        {message}
+      </Text>
+    </View>
+  );
+}
+
 const styles = StyleSheet.create({
-  root: { flex: 1, backgroundColor: COLORS.navy },
+  root: {
+    flex: 1,
+  },
+
   header: {
-    minHeight: 58,
-    paddingHorizontal: 15,
-    paddingBottom: 10,
+    minHeight: 60,
+    paddingHorizontal: runnerSpacing.md,
+    paddingBottom: runnerSpacing.sm,
     flexDirection: "row",
     alignItems: "center",
-    gap: 12,
-    borderBottomWidth: 1,
-    borderBottomColor: "#18345C",
-    backgroundColor: COLORS.navy,
+    gap: runnerSpacing.sm,
+    borderBottomWidth: StyleSheet.hairlineWidth,
   },
-  backButton: {
-    width: 39,
-    height: 39,
-    borderRadius: 13,
+
+  headerButton: {
+    width: runnerTouchTargets.minimum,
+    height: runnerTouchTargets.minimum,
+    borderRadius: runnerRadii.md,
     borderWidth: 1,
-    borderColor: COLORS.border,
-    backgroundColor: COLORS.raised,
     alignItems: "center",
     justifyContent: "center",
   },
-  headerTitle: { flex: 1, color: COLORS.text, fontSize: 18, fontWeight: "900" },
-  headerSpacer: { width: 39 },
-  content: { paddingHorizontal: 16, paddingTop: 17, gap: 13 },
+
+  headerTitle: {
+    flex: 1,
+    fontSize: runnerTypography.subtitle,
+    fontWeight: "800",
+  },
+
+  headerSpacer: {
+    width: runnerTouchTargets.minimum,
+  },
+
+  content: {
+    paddingHorizontal: runnerSpacing.md,
+    paddingTop: runnerSpacing.lg,
+    gap: runnerSpacing.lg,
+  },
+
   introCard: {
     borderWidth: 1,
-    borderColor: COLORS.border,
-    borderRadius: 18,
-    backgroundColor: COLORS.panel,
-    padding: 14,
+    borderRadius: runnerRadii.lg,
+    padding: runnerSpacing.md,
     flexDirection: "row",
     alignItems: "center",
-    gap: 12,
+    gap: runnerSpacing.md,
   },
+
   introIcon: {
-    width: 46,
-    height: 46,
-    borderRadius: 15,
-    backgroundColor: COLORS.blueSoft,
+    width: 50,
+    height: 50,
+    borderRadius: runnerRadii.md,
     alignItems: "center",
     justifyContent: "center",
   },
-  flexOne: { flex: 1 },
-  introTitle: { color: COLORS.text, fontSize: 14, fontWeight: "900" },
-  introCopy: { color: COLORS.muted, fontSize: 11, lineHeight: 16, marginTop: 3 },
-  sectionHeaderRow: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", marginTop: 5 },
-  sectionHeading: { color: COLORS.text, fontSize: 15, fontWeight: "900" },
-  sectionCount: { color: COLORS.muted, fontSize: 12, fontWeight: "800" },
-  loadingCard: { minHeight: 130, borderWidth: 1, borderColor: COLORS.border, borderRadius: 18, backgroundColor: COLORS.panel, alignItems: "center", justifyContent: "center", gap: 10 },
-  emptyCard: { minHeight: 190, borderWidth: 1, borderColor: COLORS.border, borderRadius: 18, backgroundColor: COLORS.panel, alignItems: "center", justifyContent: "center", padding: 20, gap: 9 },
-  cardTitle: { color: COLORS.text, fontSize: 16, fontWeight: "900", textAlign: "center" },
-  mutedCopy: { color: COLORS.muted, fontSize: 12, lineHeight: 18, textAlign: "center" },
-  jobCard: { borderWidth: 1, borderColor: COLORS.border, borderRadius: 18, backgroundColor: COLORS.panel, padding: 14, gap: 11 },
-  jobHeader: { flexDirection: "row", alignItems: "flex-start", gap: 10 },
-  jobCode: { color: COLORS.muted, fontSize: 9, fontWeight: "900", letterSpacing: 0.8 },
-  jobTitle: { color: COLORS.text, fontSize: 15, fontWeight: "900", marginTop: 3 },
-  payout: { color: COLORS.text, fontSize: 11, fontWeight: "900", textAlign: "right" },
-  jobDescription: { color: COLORS.muted, fontSize: 11, lineHeight: 17 },
-  routeBlock: { borderWidth: 1, borderColor: COLORS.border, borderRadius: 13, backgroundColor: "#071832", padding: 10, gap: 9 },
-  routeLine: { flexDirection: "row", alignItems: "flex-start", gap: 8 },
-  routeLabel: { color: COLORS.quiet, fontSize: 8, fontWeight: "900", letterSpacing: 0.8 },
-  routeValue: { color: COLORS.text, fontSize: 11, fontWeight: "700", marginTop: 2 },
-  primaryButton: { minHeight: 46, borderRadius: 13, backgroundColor: COLORS.blue, alignItems: "center", justifyContent: "center", flexDirection: "row", gap: 8 },
-  primaryButtonText: { color: COLORS.white, fontSize: 12, fontWeight: "900" },
-  menuRow: { minHeight: 57, borderWidth: 1, borderColor: COLORS.border, borderRadius: 15, backgroundColor: COLORS.panel, paddingHorizontal: 13, flexDirection: "row", alignItems: "center", gap: 11 },
-  menuRowText: { color: COLORS.text, fontSize: 13, fontWeight: "800", flex: 1 },
-  signOutRow: { borderColor: "#754253", marginTop: 12 },
-  errorCard: { borderWidth: 1, borderColor: "#754253", borderRadius: 13, backgroundColor: "#321A22", padding: 11, flexDirection: "row", gap: 8, alignItems: "center" },
-  errorText: { color: COLORS.red, fontSize: 11, flex: 1 },
+
+  flexOne: {
+    flex: 1,
+  },
+
+  introTitle: {
+    fontSize: runnerTypography.body,
+    fontWeight: "800",
+  },
+
+  introCopy: {
+    fontSize: runnerTypography.bodySmall,
+    lineHeight: 22,
+    marginTop: runnerSpacing.xxs,
+  },
+
+  sectionHeaderRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    marginTop: runnerSpacing.xs,
+  },
+
+  sectionHeading: {
+    fontSize: runnerTypography.subtitle,
+    fontWeight: "800",
+  },
+
+  sectionCount: {
+    fontSize: runnerTypography.body,
+    fontWeight: "700",
+  },
+
+  loadingCard: {
+    minHeight: 160,
+    borderWidth: 1,
+    borderRadius: runnerRadii.lg,
+    alignItems: "center",
+    justifyContent: "center",
+    gap: runnerSpacing.md,
+    padding: runnerSpacing.lg,
+  },
+
+  emptyCard: {
+    minHeight: 210,
+    borderWidth: 1,
+    borderRadius: runnerRadii.lg,
+    alignItems: "center",
+    justifyContent: "center",
+    padding: runnerSpacing.xl,
+    gap: runnerSpacing.md,
+  },
+
+  cardTitle: {
+    fontSize: runnerTypography.subtitle,
+    fontWeight: "800",
+    textAlign: "center",
+  },
+
+  bodyText: {
+    fontSize: runnerTypography.bodySmall,
+    lineHeight: 23,
+  },
+
+  jobCard: {
+    borderWidth: 1,
+    borderRadius: runnerRadii.lg,
+    padding: runnerSpacing.md,
+    gap: runnerSpacing.md,
+  },
+
+  jobHeader: {
+    flexDirection: "row",
+    alignItems: "flex-start",
+    gap: runnerSpacing.md,
+  },
+
+  jobCode: {
+    fontSize: runnerTypography.caption,
+    fontWeight: "700",
+    letterSpacing: 0.4,
+  },
+
+  jobTitle: {
+    fontSize: runnerTypography.body,
+    fontWeight: "800",
+    lineHeight: 23,
+    marginTop: runnerSpacing.xxs,
+  },
+
+  payout: {
+    fontSize: runnerTypography.bodySmall,
+    fontWeight: "800",
+    textAlign: "right",
+  },
+
+  jobDescription: {
+    fontSize: runnerTypography.bodySmall,
+    lineHeight: 22,
+  },
+
+  routeBlock: {
+    borderWidth: 1,
+    borderRadius: runnerRadii.md,
+    padding: runnerSpacing.md,
+    gap: runnerSpacing.sm,
+  },
+
+  routeLine: {
+    flexDirection: "row",
+    alignItems: "flex-start",
+    gap: runnerSpacing.sm,
+  },
+
+  routeSeparator: {
+    height: StyleSheet.hairlineWidth,
+    marginLeft: runnerSpacing.xl,
+  },
+
+  routeLabel: {
+    fontSize: runnerTypography.caption,
+    fontWeight: "800",
+    letterSpacing: 0.5,
+  },
+
+  routeValue: {
+    fontSize: runnerTypography.bodySmall,
+    fontWeight: "600",
+    lineHeight: 22,
+    marginTop: runnerSpacing.xxs,
+  },
+
+  primaryButton: {
+    minHeight: runnerTouchTargets.primary,
+    borderRadius: runnerRadii.md,
+    alignItems: "center",
+    justifyContent: "center",
+    flexDirection: "row",
+    gap: runnerSpacing.sm,
+    paddingHorizontal: runnerSpacing.lg,
+  },
+
+  primaryButtonText: {
+    fontSize: runnerTypography.body,
+    fontWeight: "800",
+  },
+
+  menuRow: {
+    minHeight: runnerTouchTargets.comfortable,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    paddingVertical: runnerSpacing.md,
+    paddingHorizontal: runnerSpacing.xs,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: runnerSpacing.md,
+  },
+
+  menuRowText: {
+    flex: 1,
+    fontSize: runnerTypography.body,
+    fontWeight: "700",
+  },
+
+  overviewStack: {
+    gap: runnerSpacing.lg,
+  },
+
+  overviewCard: {
+    borderWidth: 1,
+    borderRadius: runnerRadii.lg,
+    padding: runnerSpacing.lg,
+    gap: runnerSpacing.md,
+  },
+
+  overviewHeadingRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: runnerSpacing.md,
+  },
+
+  overviewIcon: {
+    width: 50,
+    height: 50,
+    borderRadius: runnerRadii.md,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+
+  eyebrow: {
+    fontSize: runnerTypography.caption,
+    fontWeight: "800",
+    letterSpacing: 0.7,
+  },
+
+  overviewTitle: {
+    fontSize: runnerTypography.title,
+    fontWeight: "800",
+  },
+
+  pointsRow: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    flexWrap: "wrap",
+    gap: runnerSpacing.sm,
+  },
+
+  secondaryText: {
+    flex: 1,
+    fontSize: runnerTypography.bodySmall,
+    lineHeight: 22,
+  },
+
+  pointsValue: {
+    fontSize: runnerTypography.body,
+    fontWeight: "800",
+  },
+
+  progressTrack: {
+    height: 10,
+    borderRadius: runnerRadii.pill,
+    overflow: "hidden",
+  },
+
+  progressFill: {
+    width: "20%",
+    height: "100%",
+    borderRadius: runnerRadii.pill,
+  },
+
+  tierLabels: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    gap: runnerSpacing.xs,
+    borderTopWidth: StyleSheet.hairlineWidth,
+    paddingTop: runnerSpacing.md,
+  },
+
+  tierLabel: {
+    fontSize: runnerTypography.caption,
+    fontWeight: "700",
+  },
+
+  subsection: {
+    gap: runnerSpacing.sm,
+  },
+
+  subsectionTitle: {
+    fontSize: runnerTypography.subtitle,
+    fontWeight: "800",
+  },
+
+  metricList: {
+    borderWidth: 1,
+    borderRadius: runnerRadii.lg,
+    paddingHorizontal: runnerSpacing.md,
+  },
+
+  metricRow: {
+    minHeight: runnerTouchTargets.comfortable,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: runnerSpacing.md,
+    paddingVertical: runnerSpacing.sm,
+  },
+
+  metricLabel: {
+    flex: 1,
+    fontSize: runnerTypography.body,
+    fontWeight: "600",
+  },
+
+  metricValue: {
+    fontSize: runnerTypography.body,
+    fontWeight: "800",
+  },
+
+  separator: {
+    height: StyleSheet.hairlineWidth,
+  },
+
+  informationRow: {
+    flexDirection: "row",
+    alignItems: "flex-start",
+    gap: runnerSpacing.sm,
+    paddingVertical: runnerSpacing.md,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+  },
+
+  earningsValue: {
+    fontSize: runnerTypography.display,
+    fontWeight: "800",
+  },
+
+  appearanceOptions: {
+    flexDirection: "row",
+    gap: runnerSpacing.md,
+    marginTop: runnerSpacing.xs,
+  },
+
+  appearanceOption: {
+    flex: 1,
+    minHeight: runnerTouchTargets.comfortable,
+    borderRadius: runnerRadii.md,
+    borderWidth: 1,
+    paddingHorizontal: runnerSpacing.md,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: runnerSpacing.xs,
+  },
+
+  appearanceLabel: {
+    fontSize: runnerTypography.body,
+    fontWeight: "700",
+    textTransform: "capitalize",
+  },
+
+  profileLink: {
+    minHeight: runnerTouchTargets.comfortable,
+    borderWidth: 1,
+    borderRadius: runnerRadii.md,
+    padding: runnerSpacing.md,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: runnerSpacing.md,
+  },
+
+  profileLinkTitle: {
+    fontSize: runnerTypography.body,
+    fontWeight: "800",
+    marginBottom: runnerSpacing.xxs,
+  },
+
+  privacyStatus: {
+    flexDirection: "row",
+    alignItems: "flex-start",
+    gap: runnerSpacing.sm,
+  },
+
+  privacyStatusText: {
+    flex: 1,
+    fontSize: runnerTypography.bodySmall,
+    lineHeight: 22,
+    fontWeight: "700",
+  },
 });

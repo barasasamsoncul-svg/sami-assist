@@ -1,6 +1,6 @@
 import type { TextInputInstance } from "react-native";
 import { useEffect, useRef, useState } from "react";
-import { StatusBar } from "expo-status-bar";
+
 import {
   ActivityIndicator,
   BackHandler,
@@ -34,7 +34,13 @@ import {
   type RunnerOtpFlowResult,
 } from "@/registration-api";
 
-import { useRunnerTheme } from "@/theme";
+import {
+  runnerRadii,
+  runnerSpacing,
+  runnerTouchTargets,
+  runnerTypography,
+  useRunnerTheme,
+} from "@/theme";
 
 const WORDMARK = require("../../assets/sami-wordmark.png");
 
@@ -59,13 +65,7 @@ function firstParam(value?: string | string[]): string {
 }
 
 export default function VerifyRunnerScreen() {
-  const {
-    colors,
-    mode,
-    showOverlay,
-  } = useRunnerTheme();
-
-  const isDark = mode === "dark";
+   const { colors, showOverlay } = useRunnerTheme();
 
   const params = useLocalSearchParams<{
     challengeId?: string | string[];
@@ -747,9 +747,7 @@ export default function VerifyRunnerScreen() {
         { backgroundColor: colors.paper },
       ]}
     >
-     <StatusBar
-  style={isDark ? "light" : "dark"}
-/>
+   
 
       <KeyboardAvoidingView
         style={styles.keyboardContainer}
@@ -1324,7 +1322,6 @@ export default function VerifyRunnerScreen() {
 /* =========================================================
    STYLES
 ========================================================= */
-
 const styles = StyleSheet.create({
   safeArea: {
     flex: 1,
@@ -1336,17 +1333,17 @@ const styles = StyleSheet.create({
 
   scrollContent: {
     flexGrow: 1,
-    paddingHorizontal: 22,
-    paddingTop: 8,
-    paddingBottom: 32,
+    paddingHorizontal: runnerSpacing.xl,
+    paddingTop: runnerSpacing.sm,
+    paddingBottom: runnerSpacing.xxxl,
   },
 
   header: {
-    minHeight: 48,
+    minHeight: runnerTouchTargets.minimum,
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
-    gap: 12,
+    gap: runnerSpacing.sm,
   },
 
   wordmark: {
@@ -1355,193 +1352,201 @@ const styles = StyleSheet.create({
   },
 
   helpButton: {
-    minHeight: 38,
-    paddingHorizontal: 11,
-    borderRadius: 12,
+    minHeight: runnerTouchTargets.minimum,
+    paddingHorizontal: runnerSpacing.sm,
+    borderRadius: runnerRadii.md,
     borderWidth: 1,
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "center",
-    gap: 5,
+    gap: runnerSpacing.xxs,
   },
 
   helpText: {
-    fontSize: 12,
-    fontWeight: "800",
+    fontSize: runnerTypography.caption,
+    fontWeight: runnerTypography.fontWeight.bold,
   },
 
   content: {
     flexGrow: 1,
     justifyContent: "center",
-    gap: 16,
-    paddingTop: 30,
-    paddingBottom: 28,
+    gap: runnerSpacing.md,
+    paddingTop: runnerSpacing.xl,
+    paddingBottom: runnerSpacing.xl,
   },
 
   iconWrap: {
-    width: 60,
-    height: 60,
-    borderRadius: 19,
+    width: 64,
+    height: 64,
+    borderRadius: runnerRadii.xl,
     alignItems: "center",
     justifyContent: "center",
-    marginBottom: 3,
   },
 
   eyebrow: {
-    fontSize: 10.5,
-    fontWeight: "900",
-    letterSpacing: 1.25,
+    fontSize: runnerTypography.eyebrow,
+    fontWeight: runnerTypography.fontWeight.heavy,
+    letterSpacing: 1,
   },
 
   title: {
-    fontSize: 28,
-    fontWeight: "900",
-    letterSpacing: -0.7,
-    lineHeight: 35,
+    fontSize: runnerTypography.heading,
+    fontWeight: runnerTypography.fontWeight.heavy,
+    letterSpacing: -0.5,
+    lineHeight: Math.round(
+      runnerTypography.heading * runnerTypography.lineHeight.compact,
+    ),
   },
 
   subtitle: {
-    fontSize: 13.5,
-    lineHeight: 21,
+    fontSize: runnerTypography.bodySmall,
+    lineHeight: Math.round(
+      runnerTypography.bodySmall * runnerTypography.lineHeight.normal,
+    ),
   },
 
   destination: {
-    fontWeight: "800",
+    fontWeight: runnerTypography.fontWeight.heavy,
   },
 
   infoBox: {
     flexDirection: "row",
     alignItems: "flex-start",
-    borderRadius: 13,
-    padding: 13,
-    gap: 10,
+    borderRadius: runnerRadii.md,
+    padding: runnerSpacing.md,
+    gap: runnerSpacing.sm,
   },
 
   infoText: {
     flex: 1,
-    fontSize: 12,
-    lineHeight: 18,
+    fontSize: runnerTypography.bodySmall,
+    lineHeight: Math.round(
+      runnerTypography.bodySmall * runnerTypography.lineHeight.normal,
+    ),
   },
 
   label: {
-    fontSize: 13,
-    fontWeight: "800",
-    marginTop: 6,
+    fontSize: runnerTypography.body,
+    fontWeight: runnerTypography.fontWeight.bold,
+    marginTop: runnerSpacing.xxs,
   },
 
   codeInput: {
-    minHeight: 66,
+    minHeight: 72,
     borderWidth: 1.5,
-    borderRadius: 16,
+    borderRadius: runnerRadii.lg,
     textAlign: "center",
-    fontSize: 25,
-    fontWeight: "900",
-    letterSpacing: 8,
-    paddingLeft: 8,
-    paddingVertical: 12,
-    marginTop: 2,
+    fontSize: runnerTypography.heading,
+    fontWeight: runnerTypography.fontWeight.heavy,
+    letterSpacing: 7,
+    paddingHorizontal: runnerSpacing.sm,
+    paddingVertical: runnerSpacing.md,
+    marginTop: runnerSpacing.xxs,
   },
 
   customerCard: {
     flexDirection: "row",
     alignItems: "center",
     borderWidth: 1,
-    borderRadius: 15,
-    padding: 15,
-    gap: 12,
+    borderRadius: runnerRadii.lg,
+    padding: runnerSpacing.md,
+    gap: runnerSpacing.sm,
   },
 
   customerAvatar: {
-    width: 46,
-    height: 46,
-    borderRadius: 15,
+    width: 48,
+    height: 48,
+    borderRadius: runnerRadii.md,
     alignItems: "center",
     justifyContent: "center",
   },
 
   customerDetails: {
     flex: 1,
-    gap: 4,
+    gap: runnerSpacing.xxs,
   },
 
   customerLabel: {
-    fontSize: 9,
-    fontWeight: "900",
-    letterSpacing: 0.8,
+    fontSize: runnerTypography.caption,
+    fontWeight: runnerTypography.fontWeight.heavy,
+    letterSpacing: 0.6,
   },
 
   customerName: {
-    fontSize: 16,
-    fontWeight: "900",
+    fontSize: runnerTypography.body,
+    fontWeight: runnerTypography.fontWeight.bold,
   },
 
   confirmQuestion: {
-    fontSize: 14,
-    lineHeight: 21,
-    fontWeight: "800",
-    marginTop: 2,
+    fontSize: runnerTypography.body,
+    lineHeight: Math.round(
+      runnerTypography.body * runnerTypography.lineHeight.normal,
+    ),
+    fontWeight: runnerTypography.fontWeight.bold,
+    marginTop: runnerSpacing.xxs,
   },
 
   primaryButton: {
-    minHeight: 56,
-    borderRadius: 15,
+    minHeight: runnerTouchTargets.primary,
+    borderRadius: runnerRadii.lg,
     alignItems: "center",
     justifyContent: "center",
     flexDirection: "row",
-    gap: 9,
-    paddingHorizontal: 16,
-    marginTop: 6,
+    gap: runnerSpacing.sm,
+    paddingHorizontal: runnerSpacing.md,
+    marginTop: runnerSpacing.xs,
   },
 
   primaryButtonText: {
-    fontSize: 14,
-    fontWeight: "900",
-    letterSpacing: -0.15,
+    fontSize: runnerTypography.body,
+    fontWeight: runnerTypography.fontWeight.heavy,
   },
 
   secondaryButton: {
-    minHeight: 52,
-    borderRadius: 15,
+    minHeight: runnerTouchTargets.comfortable,
+    borderRadius: runnerRadii.lg,
     borderWidth: 1,
     alignItems: "center",
     justifyContent: "center",
-    paddingHorizontal: 16,
+    paddingHorizontal: runnerSpacing.md,
   },
 
   secondaryButtonText: {
-    fontSize: 14,
-    fontWeight: "800",
+    fontSize: runnerTypography.body,
+    fontWeight: runnerTypography.fontWeight.bold,
   },
 
   resendButton: {
-    minHeight: 42,
+    minHeight: runnerTouchTargets.minimum,
     alignItems: "center",
     justifyContent: "center",
-    paddingHorizontal: 14,
+    paddingHorizontal: runnerSpacing.sm,
   },
 
   resendText: {
-    fontSize: 13,
-    fontWeight: "900",
+    fontSize: runnerTypography.bodySmall,
+    fontWeight: runnerTypography.fontWeight.heavy,
   },
 
   resendHint: {
-    fontSize: 11,
-    lineHeight: 17,
+    fontSize: runnerTypography.caption,
+    lineHeight: Math.round(
+      runnerTypography.caption * runnerTypography.lineHeight.normal,
+    ),
     textAlign: "center",
-    marginTop: -7,
   },
 
   changeDetailsButton: {
+    minHeight: runnerTouchTargets.minimum,
     alignItems: "center",
-    paddingVertical: 12,
-    paddingHorizontal: 12,
-    marginTop: 2,
+    justifyContent: "center",
+    paddingVertical: runnerSpacing.xs,
+    paddingHorizontal: runnerSpacing.md,
   },
 
   changeDetailsText: {
-    fontSize: 13,
-    fontWeight: "800",
+    fontSize: runnerTypography.bodySmall,
+    fontWeight: runnerTypography.fontWeight.bold,
   },
 
   disabled: {

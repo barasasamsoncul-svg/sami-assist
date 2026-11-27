@@ -13,7 +13,6 @@ import {
   Platform,
   Pressable,
   ScrollView,
-  StatusBar,
   StyleSheet,
   Text,
   TextInput,
@@ -44,7 +43,13 @@ import type {
   RunnerUploadedDocument,
 } from "@/api";
 
-import { useRunnerTheme } from "@/theme";
+import {
+  runnerRadii,
+  runnerSpacing,
+  runnerTouchTargets,
+  runnerTypography,
+  useRunnerTheme,
+} from "@/theme";
 
 const WORDMARK = require("../../../assets/sami-wordmark.png");
 
@@ -418,7 +423,7 @@ function PickedFileCard({
               onPress={onClear}
               hitSlop={10}
               style={({ pressed }) => ({
-                padding: 4,
+               padding: runnerSpacing.xs,
                 opacity: pressed
                   ? 0.55
                   : disabled
@@ -578,13 +583,11 @@ export default function RunnerDocumentDetailScreen() {
   const params = useLocalSearchParams<{
     key?: string | string[];
   }>();
+const { colors, showOverlay } = useRunnerTheme();
 
-  const { colors, mode, showOverlay } = useRunnerTheme();
-
-  const isDark = mode === "dark";
-  const supportingText = isDark ? "#C1CCDA" : "#526176";
-  const actionBlue = isDark ? "#8AB8F8" : "#1F5EAB";
-  const buttonBlue = isDark ? "#1D5DAD" : "#174F9F";
+const supportingText = colors.textMuted;
+const actionBlue = colors.blue;
+const buttonBlue = colors.blueAction;
 
   const routeKey = Array.isArray(params.key)
     ? params.key[0]
@@ -1383,9 +1386,6 @@ export default function RunnerDocumentDetailScreen() {
         }}
       />
 
-      <StatusBar
-        barStyle={isDark ? "light-content" : "dark-content"}
-      />
 
       {/* HEADER — LOGO LEFT, HELP RIGHT */}
       <View style={styles.header}>
@@ -2134,19 +2134,18 @@ export default function RunnerDocumentDetailScreen() {
 /* ============================================================
    STYLES
 ============================================================ */
-
 const styles = StyleSheet.create({
   safeArea: {
     flex: 1,
   },
 
   header: {
-    minHeight: 44,
+    minHeight: runnerTouchTargets.minimum,
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
-    paddingHorizontal: 20,
-    paddingTop: 12,
+    paddingHorizontal: runnerSpacing.lg,
+    paddingTop: runnerSpacing.sm,
   },
 
   wordmark: {
@@ -2155,297 +2154,297 @@ const styles = StyleSheet.create({
   },
 
   helpButton: {
-    minHeight: 38,
-    paddingHorizontal: 11,
+    minHeight: runnerTouchTargets.minimum,
+    paddingHorizontal: runnerSpacing.sm,
     borderWidth: 1,
-    borderRadius: 22,
+    borderRadius: runnerRadii.pill,
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "center",
-    gap: 5,
+    gap: runnerSpacing.xxs,
   },
 
   helpText: {
-    fontSize: 12,
+    fontSize: runnerTypography.caption,
     fontWeight: "800",
   },
 
   content: {
-    paddingHorizontal: 20,
-    paddingTop: 16,
-    paddingBottom: 36,
-    gap: 18,
+    paddingHorizontal: runnerSpacing.lg,
+    paddingTop: runnerSpacing.md,
+    paddingBottom: runnerSpacing.xxxl,
+    gap: runnerSpacing.lg,
   },
 
   headingBlock: {
-    gap: 9,
-    marginBottom: 2,
+    gap: runnerSpacing.sm,
+    marginBottom: runnerSpacing.xxs,
   },
 
   eyebrow: {
-    fontSize: 11,
+    fontSize: runnerTypography.caption,
     fontWeight: "900",
-    letterSpacing: 1.4,
+    letterSpacing: 1,
   },
 
   title: {
-    fontSize: 28,
-    lineHeight: 36,
+    fontSize: runnerTypography.heading,
+    lineHeight: 35,
     fontWeight: "900",
-    letterSpacing: -0.7,
+    letterSpacing: -0.5,
   },
 
   bodyText: {
-    fontSize: 13.5,
-    lineHeight: 20,
+    fontSize: runnerTypography.bodySmall,
+    lineHeight: 23,
   },
 
   fileCard: {
     borderWidth: 1,
-    borderRadius: 18,
-    padding: 16,
-    gap: 12,
+    borderRadius: runnerRadii.lg,
+    padding: runnerSpacing.md,
+    gap: runnerSpacing.md,
   },
 
   fileTitle: {
-    fontSize: 15.5,
+    fontSize: runnerTypography.body,
     fontWeight: "900",
   },
 
   fileDescription: {
-    fontSize: 12.5,
-    lineHeight: 18,
+    fontSize: runnerTypography.bodySmall,
+    lineHeight: 22,
   },
 
   emptyPreview: {
-    minHeight: 96,
+    minHeight: 108,
     borderWidth: 1,
     borderStyle: "dashed",
-    borderRadius: 12,
+    borderRadius: runnerRadii.md,
     alignItems: "center",
     justifyContent: "center",
-    gap: 6,
+    gap: runnerSpacing.xs,
   },
 
   emptyPreviewText: {
-    fontSize: 12.5,
+    fontSize: runnerTypography.bodySmall,
     fontWeight: "600",
   },
 
   previewContainer: {
     flexDirection: "row",
     alignItems: "center",
-    gap: 12,
-    minHeight: 96,
+    gap: runnerSpacing.md,
+    minHeight: 100,
   },
 
   previewImage: {
-    width: 84,
-    height: 84,
-    borderRadius: 10,
+    width: 88,
+    height: 88,
+    borderRadius: runnerRadii.sm,
   },
 
   previewFileIcon: {
-    width: 84,
-    height: 84,
-    borderRadius: 10,
+    width: 88,
+    height: 88,
+    borderRadius: runnerRadii.sm,
     alignItems: "center",
     justifyContent: "center",
   },
 
   previewDetails: {
     flex: 1,
-    gap: 6,
+    gap: runnerSpacing.xs,
   },
 
   fileName: {
-    fontSize: 13,
+    fontSize: runnerTypography.caption,
     fontWeight: "700",
-    lineHeight: 18,
+    lineHeight: 20,
   },
 
   fileMetaRow: {
     flexDirection: "row",
     alignItems: "center",
-    gap: 5,
+    gap: runnerSpacing.xxs,
   },
 
   fileSelected: {
-    fontSize: 12,
+    fontSize: runnerTypography.caption,
     fontWeight: "700",
   },
 
   pickerActions: {
     flexDirection: "row",
     flexWrap: "wrap",
-    gap: 10,
+    gap: runnerSpacing.sm,
   },
 
   secondaryButton: {
     flex: 1,
     flexBasis: "47%",
     minWidth: 125,
-    minHeight: 46,
+    minHeight: runnerTouchTargets.minimum,
     borderWidth: 1,
-    borderRadius: 12,
+    borderRadius: runnerRadii.md,
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "center",
-    gap: 7,
-    paddingHorizontal: 10,
+    gap: runnerSpacing.xs,
+    paddingHorizontal: runnerSpacing.xs,
   },
 
   secondaryButtonText: {
-    fontSize: 12.5,
+    fontSize: runnerTypography.caption,
     fontWeight: "800",
   },
 
   rejectionCard: {
-    borderRadius: 14,
-    padding: 14,
-    gap: 8,
+    borderRadius: runnerRadii.md,
+    padding: runnerSpacing.md,
+    gap: runnerSpacing.sm,
   },
 
   rejectionHeader: {
     flexDirection: "row",
     alignItems: "center",
-    gap: 7,
+    gap: runnerSpacing.xs,
   },
 
   rejectionTitle: {
-    fontSize: 13.5,
+    fontSize: runnerTypography.bodySmall,
     fontWeight: "900",
   },
 
   rejectionText: {
-    fontSize: 12.5,
-    lineHeight: 19,
+    fontSize: runnerTypography.bodySmall,
+    lineHeight: 22,
   },
 
   guidanceCard: {
     borderWidth: 1,
-    borderRadius: 16,
-    padding: 16,
-    gap: 10,
+    borderRadius: runnerRadii.lg,
+    padding: runnerSpacing.md,
+    gap: runnerSpacing.md,
   },
 
   guidanceTitle: {
-    fontSize: 14.5,
+    fontSize: runnerTypography.body,
     fontWeight: "900",
   },
 
   guidanceList: {
-    gap: 7,
+    gap: runnerSpacing.sm,
   },
 
   guidanceRow: {
     flexDirection: "row",
     alignItems: "flex-start",
-    gap: 9,
+    gap: runnerSpacing.sm,
   },
 
   guidanceDot: {
-    width: 5,
-    height: 5,
-    borderRadius: 2.5,
-    marginTop: 7,
+    width: 6,
+    height: 6,
+    borderRadius: runnerRadii.pill,
+    marginTop: 9,
   },
 
   guidanceText: {
     flex: 1,
-    fontSize: 12.5,
-    lineHeight: 19,
+    fontSize: runnerTypography.bodySmall,
+    lineHeight: 22,
   },
 
   statusCard: {
-    borderRadius: 16,
-    padding: 16,
-    gap: 10,
+    borderRadius: runnerRadii.lg,
+    padding: runnerSpacing.md,
+    gap: runnerSpacing.md,
   },
 
   statusHeader: {
     flexDirection: "row",
     alignItems: "center",
-    gap: 8,
+    gap: runnerSpacing.sm,
   },
 
   statusTitle: {
-    fontSize: 15,
+    fontSize: runnerTypography.body,
     fontWeight: "900",
   },
 
   stateNotice: {
-    borderRadius: 15,
-    padding: 14,
+    borderRadius: runnerRadii.md,
+    padding: runnerSpacing.md,
     flexDirection: "row",
     alignItems: "flex-start",
-    gap: 10,
+    gap: runnerSpacing.sm,
   },
 
   stateNoticeCopy: {
     flex: 1,
-    gap: 5,
+    gap: runnerSpacing.xs,
   },
 
   stateNoticeTitle: {
-    fontSize: 13,
-    lineHeight: 18,
+    fontSize: runnerTypography.caption,
+    lineHeight: 20,
     fontWeight: "900",
   },
 
   stateNoticeText: {
-    fontSize: 12,
-    lineHeight: 18,
+    fontSize: runnerTypography.caption,
+    lineHeight: 20,
   },
 
   stateNoticeAction: {
-    fontSize: 12,
+    fontSize: runnerTypography.caption,
     fontWeight: "900",
-    paddingTop: 2,
+    paddingTop: runnerSpacing.xxs,
   },
 
   expiryField: {
     borderWidth: 1,
-    borderRadius: 15,
-    padding: 15,
-    gap: 8,
+    borderRadius: runnerRadii.md,
+    padding: runnerSpacing.md,
+    gap: runnerSpacing.sm,
   },
 
   expiryLabel: {
-    fontSize: 14,
-    lineHeight: 19,
+    fontSize: runnerTypography.bodySmall,
+    lineHeight: 22,
     fontWeight: "900",
   },
 
   expiryHint: {
-    fontSize: 12,
-    lineHeight: 17,
+    fontSize: runnerTypography.caption,
+    lineHeight: 19,
   },
 
   expiryInput: {
-    minHeight: 50,
+    minHeight: runnerTouchTargets.comfortable,
     borderWidth: 1,
-    borderRadius: 11,
-    paddingHorizontal: 14,
-    fontSize: 16,
+    borderRadius: runnerRadii.md,
+    paddingHorizontal: runnerSpacing.md,
+    fontSize: runnerTypography.body,
     fontWeight: "800",
     letterSpacing: 1,
   },
 
   primaryButton: {
-    minHeight: 58,
-    borderRadius: 15,
+    minHeight: runnerTouchTargets.primary,
+    borderRadius: runnerRadii.md,
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "center",
-    paddingHorizontal: 18,
-    gap: 10,
-    marginTop: 4,
+    paddingHorizontal: runnerSpacing.lg,
+    gap: runnerSpacing.sm,
+    marginTop: runnerSpacing.xs,
   },
 
   primaryButtonText: {
     color: "#FFFFFF",
-    fontSize: 15,
+    fontSize: runnerTypography.body,
     fontWeight: "900",
     letterSpacing: -0.2,
   },
@@ -2454,25 +2453,25 @@ const styles = StyleSheet.create({
     flex: 1,
     alignItems: "center",
     justifyContent: "center",
-    paddingHorizontal: 28,
-    gap: 14,
+    paddingHorizontal: runnerSpacing.xl,
+    gap: runnerSpacing.md,
   },
 
   loadingText: {
-    fontSize: 13,
-    lineHeight: 20,
+    fontSize: runnerTypography.caption,
+    lineHeight: 21,
   },
 
   errorIconWrap: {
-    width: 56,
-    height: 56,
-    borderRadius: 18,
+    width: 60,
+    height: 60,
+    borderRadius: runnerRadii.lg,
     alignItems: "center",
     justifyContent: "center",
   },
 
   errorTitle: {
-    fontSize: 20,
+    fontSize: runnerTypography.title,
     fontWeight: "900",
     letterSpacing: -0.3,
     textAlign: "center",

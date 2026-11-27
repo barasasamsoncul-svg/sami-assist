@@ -1,6 +1,5 @@
 import type { TextInputInstance } from "react-native";
 import { useEffect, useRef, useState } from "react";
-import { StatusBar } from "expo-status-bar";
 import {
   AccessibilityInfo,
   ActivityIndicator,
@@ -28,7 +27,13 @@ import {
 } from "react-native-safe-area-context";
 
 import { requestRunnerOtp } from "@/api";
-import { useRunnerTheme } from "@/theme";
+import {
+  runnerRadii,
+  runnerSpacing,
+  runnerTouchTargets,
+  runnerTypography,
+  useRunnerTheme,
+} from "@/theme";
 
 /* =========================================================
    CONSTANTS AND VALIDATION
@@ -54,7 +59,6 @@ function isValidEmail(value: string): boolean {
 export default function RunnerLoginScreen() {
   const {
     colors,
-    mode,
     showOverlay,
   } = useRunnerTheme();
 
@@ -64,22 +68,9 @@ export default function RunnerLoginScreen() {
   const compact = height < 720;
   const wide = width >= 600;
 
-  const theme = colors as typeof colors & {
-    blueAction?: string;
-    onBlue?: string;
-  };
-
-  const actionBlue =
-    theme.blueAction ??
-    (mode === "dark" ? "#1D5DAD" : colors.blue);
-
-  const supportingText =
-    mode === "dark"
-      ? colors.textMuted
-      : "#46566B";
-
-  const actionText =
-    theme.onBlue ?? "#FFFFFF";
+  const actionBlue = colors.blueAction;
+  const supportingText = colors.textMuted;
+  const actionText = colors.onBlue;
 
   /* -------------------------------------------------------
      REFERENCES
@@ -390,7 +381,7 @@ export default function RunnerLoginScreen() {
      LAYOUT
   ------------------------------------------------------- */
 
-  const horizontalPadding = wide ? 36 : 22;
+  const horizontalPadding = wide ? 36 : runnerSpacing.lg;
 
   const inputBorderColor = hasEmailError
     ? colors.red
@@ -404,11 +395,6 @@ export default function RunnerLoginScreen() {
       ]}
       edges={["top"]}
     >
-      <StatusBar
-  style={mode === "dark" ? "light" : "dark"}
-  hidden={false}
-/>
-
       <KeyboardAvoidingView
         style={styles.keyboardContainer}
         enabled={Platform.OS === "ios"}
@@ -421,9 +407,12 @@ export default function RunnerLoginScreen() {
             styles.content,
             {
               paddingHorizontal: horizontalPadding,
-              paddingTop: compact ? 8 : 16,
+              paddingTop: compact
+                ? runnerSpacing.xs
+                : runnerSpacing.md,
               paddingBottom:
-                Math.max(insets.bottom, 12) + 24,
+                Math.max(insets.bottom, runnerSpacing.sm) +
+                runnerSpacing.lg,
             },
           ]}
           keyboardShouldPersistTaps="handled"
@@ -832,21 +821,19 @@ const styles = StyleSheet.create({
 
   content: {
     flexGrow: 1,
-    gap: 19,
+    gap: runnerSpacing.lg,
   },
 
-  /* Header */
-
   hero: {
-    gap: 25,
+    gap: runnerSpacing.xl,
   },
 
   topBar: {
-    minHeight: 48,
+    minHeight: runnerTouchTargets.minimum,
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
-    gap: 10,
+    gap: runnerSpacing.sm,
   },
 
   wordmark: {
@@ -855,124 +842,118 @@ const styles = StyleSheet.create({
   },
 
   helpButton: {
-    minWidth: 66,
-    minHeight: 42,
-    borderRadius: 14,
+    minWidth: 76,
+    minHeight: runnerTouchTargets.minimum,
+    borderRadius: runnerRadii.md,
     borderWidth: 1,
-    paddingHorizontal: 10,
+    paddingHorizontal: runnerSpacing.sm,
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "center",
-    gap: 5,
+    gap: runnerSpacing.xs,
   },
 
   helpText: {
-    fontSize: 12,
+    fontSize: runnerTypography.caption,
     fontWeight: "800",
   },
 
-  /* Introduction */
-
   intro: {
-    gap: 12,
+    gap: runnerSpacing.md,
   },
 
   eyebrowWrap: {
     alignSelf: "flex-start",
     flexDirection: "row",
     alignItems: "center",
-    gap: 8,
-    paddingHorizontal: 11,
-    paddingVertical: 7,
-    borderRadius: 999,
+    gap: runnerSpacing.xs,
+    paddingHorizontal: runnerSpacing.md,
+    paddingVertical: runnerSpacing.xs,
+    borderRadius: runnerRadii.pill,
   },
 
   eyebrowDot: {
-    width: 7,
-    height: 7,
-    borderRadius: 4,
+    width: 8,
+    height: 8,
+    borderRadius: runnerRadii.pill,
   },
 
   eyebrow: {
-    fontSize: 10,
+    fontSize: runnerTypography.caption,
     fontWeight: "900",
-    letterSpacing: 1.5,
+    letterSpacing: 1,
   },
 
   title: {
     fontSize: 35,
-    lineHeight: 42,
+    lineHeight: 43,
     fontWeight: "900",
-    letterSpacing: -1.25,
+    letterSpacing: -1,
   },
 
   titleCompact: {
     fontSize: 31,
-    lineHeight: 37,
+    lineHeight: 38,
   },
 
   subtitle: {
-    fontSize: 14,
-    lineHeight: 22,
+    fontSize: runnerTypography.bodySmall,
+    lineHeight: 23,
     fontWeight: "500",
     maxWidth: 390,
   },
 
-  /* Login card */
-
   formCard: {
     borderWidth: 1,
-    borderRadius: 21,
-    padding: 18,
-    gap: 17,
-
-    shadowColor: "#000535",
+    borderRadius: runnerRadii.xl,
+    padding: runnerSpacing.lg,
+    gap: runnerSpacing.lg,
+    shadowColor: "#00061D",
     shadowOffset: {
       width: 0,
       height: 4,
     },
-    shadowOpacity: 0.055,
+    shadowOpacity: 0.12,
     shadowRadius: 12,
     elevation: 2,
   },
 
   formHeading: {
-    gap: 6,
+    gap: runnerSpacing.xs,
   },
 
   formTitleRow: {
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
-    gap: 10,
+    gap: runnerSpacing.sm,
   },
 
   formTitle: {
-    fontSize: 16,
+    fontSize: runnerTypography.body,
     fontWeight: "900",
-    letterSpacing: -0.2,
   },
 
   requiredLabel: {
-    fontSize: 9,
+    fontSize: runnerTypography.caption,
     fontWeight: "900",
-    letterSpacing: 1,
+    letterSpacing: 0.6,
   },
 
   formDescription: {
-    fontSize: 12.5,
-    lineHeight: 18,
+    fontSize: runnerTypography.bodySmall,
+    lineHeight: 21,
     fontWeight: "500",
   },
 
   emailInput: {
-    minHeight: 64,
+    minHeight: runnerTouchTargets.comfortable,
     borderWidth: 1.4,
-    borderRadius: 16,
+    borderRadius: runnerRadii.lg,
     flexDirection: "row",
     alignItems: "center",
-    paddingHorizontal: 12,
-    gap: 11,
+    paddingHorizontal: runnerSpacing.md,
+    gap: runnerSpacing.sm,
   },
 
   emailInputError: {
@@ -980,46 +961,44 @@ const styles = StyleSheet.create({
   },
 
   inputIconWrap: {
-    width: 37,
-    height: 37,
-    borderRadius: 12,
+    width: 42,
+    height: 42,
+    borderRadius: runnerRadii.md,
     alignItems: "center",
     justifyContent: "center",
   },
 
   input: {
     flex: 1,
-    minHeight: 58,
-    paddingVertical: 12,
+    minHeight: runnerTouchTargets.comfortable,
+    paddingVertical: runnerSpacing.sm,
     paddingHorizontal: 0,
-    fontSize: 15,
+    fontSize: runnerTypography.body,
     fontWeight: "600",
     includeFontPadding: false,
     textAlignVertical: "center",
   },
 
   clearButton: {
-    width: 35,
-    height: 42,
+    width: runnerTouchTargets.minimum,
+    height: runnerTouchTargets.minimum,
     alignItems: "center",
     justifyContent: "center",
   },
 
-  /* Primary action */
-
   primaryButton: {
-    minHeight: 61,
-    borderRadius: 16,
-    paddingHorizontal: 17,
+    minHeight: runnerTouchTargets.primary,
+    borderRadius: runnerRadii.lg,
+    paddingHorizontal: runnerSpacing.lg,
     alignItems: "center",
     justifyContent: "center",
     flexDirection: "row",
-    gap: 11,
+    gap: runnerSpacing.sm,
     overflow: "hidden",
   },
 
   primaryButtonText: {
-    fontSize: 15,
+    fontSize: runnerTypography.body,
     fontWeight: "900",
     letterSpacing: 0.05,
   },
@@ -1037,21 +1016,19 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "center",
-    gap: 8,
+    gap: runnerSpacing.sm,
   },
 
   securityText: {
-    fontSize: 11.5,
-    lineHeight: 17,
+    fontSize: runnerTypography.caption,
+    lineHeight: 19,
     fontWeight: "600",
   },
 
-  /* Footer */
-
   footer: {
     marginTop: "auto",
-    paddingTop: 5,
-    gap: 14,
+    paddingTop: runnerSpacing.xs,
+    gap: runnerSpacing.md,
   },
 
   registerPrompt: {
@@ -1059,24 +1036,24 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     alignItems: "center",
     flexWrap: "wrap",
-    gap: 6,
+    gap: runnerSpacing.xs,
   },
 
   footerText: {
-    fontSize: 13,
+    fontSize: runnerTypography.bodySmall,
     fontWeight: "500",
   },
 
   registerButton: {
-    minHeight: 38,
+    minHeight: runnerTouchTargets.minimum,
     flexDirection: "row",
     alignItems: "center",
-    gap: 5,
-    paddingHorizontal: 3,
+    gap: runnerSpacing.xs,
+    paddingHorizontal: runnerSpacing.xxs,
   },
 
   registerText: {
-    fontSize: 13,
+    fontSize: runnerTypography.bodySmall,
     fontWeight: "900",
   },
 
@@ -1084,12 +1061,12 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     justifyContent: "center",
     alignItems: "center",
-    gap: 7,
+    gap: runnerSpacing.xs,
   },
 
   footerSecurityText: {
-    fontSize: 10.5,
-    lineHeight: 16,
+    fontSize: runnerTypography.caption,
+    lineHeight: 19,
     fontWeight: "500",
     flexShrink: 1,
     textAlign: "center",

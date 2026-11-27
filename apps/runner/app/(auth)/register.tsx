@@ -1,7 +1,4 @@
-import { StatusBar } from "expo-status-bar";
-import type {
-  TextInputInstance,
-} from "react-native";
+import type { TextInputInstance } from "react-native";
 import React, {
   useCallback,
   useEffect,
@@ -36,7 +33,13 @@ import { Ionicons } from "@expo/vector-icons";
 import { SafeAreaView } from "react-native-safe-area-context";
 
 import { requestRunnerRegistrationOtp } from "@/api";
-import { useRunnerTheme } from "@/theme";
+import {
+  runnerRadii,
+  runnerSpacing,
+  runnerTouchTargets,
+  runnerTypography,
+  useRunnerTheme,
+} from "@/theme";
 
 /* =========================================================
    ASSETS
@@ -183,13 +186,11 @@ function RegistrationField({
 export default function RunnerRegistrationScreen() {
   const {
     colors,
-    mode,
     showOverlay,
   } = useRunnerTheme();
 
   const { height, width } = useWindowDimensions();
 
-  const isDark = mode === "dark";
   const compact = height < 740;
   const narrow = width < 360;
   const wide = width >= 600;
@@ -209,8 +210,8 @@ export default function RunnerRegistrationScreen() {
   ======================================================= */
 
   const nameInputRef = useRef<TextInputInstance>(null);
-const emailInputRef = useRef<TextInputInstance>(null);
-const phoneInputRef = useRef<TextInputInstance>(null);
+  const emailInputRef = useRef<TextInputInstance>(null);
+  const phoneInputRef = useRef<TextInputInstance>(null);
 
   /* =======================================================
      LIFECYCLE AND SUBMISSION PROTECTION
@@ -236,11 +237,8 @@ const phoneInputRef = useRef<TextInputInstance>(null);
     normalizedName.length <= 120;
 
   const validEmail = isValidEmail(normalizedEmail);
-
   const validPhone = isValidKenyanMobile(normalizedPhone);
 
-  // Keep the action available so attempted invalid submissions
-  // can receive feedback through the global overlay.
   const canSubmit = !submitting;
 
   /* =======================================================
@@ -387,7 +385,6 @@ const phoneInputRef = useRef<TextInputInstance>(null);
     }
 
     submittingRef.current = true;
-
     setSubmitting(true);
 
     Keyboard.dismiss();
@@ -479,11 +476,6 @@ const phoneInputRef = useRef<TextInputInstance>(null);
         { backgroundColor: colors.paper },
       ]}
     >
-      <StatusBar
-  style={mode === "dark" ? "light" : "dark"}
-  hidden={false}
-/>
-
       <KeyboardAvoidingView
         style={styles.keyboardContainer}
         enabled={Platform.OS === "ios"}
@@ -494,9 +486,17 @@ const phoneInputRef = useRef<TextInputInstance>(null);
           contentContainerStyle={[
             styles.scrollContent,
             {
-              paddingHorizontal: wide ? 36 : narrow ? 20 : 24,
-              paddingTop: compact ? 7 : 13,
-              paddingBottom: compact ? 22 : 30,
+              paddingHorizontal: wide
+                ? runnerSpacing.xxxl
+                : narrow
+                  ? runnerSpacing.md
+                  : runnerSpacing.lg,
+              paddingTop: compact
+                ? runnerSpacing.xs
+                : runnerSpacing.md,
+              paddingBottom: compact
+                ? runnerSpacing.lg
+                : runnerSpacing.xxl,
             },
           ]}
           keyboardShouldPersistTaps="handled"
@@ -514,11 +514,7 @@ const phoneInputRef = useRef<TextInputInstance>(null);
               },
             ]}
           >
-            {/* =================================================
-                BRAND HEADER
-                Compact transparent logo on the left.
-                Help control on the right.
-            ================================================= */}
+            {/* BRAND HEADER */}
 
             <View style={styles.header}>
               <Image
@@ -564,30 +560,28 @@ const phoneInputRef = useRef<TextInputInstance>(null);
               </Pressable>
             </View>
 
-            {/* =================================================
-                INTRODUCTION
-            ================================================= */}
+            {/* INTRODUCTION */}
 
             <View
               style={[
                 styles.intro,
-                { gap: compact ? 9 : 12 },
+                {
+                  gap: compact
+                    ? runnerSpacing.sm
+                    : runnerSpacing.md,
+                },
               ]}
             >
               <View
                 style={[
                   styles.eyebrowContainer,
-                  {
-                    backgroundColor: colors.blueSoft,
-                  },
+                  { backgroundColor: colors.blueSoft },
                 ]}
               >
                 <View
                   style={[
                     styles.eyebrowDot,
-                    {
-                      backgroundColor: colors.blue,
-                    },
+                    { backgroundColor: colors.blue },
                   ]}
                 />
 
@@ -607,7 +601,9 @@ const phoneInputRef = useRef<TextInputInstance>(null);
                   styles.title,
                   {
                     color: colors.text,
-                    fontSize: compact ? 28 : 32,
+                    fontSize: compact
+                      ? runnerTypography.heading + 2
+                      : runnerTypography.heading + 6,
                     lineHeight: compact ? 35 : 40,
                   },
                 ]}
@@ -627,9 +623,7 @@ const phoneInputRef = useRef<TextInputInstance>(null);
               </Text>
             </View>
 
-            {/* =================================================
-                REGISTRATION FORM
-            ================================================= */}
+            {/* REGISTRATION FORM */}
 
             <View
               style={[
@@ -643,7 +637,11 @@ const phoneInputRef = useRef<TextInputInstance>(null);
               <View
                 style={[
                   styles.form,
-                  { gap: compact ? 16 : 20 },
+                  {
+                    gap: compact
+                      ? runnerSpacing.md
+                      : runnerSpacing.lg,
+                  },
                 ]}
               >
                 {/* FULL NAME */}
@@ -735,9 +733,7 @@ const phoneInputRef = useRef<TextInputInstance>(null);
                 </Text>
               </View>
 
-              {/* =================================================
-                  SUBMIT
-              ================================================= */}
+              {/* SUBMIT */}
 
               <Pressable
                 accessibilityRole="button"
@@ -752,17 +748,13 @@ const phoneInputRef = useRef<TextInputInstance>(null);
                 hitSlop={3}
                 style={({ pressed }) => [
                   styles.submitButton,
-                  {
-                    backgroundColor: colors.blueAction,
-                  },
+                  { backgroundColor: colors.blueAction },
                   !canSubmit && styles.disabled,
                   pressed && canSubmit && styles.pressed,
                 ]}
               >
                 {submitting ? (
-                  <ActivityIndicator
-                    color={colors.onBlue}
-                  />
+                  <ActivityIndicator color={colors.onBlue} />
                 ) : (
                   <>
                     <Text
@@ -783,9 +775,7 @@ const phoneInputRef = useRef<TextInputInstance>(null);
                 )}
               </Pressable>
 
-              {/* =================================================
-                  EXISTING RUNNER ACCOUNT
-              ================================================= */}
+              {/* EXISTING RUNNER ACCOUNT */}
 
               <View style={styles.signInRow}>
                 <Text
@@ -818,9 +808,7 @@ const phoneInputRef = useRef<TextInputInstance>(null);
               </View>
             </View>
 
-            {/* =================================================
-                ONBOARDING INFORMATION
-            ================================================= */}
+            {/* ONBOARDING INFORMATION */}
 
             <View style={styles.footerInformation}>
               <View
@@ -849,9 +837,7 @@ const phoneInputRef = useRef<TextInputInstance>(null);
               </Text>
             </View>
 
-            {/* =================================================
-                BRAND FOOTER
-            ================================================= */}
+            {/* BRAND FOOTER */}
 
             <Text
               style={[
@@ -883,7 +869,7 @@ const styles = StyleSheet.create({
 
   scrollContent: {
     flexGrow: 1,
-    paddingBottom: 30,
+    paddingBottom: runnerSpacing.xxl,
   },
 
   content: {
@@ -891,16 +877,17 @@ const styles = StyleSheet.create({
     width: "100%",
     maxWidth: 560,
     alignSelf: "center",
-    gap: 25,
+    gap: runnerSpacing.xl,
   },
 
   /* HEADER */
 
   header: {
-    minHeight: 48,
+    minHeight: runnerTouchTargets.minimum,
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
+    gap: runnerSpacing.sm,
   },
 
   wordmark: {
@@ -914,18 +901,18 @@ const styles = StyleSheet.create({
   },
 
   helpButton: {
-    minHeight: 41,
-    paddingHorizontal: 13,
-    borderRadius: 22,
+    minHeight: runnerTouchTargets.minimum,
+    paddingHorizontal: runnerSpacing.md,
+    borderRadius: runnerRadii.pill,
     borderWidth: 1,
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "center",
-    gap: 7,
+    gap: runnerSpacing.xs,
   },
 
   helpText: {
-    fontSize: 13,
+    fontSize: runnerTypography.bodySmall,
     fontWeight: "700",
   },
 
@@ -936,35 +923,35 @@ const styles = StyleSheet.create({
   },
 
   eyebrowContainer: {
-    minHeight: 28,
-    paddingHorizontal: 11,
-    borderRadius: 20,
+    minHeight: runnerTouchTargets.minimum - runnerSpacing.md,
+    paddingHorizontal: runnerSpacing.md,
+    borderRadius: runnerRadii.pill,
     flexDirection: "row",
     alignItems: "center",
-    gap: 7,
+    gap: runnerSpacing.xs,
   },
 
   eyebrowDot: {
-    width: 6,
-    height: 6,
-    borderRadius: 3,
+    width: 8,
+    height: 8,
+    borderRadius: runnerRadii.pill,
   },
 
   eyebrow: {
-    fontSize: 10,
+    fontSize: runnerTypography.caption,
     fontWeight: "900",
-    letterSpacing: 1.2,
+    letterSpacing: 0.8,
   },
 
   title: {
     fontWeight: "900",
-    letterSpacing: -0.9,
+    letterSpacing: -0.8,
   },
 
   subtitle: {
-    maxWidth: 380,
-    fontSize: 14,
-    lineHeight: 22,
+    maxWidth: 420,
+    fontSize: runnerTypography.bodySmall,
+    lineHeight: 23,
     fontWeight: "500",
   },
 
@@ -972,10 +959,10 @@ const styles = StyleSheet.create({
 
   formCard: {
     width: "100%",
-    padding: 21,
+    padding: runnerSpacing.lg,
     borderWidth: 1,
-    borderRadius: 23,
-    gap: 20,
+    borderRadius: runnerRadii.xl,
+    gap: runnerSpacing.lg,
   },
 
   form: {
@@ -983,54 +970,54 @@ const styles = StyleSheet.create({
   },
 
   fieldGroup: {
-    gap: 8,
+    gap: runnerSpacing.sm,
   },
 
   label: {
-    fontSize: 12.5,
+    fontSize: runnerTypography.bodySmall,
     fontWeight: "800",
     letterSpacing: 0.1,
   },
 
   inputContainer: {
-    minHeight: 58,
-    borderRadius: 15,
+    minHeight: runnerTouchTargets.comfortable,
+    borderRadius: runnerRadii.md,
     borderWidth: 1,
     flexDirection: "row",
     alignItems: "center",
-    paddingHorizontal: 15,
-    gap: 12,
+    paddingHorizontal: runnerSpacing.md,
+    gap: runnerSpacing.md,
   },
 
   input: {
     flex: 1,
-    minHeight: 56,
-    paddingVertical: 11,
-    fontSize: 14,
+    minHeight: runnerTouchTargets.comfortable,
+    paddingVertical: runnerSpacing.sm,
+    fontSize: runnerTypography.body,
     fontWeight: "500",
   },
 
   fieldHint: {
-    fontSize: 11,
-    lineHeight: 17,
-    marginTop: -11,
-    marginBottom: 1,
+    fontSize: runnerTypography.caption,
+    lineHeight: 20,
+    marginTop: -runnerSpacing.xxs,
+    marginBottom: runnerSpacing.xxs,
   },
 
   /* PRIMARY ACTION */
 
   submitButton: {
-    minHeight: 57,
-    borderRadius: 16,
+    minHeight: runnerTouchTargets.primary,
+    borderRadius: runnerRadii.lg,
     alignItems: "center",
     justifyContent: "center",
     flexDirection: "row",
-    gap: 10,
-    paddingHorizontal: 16,
+    gap: runnerSpacing.sm,
+    paddingHorizontal: runnerSpacing.md,
   },
 
   submitButtonText: {
-    fontSize: 14,
+    fontSize: runnerTypography.body,
     fontWeight: "900",
   },
 
@@ -1050,15 +1037,17 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
     flexWrap: "wrap",
-    gap: 5,
+    gap: runnerSpacing.xs,
   },
 
   signInPrompt: {
-    fontSize: 12,
+    fontSize: runnerTypography.bodySmall,
   },
 
   signInLink: {
-    fontSize: 12,
+    minHeight: runnerTouchTargets.minimum,
+    textAlignVertical: "center",
+    fontSize: runnerTypography.bodySmall,
     fontWeight: "900",
   },
 
@@ -1067,30 +1056,30 @@ const styles = StyleSheet.create({
   footerInformation: {
     flexDirection: "row",
     alignItems: "flex-start",
-    gap: 10,
-    paddingHorizontal: 3,
+    gap: runnerSpacing.md,
+    paddingHorizontal: runnerSpacing.xxs,
   },
 
   footerIcon: {
-    width: 28,
-    height: 28,
-    borderRadius: 9,
+    width: 36,
+    height: 36,
+    borderRadius: runnerRadii.sm,
     alignItems: "center",
     justifyContent: "center",
   },
 
   footerNote: {
     flex: 1,
-    fontSize: 11,
-    lineHeight: 18,
+    fontSize: runnerTypography.caption,
+    lineHeight: 20,
   },
 
   brandFooter: {
-    fontSize: 10,
+    fontSize: runnerTypography.caption,
     fontWeight: "700",
     textAlign: "center",
     letterSpacing: 0.25,
-    marginTop: -8,
-    paddingBottom: 4,
+    marginTop: -runnerSpacing.xs,
+    paddingBottom: runnerSpacing.xs,
   },
 });

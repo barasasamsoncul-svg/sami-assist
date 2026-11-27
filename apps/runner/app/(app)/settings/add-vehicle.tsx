@@ -176,7 +176,7 @@ export default function AddRunnerVehicleScreen() {
         vehicleRegistration:
           vehicleType === "bike"
             ? ""
-            : vehicleRegistration.trim().toUpperCase(),
+            : compactRegistration(vehicleRegistration),
       },
     } as never);
   }, [
@@ -195,17 +195,19 @@ export default function AddRunnerVehicleScreen() {
     >
       <KeyboardAvoidingView
         style={styles.keyboardContainer}
-        behavior={Platform.OS === "ios" ? "padding" : undefined}
+        behavior={Platform.OS === "ios" ? "padding" : "height"}
+        keyboardVerticalOffset={0}
       >
         <ScrollView
+          style={styles.scroll}
           showsVerticalScrollIndicator={false}
           keyboardShouldPersistTaps="handled"
+          keyboardDismissMode="on-drag"
           contentContainerStyle={[
             styles.content,
             {
               paddingTop: insets.top + runnerSpacing.md,
-              paddingBottom:
-                insets.bottom + runnerSpacing.xxxl,
+              paddingBottom: runnerSpacing.xl,
             },
           ]}
         >
@@ -295,7 +297,7 @@ export default function AddRunnerVehicleScreen() {
                     >
                       <Ionicons
                         name={option.icon}
-                        size={24}
+                        size={25}
                         color={
                           selected
                             ? colors.blue
@@ -330,7 +332,7 @@ export default function AddRunnerVehicleScreen() {
                           ? "radio-button-on"
                           : "radio-button-off"
                       }
-                      size={21}
+                      size={23}
                       color={
                         selected
                           ? colors.blue
@@ -390,6 +392,7 @@ export default function AddRunnerVehicleScreen() {
                     },
                   ]}
                 />
+
               </View>
 
               <View style={styles.fieldGroup}>
@@ -449,7 +452,7 @@ export default function AddRunnerVehicleScreen() {
             >
               <Ionicons
                 name="information-circle-outline"
-                size={19}
+                size={21}
                 color={colors.info}
               />
 
@@ -463,7 +466,18 @@ export default function AddRunnerVehicleScreen() {
               </Text>
             </View>
           ) : null}
+        </ScrollView>
 
+        <View
+          style={[
+            styles.footer,
+            {
+              backgroundColor: colors.paper,
+              borderTopColor: colors.divider,
+              paddingBottom: insets.bottom + runnerSpacing.md,
+            },
+          ]}
+        >
           <Pressable
             accessibilityRole="button"
             onPress={handleContinue}
@@ -486,11 +500,11 @@ export default function AddRunnerVehicleScreen() {
 
             <Ionicons
               name="arrow-forward"
-              size={20}
+              size={21}
               color={colors.onBrand}
             />
           </Pressable>
-        </ScrollView>
+        </View>
       </KeyboardAvoidingView>
     </View>
   );
@@ -502,6 +516,10 @@ const styles = StyleSheet.create({
   },
 
   keyboardContainer: {
+    flex: 1,
+  },
+
+  scroll: {
     flex: 1,
   },
 
@@ -533,14 +551,13 @@ const styles = StyleSheet.create({
 
   title: {
     fontSize: runnerTypography.title,
+    lineHeight: 29,
     fontWeight: runnerTypography.fontWeight.bold,
   },
 
   subtitle: {
     fontSize: runnerTypography.bodySmall,
-    lineHeight:
-      runnerTypography.bodySmall *
-      runnerTypography.lineHeight.normal,
+    lineHeight: 22,
   },
 
   section: {
@@ -549,15 +566,16 @@ const styles = StyleSheet.create({
 
   sectionTitle: {
     fontSize: runnerTypography.subtitle,
+    lineHeight: 27,
     fontWeight: runnerTypography.fontWeight.bold,
   },
 
   vehicleOptions: {
-    gap: runnerSpacing.sm,
+    gap: runnerSpacing.md,
   },
 
   vehicleOption: {
-    minHeight: 78,
+    minHeight: 86,
     flexDirection: "row",
     alignItems: "center",
     borderWidth: 1.5,
@@ -567,8 +585,8 @@ const styles = StyleSheet.create({
   },
 
   optionIcon: {
-    width: 46,
-    height: 46,
+    width: 50,
+    height: 50,
     borderRadius: runnerRadii.md,
     alignItems: "center",
     justifyContent: "center",
@@ -581,24 +599,27 @@ const styles = StyleSheet.create({
 
   optionTitle: {
     fontSize: runnerTypography.body,
+    lineHeight: 23,
     fontWeight: runnerTypography.fontWeight.bold,
   },
 
   optionDescription: {
     fontSize: runnerTypography.bodySmall,
+    lineHeight: 21,
   },
 
   fieldGroup: {
-    gap: runnerSpacing.xs,
+    gap: runnerSpacing.sm,
   },
 
   fieldLabel: {
-    fontSize: runnerTypography.bodySmall,
+    fontSize: runnerTypography.body,
+    lineHeight: 23,
     fontWeight: runnerTypography.fontWeight.semibold,
   },
 
   input: {
-    minHeight: runnerTouchTargets.primary,
+    minHeight: runnerTouchTargets.primary + 4,
     borderWidth: 1.3,
     borderRadius: runnerRadii.md,
     paddingHorizontal: runnerSpacing.md,
@@ -622,24 +643,28 @@ const styles = StyleSheet.create({
   informationText: {
     flex: 1,
     fontSize: runnerTypography.bodySmall,
-    lineHeight:
-      runnerTypography.bodySmall *
-      runnerTypography.lineHeight.normal,
+    lineHeight: 23,
+  },
+
+  footer: {
+    paddingHorizontal: runnerSpacing.lg,
+    paddingTop: runnerSpacing.md,
+    borderTopWidth: StyleSheet.hairlineWidth,
   },
 
   continueButton: {
-    minHeight: runnerTouchTargets.primary,
+    minHeight: runnerTouchTargets.primary + 2,
     borderRadius: runnerRadii.lg,
     paddingHorizontal: runnerSpacing.lg,
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "center",
     gap: runnerSpacing.sm,
-    marginTop: runnerSpacing.sm,
   },
 
   continueButtonText: {
     fontSize: runnerTypography.body,
+    lineHeight: 23,
     fontWeight: runnerTypography.fontWeight.bold,
   },
 });

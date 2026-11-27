@@ -1,6 +1,8 @@
 import { useCallback, useState } from "react";
 import {
   ActivityIndicator,
+  KeyboardAvoidingView,
+  Platform,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -45,15 +47,12 @@ function getVehicleName(vehicle: {
     case "bike":
     case "bicycle":
       return "Bike";
-
     case "motorbike":
     case "motorcycle":
       return "Motorbike";
-
     case "vehicle":
     case "car":
       return "Vehicle";
-
     default:
       return vehicle.vehicleType;
   }
@@ -157,65 +156,79 @@ export default function RunnerVehiclesScreen() {
         { backgroundColor: colors.paper },
       ]}
     >
-      <ScrollView
-        showsVerticalScrollIndicator={false}
-        keyboardShouldPersistTaps="handled"
-        contentContainerStyle={[
-          styles.content,
-          {
-            paddingTop: insets.top + runnerSpacing.md,
-            paddingBottom:
-              insets.bottom + runnerSpacing.xxxl,
-          },
-        ]}
+      <KeyboardAvoidingView
+        style={styles.keyboardContainer}
+        behavior={Platform.OS === "ios" ? "padding" : "height"}
+        keyboardVerticalOffset={0}
       >
-        <View style={styles.header}>
-          <Pressable
-            accessibilityRole="button"
-            accessibilityLabel="Go back"
-            onPress={handleGoBack}
-            style={({ pressed }) => [
-              styles.backButton,
-              { opacity: pressed ? 0.76 : 1 },
-            ]}
-          >
-            <Ionicons
-              name="arrow-back"
-              size={21}
-              color="#FFFFFF"
-            />
-          </Pressable>
-
-          <View style={styles.headerText}>
-            <Text
-              style={[
-                styles.title,
-                { color: colors.text },
+        <ScrollView
+          style={styles.scroll}
+          showsVerticalScrollIndicator={false}
+          keyboardShouldPersistTaps="handled"
+          keyboardDismissMode="on-drag"
+          contentContainerStyle={[
+            styles.content,
+            {
+              paddingTop: insets.top + runnerSpacing.md,
+              paddingBottom: runnerSpacing.xl,
+            },
+          ]}
+        >
+          <View style={styles.header}>
+            <Pressable
+              accessibilityRole="button"
+              accessibilityLabel="Go back"
+              onPress={handleGoBack}
+              style={({ pressed }) => [
+                styles.backButton,
+                { opacity: pressed ? 0.76 : 1 },
               ]}
             >
-              Vehicles
-            </Text>
+              <Ionicons
+                name="arrow-back"
+                size={21}
+                color="#FFFFFF"
+              />
+            </Pressable>
 
-            <Text
-              style={[
-                styles.subtitle,
-                { color: colors.textMuted },
-              ]}
-            >
-              Your active vehicle for SaMi errands.
-            </Text>
-          </View>
-        </View>
+            <View style={styles.headerText}>
+              <Text
+                style={[
+                  styles.title,
+                  { color: colors.text },
+                ]}
+              >
+                Vehicles
+              </Text>
 
-        {loading ? (
-          <View style={styles.loadingContainer}>
-            <ActivityIndicator
-              size="large"
-              color={colors.blue}
-            />
+              <Text
+                style={[
+                  styles.subtitle,
+                  { color: colors.textMuted },
+                ]}
+              >
+                Your active vehicle for SaMi errands.
+              </Text>
+            </View>
           </View>
-        ) : data ? (
-          <>
+
+          {loading ? (
+            <View style={styles.loadingContainer}>
+              <ActivityIndicator
+                size="large"
+                color={colors.blue}
+              />
+
+              <Text
+                style={[
+                  styles.loadingText,
+                  { color: colors.textMuted },
+                ]}
+              >
+                Loading vehicle details
+              </Text>
+            </View>
+          ) : data ? (
             <View style={styles.section}>
               <Text
                 style={[
@@ -249,7 +262,7 @@ export default function RunnerVehiclesScreen() {
                           ? "car-outline"
                           : "bicycle-outline"
                       }
-                      size={27}
+                      size={28}
                       color={colors.blue}
                     />
                   </View>
@@ -288,7 +301,7 @@ export default function RunnerVehiclesScreen() {
                     { color: colors.text },
                   ]}
                 >
-                  {activeVehicle ? vehicleTitle : "No active vehicle"}
+                  {vehicleTitle}
                 </Text>
 
                 {activeVehicle?.vehicleModel ? (
@@ -324,75 +337,117 @@ export default function RunnerVehiclesScreen() {
                 ) : null}
               </View>
             </View>
-
-            <Pressable
-              accessibilityRole="button"
-              accessibilityLabel="Add new vehicle"
-              onPress={handleAddVehicle}
-              style={({ pressed }) => [
-                styles.addButton,
-                {
-                  backgroundColor: colors.brand,
-                  opacity: pressed ? 0.86 : 1,
-                },
-              ]}
-            >
+          ) : (
+            <View style={styles.retryContainer}>
               <Ionicons
-                name="add"
-                size={23}
-                color={colors.onBrand}
+                name="car-outline"
+                size={34}
+                color={colors.iconMuted}
               />
 
               <Text
                 style={[
-                  styles.addButtonText,
-                  { color: colors.onBrand },
+                  styles.retryTitle,
+                  { color: colors.text },
                 ]}
               >
-                Add new vehicle
+                Vehicle details unavailable
               </Text>
 
-              <Ionicons
-                name="arrow-forward"
-                size={19}
-                color={colors.onBrand}
-              />
-            </Pressable>
-          </>
-        ) : (
-          <View style={styles.retryContainer}>
+              <Pressable
+                accessibilityRole="button"
+                onPress={() =>
+                  setReloadKey((current) => current + 1)
+                }
+                style={({ pressed }) => [
+                  styles.retryButton,
+                  {
+                    backgroundColor: colors.brand,
+                    opacity: pressed ? 0.84 : 1,
+                  },
+                ]}
+              >
+                <Text
+                  style={[
+                    styles.retryButtonText,
+                    { color: colors.onBrand },
+                  ]}
+                >
+                  Try again
+                </Text>
+              </Pressable>
+            </View>
+          )}
+        </ScrollView>
+
+        <View
+          style={[
+            styles.footer,
+            {
+              backgroundColor: colors.paper,
+              borderTopColor: colors.divider,
+              paddingBottom: insets.bottom + runnerSpacing.md,
+            },
+          ]}
+        >
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel="Add new vehicle"
+            accessibilityState={{
+              disabled: loading || !data,
+            }}
+            disabled={loading || !data}
+            onPress={handleAddVehicle}
+            style={({ pressed }) => [
+              styles.addButton,
+              {
+                backgroundColor: colors.brand,
+                opacity:
+                  loading || !data
+                    ? 0.48
+                    : pressed
+                      ? 0.86
+                      : 1,
+              },
+            ]}
+          >
             <Ionicons
-              name="car-outline"
-              size={32}
-              color={colors.iconMuted}
+              name="add"
+              size={23}
+              color={colors.onBrand}
             />
 
-            <Pressable
-              accessibilityRole="button"
-              onPress={() => setReloadKey((current) => current + 1)}
+            <Text
               style={[
-                styles.retryButton,
-                { backgroundColor: colors.brand },
+                styles.addButtonText,
+                { color: colors.onBrand },
               ]}
             >
-              <Text
-                style={[
-                  styles.retryButtonText,
-                  { color: colors.onBrand },
-                ]}
-              >
-                Try again
-              </Text>
-            </Pressable>
-          </View>
-        )}
-      </ScrollView>
+              Add new vehicle
+            </Text>
+
+            <Ionicons
+              name="arrow-forward"
+              size={20}
+              color={colors.onBrand}
+            />
+          </Pressable>
+        </View>
+      </KeyboardAvoidingView>
     </View>
   );
 }
 
 const styles = StyleSheet.create({
   root: {
+    flex: 1,
+  },
+
+  keyboardContainer: {
+    flex: 1,
+  },
+
+  scroll: {
     flex: 1,
   },
 
@@ -424,23 +479,23 @@ const styles = StyleSheet.create({
 
   title: {
     fontSize: runnerTypography.title,
+    lineHeight: 29,
     fontWeight: runnerTypography.fontWeight.bold,
   },
 
   subtitle: {
     fontSize: runnerTypography.bodySmall,
-    lineHeight:
-      runnerTypography.bodySmall *
-      runnerTypography.lineHeight.normal,
+    lineHeight: 22,
   },
 
   section: {
-    gap: runnerSpacing.sm,
+    gap: runnerSpacing.md,
     marginTop: runnerSpacing.md,
   },
 
   sectionLabel: {
-    fontSize: runnerTypography.eyebrow,
+    fontSize: runnerTypography.caption,
+    lineHeight: 19,
     fontWeight: runnerTypography.fontWeight.bold,
     letterSpacing: 1,
   },
@@ -459,8 +514,8 @@ const styles = StyleSheet.create({
   },
 
   vehicleIcon: {
-    width: 54,
-    height: 54,
+    width: 56,
+    height: 56,
     borderRadius: runnerRadii.lg,
     alignItems: "center",
     justifyContent: "center",
@@ -471,33 +526,33 @@ const styles = StyleSheet.create({
     alignItems: "center",
     gap: runnerSpacing.xxs,
     borderRadius: runnerRadii.pill,
-    paddingHorizontal: runnerSpacing.sm,
+    paddingHorizontal: runnerSpacing.md,
     paddingVertical: runnerSpacing.xs,
   },
 
   activeDot: {
-    width: 7,
-    height: 7,
+    width: 8,
+    height: 8,
     borderRadius: runnerRadii.pill,
   },
 
   activeText: {
-    fontSize: runnerTypography.eyebrow,
+    fontSize: runnerTypography.caption,
+    lineHeight: 18,
     fontWeight: runnerTypography.fontWeight.bold,
     letterSpacing: 0.7,
   },
 
   vehicleName: {
     fontSize: runnerTypography.subtitle,
+    lineHeight: 27,
     fontWeight: runnerTypography.fontWeight.bold,
     marginTop: runnerSpacing.sm,
   },
 
   vehicleDetail: {
     fontSize: runnerTypography.body,
-    lineHeight:
-      runnerTypography.body *
-      runnerTypography.lineHeight.normal,
+    lineHeight: 24,
   },
 
   registrationPlate: {
@@ -511,8 +566,58 @@ const styles = StyleSheet.create({
 
   registrationText: {
     fontSize: runnerTypography.body,
+    lineHeight: 22,
     fontWeight: runnerTypography.fontWeight.bold,
     letterSpacing: 1.2,
+  },
+
+  loadingContainer: {
+    flex: 1,
+    minHeight: 220,
+    alignItems: "center",
+    justifyContent: "center",
+    gap: runnerSpacing.md,
+  },
+
+  loadingText: {
+    fontSize: runnerTypography.body,
+    lineHeight: 23,
+  },
+
+  retryContainer: {
+    flex: 1,
+    minHeight: 220,
+    alignItems: "center",
+    justifyContent: "center",
+    gap: runnerSpacing.lg,
+  },
+
+  retryTitle: {
+    fontSize: runnerTypography.body,
+    lineHeight: 24,
+    fontWeight: runnerTypography.fontWeight.semibold,
+    textAlign: "center",
+  },
+
+  retryButton: {
+    minHeight: runnerTouchTargets.minimum,
+    minWidth: 140,
+    borderRadius: runnerRadii.md,
+    alignItems: "center",
+    justifyContent: "center",
+    paddingHorizontal: runnerSpacing.lg,
+  },
+
+  retryButtonText: {
+    fontSize: runnerTypography.body,
+    lineHeight: 22,
+    fontWeight: runnerTypography.fontWeight.bold,
+  },
+
+  footer: {
+    paddingHorizontal: runnerSpacing.lg,
+    paddingTop: runnerSpacing.md,
+    borderTopWidth: StyleSheet.hairlineWidth,
   },
 
   addButton: {
@@ -528,35 +633,7 @@ const styles = StyleSheet.create({
   addButtonText: {
     flex: 1,
     fontSize: runnerTypography.body,
-    fontWeight: runnerTypography.fontWeight.bold,
-  },
-
-  loadingContainer: {
-    flex: 1,
-    minHeight: 220,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-
-  retryContainer: {
-    flex: 1,
-    minHeight: 220,
-    alignItems: "center",
-    justifyContent: "center",
-    gap: runnerSpacing.lg,
-  },
-
-  retryButton: {
-    minHeight: runnerTouchTargets.minimum,
-    minWidth: 140,
-    borderRadius: runnerRadii.md,
-    alignItems: "center",
-    justifyContent: "center",
-    paddingHorizontal: runnerSpacing.lg,
-  },
-
-  retryButtonText: {
-    fontSize: runnerTypography.body,
+    lineHeight: 23,
     fontWeight: runnerTypography.fontWeight.bold,
   },
 });

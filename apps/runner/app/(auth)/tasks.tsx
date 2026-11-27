@@ -3,7 +3,6 @@ import type {
   ScrollViewInstance,
   TextInputInstance,
 } from "react-native";
-import { StatusBar } from "expo-status-bar";
 import {
   ActivityIndicator,
   BackHandler,
@@ -28,8 +27,13 @@ import {
   getRunnerCategories,
   getRunnerOnboarding,
 } from "@/api";
-
-import { useRunnerTheme } from "@/theme";
+import {
+  runnerRadii,
+  runnerSpacing,
+  runnerTouchTargets,
+  runnerTypography,
+  useRunnerTheme,
+} from "@/theme";
 
 const WORDMARK = require("../../assets/sami-wordmark.png");
 
@@ -239,24 +243,14 @@ function registrationErrorMessage(
 
 export default function RunnerTaskSelectionScreen() {
   const {
-    colors,
-    mode,
-    showOverlay,
-  } = useRunnerTheme();
+  colors,
+  showOverlay,
+} = useRunnerTheme();
 
-  const isDark = mode === "dark";
-
-  const palette = colors as typeof colors & {
-    brandNavy?: string;
-    blueAction?: string;
-  };
-
-  const supportingText = isDark ? "#C1CCDA" : "#526176";
-
-  const brandColor =
-    palette.brandNavy ?? (isDark ? "#F5F7FB" : "#000535");
-
-  const buttonBlue = isDark ? "#1D5DAD" : "#174F9F";
+const supportingText = colors.textMuted;
+const brandColor = colors.brandNavy;
+const buttonBlue = colors.blueAction;
+const buttonText = colors.onBlue;
 
   const params = useLocalSearchParams<{ edit?: string | string[] }>();
   const editParam = Array.isArray(params.edit) ? params.edit[0] : params.edit;
@@ -897,9 +891,6 @@ const registrationInputRef = useRef<TextInputInstance>(null);
         }}
       />
 
-     <StatusBar
-  style={isDark ? "light" : "dark"}
-/>
 
       <KeyboardAvoidingView
         style={styles.keyboard}
@@ -1356,12 +1347,17 @@ const registrationInputRef = useRef<TextInputInstance>(null);
                   ]}
                 >
                   {saving ? (
-                    <ActivityIndicator color="#FFFFFF" />
+                    <ActivityIndicator color={buttonText} />
                   ) : (
                     <>
-                      <Text style={styles.continueButtonText}>
-                        {bottomButtonLabel}
-                      </Text>
+                     <Text
+  style={[
+    styles.continueButtonText,
+    { color: buttonText },
+  ]}
+>
+  {bottomButtonLabel}
+</Text>
 
                       <Ionicons
                         name={
@@ -1370,7 +1366,7 @@ const registrationInputRef = useRef<TextInputInstance>(null);
                             : "arrow-forward"
                         }
                         size={19}
-                        color="#FFFFFF"
+                        color={buttonText}
                       />
                     </>
                   )}
@@ -1422,21 +1418,22 @@ const styles = StyleSheet.create({
   },
 
   scrollContent: {
-    paddingHorizontal: 20,
-    paddingTop: 12,
-    paddingBottom: 24,
+    paddingHorizontal: runnerSpacing.lg,
+    paddingTop: runnerSpacing.md,
+    paddingBottom: runnerSpacing.xl,
   },
 
   scrollContentWithKeyboard: {
-    paddingBottom: 48,
+    paddingBottom: runnerSpacing.xxxl,
   },
 
   header: {
-    minHeight: 44,
+    minHeight: runnerTouchTargets.minimum,
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
-    marginBottom: 25,
+    marginBottom: runnerSpacing.xl,
+    gap: runnerSpacing.md,
   },
 
   wordmark: {
@@ -1445,157 +1442,158 @@ const styles = StyleSheet.create({
   },
 
   helpButton: {
-    minHeight: 38,
-    paddingHorizontal: 13,
+    minHeight: runnerTouchTargets.minimum,
+    paddingHorizontal: runnerSpacing.md,
     borderWidth: 1,
-    borderRadius: 22,
+    borderRadius: runnerRadii.pill,
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "center",
-    gap: 6,
+    gap: runnerSpacing.xs,
   },
 
   helpText: {
-    fontSize: 13,
+    fontSize: runnerTypography.bodySmall,
     fontWeight: "700",
   },
 
   intro: {
-    marginBottom: 19,
+    marginBottom: runnerSpacing.lg,
   },
 
   editNotice: {
     borderWidth: 1,
-    borderRadius: 12,
-    paddingHorizontal: 12,
-    paddingVertical: 11,
+    borderRadius: runnerRadii.md,
+    paddingHorizontal: runnerSpacing.md,
+    paddingVertical: runnerSpacing.md,
     flexDirection: "row",
     alignItems: "flex-start",
-    gap: 9,
-    marginBottom: 16,
+    gap: runnerSpacing.sm,
+    marginBottom: runnerSpacing.lg,
   },
 
   editNoticeText: {
     flex: 1,
-    fontSize: 12,
-    lineHeight: 18,
+    fontSize: runnerTypography.bodySmall,
+    lineHeight: 22,
     fontWeight: "600",
   },
 
   title: {
-    fontSize: 25,
-    lineHeight: 32,
-    letterSpacing: -0.7,
+    fontSize: runnerTypography.heading,
+    lineHeight: 36,
+    letterSpacing: -0.5,
     fontWeight: "800",
   },
 
   choiceList: {
-    gap: 12,
+    gap: runnerSpacing.md,
   },
 
   choiceCard: {
-    minHeight: 132,
-    borderRadius: 16,
-    paddingVertical: 14,
-    paddingHorizontal: 14,
+    minHeight: 140,
+    borderRadius: runnerRadii.lg,
+    paddingVertical: runnerSpacing.md,
+    paddingHorizontal: runnerSpacing.md,
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
-    gap: 10,
+    gap: runnerSpacing.md,
   },
 
   choiceCopy: {
     flex: 1,
-    gap: 5,
+    gap: runnerSpacing.xs,
   },
 
   categoryBadge: {
-    fontSize: 10,
+    fontSize: runnerTypography.caption,
     fontWeight: "900",
-    letterSpacing: 0.7,
+    letterSpacing: 0.6,
   },
 
   choiceTitle: {
-    fontSize: 16,
-    lineHeight: 21,
+    fontSize: runnerTypography.body,
+    lineHeight: 23,
     fontWeight: "800",
-    letterSpacing: -0.25,
   },
 
   choiceMetadata: {
-    fontSize: 11,
-    lineHeight: 16,
+    fontSize: runnerTypography.caption,
+    lineHeight: 20,
     fontWeight: "500",
   },
 
   vehicleIconWrap: {
-    width: 64,
-    height: 64,
-    borderRadius: 32,
+    width: 66,
+    height: 66,
+    borderRadius: runnerRadii.pill,
     alignItems: "center",
     justifyContent: "center",
     flexShrink: 0,
   },
 
   fieldGroup: {
-    marginTop: 20,
-    gap: 8,
+    marginTop: runnerSpacing.lg,
+    gap: runnerSpacing.sm,
   },
 
   fieldLabel: {
-    fontSize: 13,
+    fontSize: runnerTypography.bodySmall,
     fontWeight: "800",
   },
 
   fieldHint: {
-    fontSize: 11,
-    lineHeight: 16,
+    fontSize: runnerTypography.caption,
+    lineHeight: 20,
     fontWeight: "500",
   },
 
   textInput: {
-    minHeight: 50,
+    minHeight: runnerTouchTargets.comfortable,
     borderWidth: 1,
-    borderRadius: 12,
-    paddingHorizontal: 14,
-    fontSize: 14,
+    borderRadius: runnerRadii.md,
+    paddingHorizontal: runnerSpacing.md,
+    fontSize: runnerTypography.body,
   },
 
   loadError: {
     minHeight: 180,
     alignItems: "center",
     justifyContent: "center",
-    gap: 12,
-    paddingHorizontal: 20,
+    gap: runnerSpacing.md,
+    paddingHorizontal: runnerSpacing.lg,
   },
 
   loadErrorText: {
     textAlign: "center",
-    fontSize: 14,
-    lineHeight: 21,
+    fontSize: runnerTypography.bodySmall,
+    lineHeight: 23,
   },
 
   retryButton: {
-    paddingHorizontal: 16,
-    paddingVertical: 10,
+    minHeight: runnerTouchTargets.minimum,
+    justifyContent: "center",
+    paddingHorizontal: runnerSpacing.md,
+    paddingVertical: runnerSpacing.sm,
   },
 
   retryText: {
-    fontSize: 14,
+    fontSize: runnerTypography.bodySmall,
     fontWeight: "800",
   },
 
   bottomBar: {
-    paddingHorizontal: 20,
-    paddingTop: 12,
-    paddingBottom: 10,
+    paddingHorizontal: runnerSpacing.lg,
+    paddingTop: runnerSpacing.md,
+    paddingBottom: runnerSpacing.sm,
     borderTopWidth: StyleSheet.hairlineWidth,
   },
 
   bottomActions: {
     flexDirection: "row",
     alignItems: "center",
-    gap: 10,
+    gap: runnerSpacing.md,
   },
 
   editSaveButton: {
@@ -1603,17 +1601,17 @@ const styles = StyleSheet.create({
   },
 
   cancelButton: {
-    minHeight: 54,
-    minWidth: 82,
-    paddingHorizontal: 17,
+    minHeight: runnerTouchTargets.primary,
+    minWidth: 90,
+    paddingHorizontal: runnerSpacing.lg,
     borderWidth: 1,
-    borderRadius: 13,
+    borderRadius: runnerRadii.md,
     alignItems: "center",
     justifyContent: "center",
   },
 
   cancelText: {
-    fontSize: 14,
+    fontSize: runnerTypography.bodySmall,
     fontWeight: "800",
   },
 
@@ -1622,18 +1620,17 @@ const styles = StyleSheet.create({
   },
 
   continueButton: {
-    minHeight: 54,
-    borderRadius: 13,
-    paddingHorizontal: 18,
+    minHeight: runnerTouchTargets.primary,
+    borderRadius: runnerRadii.md,
+    paddingHorizontal: runnerSpacing.lg,
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "center",
-    gap: 10,
+    gap: runnerSpacing.sm,
   },
 
   continueButtonText: {
-    color: "#FFFFFF",
-    fontSize: 15,
+    fontSize: runnerTypography.body,
     fontWeight: "800",
   },
 
