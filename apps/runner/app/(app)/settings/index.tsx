@@ -19,14 +19,9 @@ import {
   useRunnerTheme,
 } from "@/theme";
 
-/* =========================================================
-   SETTINGS CATEGORY TYPES
-========================================================= */
-
 type SettingsCategory = {
   key: string;
   title: string;
-  description: string;
   icon: keyof typeof Ionicons.glyphMap;
   route: string;
 };
@@ -36,11 +31,6 @@ type SettingsGroup = {
   items: SettingsCategory[];
 };
 
-/* =========================================================
-   SETTINGS CATEGORIES
-   Each category will have its own dedicated route and page.
-========================================================= */
-
 const SETTINGS_GROUPS: SettingsGroup[] = [
   {
     title: "RUNNER SETUP",
@@ -48,28 +38,24 @@ const SETTINGS_GROUPS: SettingsGroup[] = [
       {
         key: "vehicles",
         title: "Vehicles",
-        description: "Your registered transport and vehicle details.",
         icon: "car-outline",
         route: "/(app)/settings/vehicles",
       },
       {
         key: "navigation",
         title: "Navigation",
-        description: "Map display, routing and navigation preferences.",
         icon: "navigate-outline",
         route: "/(app)/settings/navigation",
       },
       {
         key: "sound-voice",
         title: "Sound & Voice",
-        description: "Alert tones, spoken guidance and sound behaviour.",
         icon: "volume-high-outline",
         route: "/(app)/settings/sound-voice",
       },
       {
         key: "safety",
         title: "Safety",
-        description: "Safety tools and emergency-related preferences.",
         icon: "shield-checkmark-outline",
         route: "/(app)/settings/safety",
       },
@@ -81,21 +67,18 @@ const SETTINGS_GROUPS: SettingsGroup[] = [
       {
         key: "account",
         title: "Account",
-        description: "Your Runner profile and account information.",
         icon: "person-outline",
         route: "/(app)/settings/account",
       },
       {
         key: "security",
         title: "Security",
-        description: "Sign-in, passwords and account protection.",
         icon: "lock-closed-outline",
         route: "/(app)/settings/security",
       },
       {
         key: "privacy-data",
         title: "Privacy & Data",
-        description: "Privacy choices and personal data controls.",
         icon: "shield-outline",
         route: "/(app)/settings/privacy-data",
       },
@@ -107,30 +90,20 @@ const SETTINGS_GROUPS: SettingsGroup[] = [
       {
         key: "app-settings",
         title: "App Settings",
-        description: "Appearance and general app behaviour.",
         icon: "options-outline",
         route: "/(app)/settings/app-settings",
       },
       {
         key: "communications",
         title: "Communications",
-        description: "How SaMi sends updates and contacts you.",
         icon: "notifications-outline",
         route: "/(app)/settings/communications",
       },
       {
         key: "language-region",
         title: "Language & Region",
-        description: "Language, country and regional formats.",
         icon: "globe-outline",
         route: "/(app)/settings/language-region",
-      },
-      {
-        key: "accessibility",
-        title: "Accessibility",
-        description: "Text, contrast and interaction preferences.",
-        icon: "accessibility-outline",
-        route: "/(app)/settings/accessibility",
       },
     ],
   },
@@ -140,17 +113,12 @@ const SETTINGS_GROUPS: SettingsGroup[] = [
       {
         key: "about",
         title: "About",
-        description: "SaMi Runner app information and legal details.",
         icon: "information-circle-outline",
         route: "/(app)/settings/about",
       },
     ],
   },
 ];
-
-/* =========================================================
-   SETTINGS LANDING SCREEN
-========================================================= */
 
 export default function RunnerSettingsScreen() {
   const insets = useSafeAreaInsets();
@@ -186,8 +154,6 @@ export default function RunnerSettingsScreen() {
           },
         ]}
       >
-        {/* HEADER */}
-
         <View style={styles.header}>
           <Pressable
             accessibilityRole="button"
@@ -205,55 +171,19 @@ export default function RunnerSettingsScreen() {
             <Ionicons
               name="arrow-back"
               size={22}
-              color={colors.icon}
+              color="#00061D"
             />
           </Pressable>
 
-          <View style={styles.headerCopy}>
-            <Text
-              style={[
-                styles.brandLabel,
-                { color: colors.textSubtle },
-              ]}
-            >
-              SaMi Runner
-            </Text>
-
-            <Text
-              style={[
-                styles.headerTitle,
-                { color: colors.text },
-              ]}
-            >
-              Settings
-            </Text>
-          </View>
-        </View>
-
-        {/* INTRODUCTION */}
-
-        <View style={styles.introduction}>
           <Text
             style={[
-              styles.introTitle,
+              styles.headerTitle,
               { color: colors.text },
             ]}
           >
-            Make SaMi work your way
-          </Text>
-
-          <Text
-            style={[
-              styles.introDescription,
-              { color: colors.textMuted },
-            ]}
-          >
-            Manage your runner setup, account, preferences
-            and how the app works.
+            Settings
           </Text>
         </View>
-
-        {/* SETTINGS GROUPS */}
 
         <View style={styles.groups}>
           {SETTINGS_GROUPS.map((group) => (
@@ -281,7 +211,6 @@ export default function RunnerSettingsScreen() {
                     <Pressable
                       accessibilityRole="button"
                       accessibilityLabel={item.title}
-                      accessibilityHint={item.description}
                       onPress={() => openCategory(item.route)}
                       style={({ pressed }) => [
                         styles.categoryRow,
@@ -292,8 +221,6 @@ export default function RunnerSettingsScreen() {
                         },
                       ]}
                     >
-                      {/* CATEGORY ICON */}
-
                       <View
                         style={[
                           styles.categoryIcon,
@@ -309,35 +236,22 @@ export default function RunnerSettingsScreen() {
                         />
                       </View>
 
-                      {/* CATEGORY INFORMATION */}
+                      <Text
+                        style={[
+                          styles.categoryTitle,
+                          { color: colors.text },
+                        ]}
+                      >
+                        {item.title}
+                      </Text>
 
-                      <View style={styles.categoryCopy}>
-                        <Text
-                          style={[
-                            styles.categoryTitle,
-                            { color: colors.text },
-                          ]}
-                        >
-                          {item.title}
-                        </Text>
-
-                        <Text
-                          style={[
-                            styles.categoryDescription,
-                            { color: colors.textMuted },
-                          ]}
-                        >
-                          {item.description}
-                        </Text>
+                      <View style={styles.arrowContainer}>
+                        <Ionicons
+                          name="chevron-forward"
+                          size={19}
+                          color="#00061D"
+                        />
                       </View>
-
-                      {/* NAVIGATION INDICATOR */}
-
-                      <Ionicons
-                        name="chevron-forward"
-                        size={19}
-                        color={colors.textSubtle}
-                      />
                     </Pressable>
 
                     {index < group.items.length - 1 ? (
@@ -356,38 +270,10 @@ export default function RunnerSettingsScreen() {
             </View>
           ))}
         </View>
-
-        {/* FOOTER */}
-
-        <View style={styles.footer}>
-          <Text
-            style={[
-              styles.footerText,
-              { color: colors.textSubtle },
-            ]}
-          >
-            SaMi Runner
-          </Text>
-
-          <Text
-            style={[
-              styles.footerCaption,
-              { color: colors.textMuted },
-            ]}
-          >
-            Consider it done.
-          </Text>
-        </View>
       </ScrollView>
     </View>
   );
 }
-
-/* =========================================================
-   STYLES
-   Layout values come from the shared theme tokens.
-   Colours are supplied by useRunnerTheme().
-========================================================= */
 
 const styles = StyleSheet.create({
   root: {
@@ -414,36 +300,10 @@ const styles = StyleSheet.create({
     justifyContent: "center",
   },
 
-  headerCopy: {
-    flex: 1,
-    gap: runnerSpacing.xxs,
-  },
-
-  brandLabel: {
-    fontSize: runnerTypography.caption,
-    fontWeight: runnerTypography.fontWeight.semibold,
-    letterSpacing: 0.3,
-  },
-
   headerTitle: {
     fontSize: runnerTypography.heading,
     fontWeight: runnerTypography.fontWeight.bold,
     lineHeight: 32,
-  },
-
-  introduction: {
-    gap: runnerSpacing.xs,
-    marginBottom: runnerSpacing.xxl,
-  },
-
-  introTitle: {
-    fontSize: runnerTypography.title,
-    fontWeight: runnerTypography.fontWeight.bold,
-  },
-
-  introDescription: {
-    fontSize: runnerTypography.body,
-    lineHeight: runnerTypography.body * runnerTypography.lineHeight.normal,
   },
 
   groups: {
@@ -483,40 +343,21 @@ const styles = StyleSheet.create({
     justifyContent: "center",
   },
 
-  categoryCopy: {
-    flex: 1,
-    gap: runnerSpacing.xxs,
-  },
-
   categoryTitle: {
+    flex: 1,
     fontSize: runnerTypography.body,
     fontWeight: runnerTypography.fontWeight.semibold,
   },
 
-  categoryDescription: {
-    fontSize: runnerTypography.caption,
-    lineHeight:
-      runnerTypography.caption * runnerTypography.lineHeight.normal,
+  arrowContainer: {
+    alignItems: "center",
+    justifyContent: "center",
+    width: 24,
   },
 
   separator: {
     height: StyleSheet.hairlineWidth,
     marginLeft: 44 + runnerSpacing.md,
     marginRight: runnerSpacing.md,
-  },
-
-  footer: {
-    alignItems: "center",
-    gap: runnerSpacing.xxs,
-    marginTop: runnerSpacing.xxxl,
-  },
-
-  footerText: {
-    fontSize: runnerTypography.bodySmall,
-    fontWeight: runnerTypography.fontWeight.semibold,
-  },
-
-  footerCaption: {
-    fontSize: runnerTypography.caption,
   },
 });
