@@ -170,7 +170,7 @@ function compactRegistration(value: string): string {
     .trim()
     .toUpperCase()
     .replace(/[^A-Z0-9]/g, "")
-    .slice(0, 7);
+    .slice(0, 8);
 }
 
 /**
@@ -178,7 +178,7 @@ function compactRegistration(value: string): string {
  * transport type selected by the Runner.
  *
  * Ordinary vehicle: KDA 123A
- * Motorcycle:       KMAB 123
+ * Motorcycle:       KMAB 123A
  */
 function formatKenyanRegistration(
   value: string,
@@ -211,7 +211,7 @@ function isValidKenyanRegistration(
   const compact = compactRegistration(value);
 
   if (vehicleType === "motorbike") {
-    return /^KM[A-HJ-NP-Z]{2}[0-9]{3}$/.test(compact);
+    return /^KM[A-HJ-NP-Z]{2}[0-9]{3}[A-HJ-NP-Z]$/.test(compact);
   }
 
   if (vehicleType === "vehicle") {
@@ -225,7 +225,7 @@ function isValidKenyanRegistration(
 
 function registrationExample(vehicleType: VehicleType): string {
   return vehicleType === "motorbike"
-    ? "KMAB 123"
+    ? "KMAB 123A"
     : "KEA 123A";
 }
 
@@ -233,7 +233,7 @@ function registrationErrorMessage(
   vehicleType: VehicleType,
 ): string {
   return vehicleType === "motorbike"
-    ? "Enter a valid Kenyan motorcycle registration number, for example KMAB 123."
+    ? "Enter a valid Kenyan motorcycle registration number, for example KMAB 123A."
     : "Enter a valid Kenyan vehicle registration number, for example KEA 123A.";
 }
 
@@ -1292,7 +1292,7 @@ const registrationInputRef = useRef<TextInputInstance>(null);
                       )}`}
                       placeholderTextColor={colors.textMuted}
                       editable={canEdit}
-                      maxLength={8}
+                      maxLength={9}
                       autoCapitalize="characters"
                       autoCorrect={false}
                       keyboardType="default"

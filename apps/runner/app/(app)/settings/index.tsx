@@ -155,26 +155,18 @@ export default function RunnerSettingsScreen() {
         ]}
       >
         <View style={styles.header}>
-          <Pressable
-            accessibilityRole="button"
-            accessibilityLabel="Go back"
-            onPress={goBack}
-            style={({ pressed }) => [
-              styles.backButton,
-              {
-                backgroundColor: colors.surfaceRaised,
-                borderColor: colors.border,
-                opacity: pressed ? 0.72 : 1,
-              },
-            ]}
-          >
-            <Ionicons
-              name="arrow-back"
-              size={22}
-              color="#00061D"
-            />
-          </Pressable>
-
+         <Pressable
+  accessibilityRole="button"
+  accessibilityLabel="Go back"
+  onPress={goBack}
+  style={styles.backButton}
+>
+  <Ionicons
+    name="arrow-back"
+    size={21}
+    color="#00061D"
+  />
+</Pressable>
           <Text
             style={[
               styles.headerTitle,

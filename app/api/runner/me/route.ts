@@ -39,7 +39,7 @@ type StoredVehicleType =
   | "car";
 
 const MOTORBIKE_REGISTRATION_PATTERN =
-  /^KM[A-HJ-NP-Z]{2}[0-9]{3}$/;
+  /^KM[A-HJ-NP-Z]{2}[0-9]{3}[A-HJ-NP-Z]$/;
 
 const VEHICLE_REGISTRATION_PATTERN =
   /^K[A-HJ-NP-Z]{2}[0-9]{3}[A-HJ-NP-Z]$/;
