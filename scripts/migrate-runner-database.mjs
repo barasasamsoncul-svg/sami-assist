@@ -96,23 +96,26 @@ async function migrateRunnerDatabase() {
     const files = (await readdir(MIGRATIONS_DIR))
       .filter((file) => file.endsWith(".sql"))
       .sort((a, b) => {
+        // Keep migrations from earlier dates ahead of later migrations.
+        // Priority ordering applies only within the same date, preventing
+        // new vehicle migrations from jumping ahead of their prerequisites.
+        const dateA = a.slice(0, 10);
+        const dateB = b.slice(0, 10);
+
+        if (dateA !== dateB) {
+          return dateA.localeCompare(dateB);
+        }
+
         const priorityA = MIGRATION_PRIORITY.get(a);
         const priorityB = MIGRATION_PRIORITY.get(b);
 
-        // Run explicitly ordered prerequisite migrations first.
-        if (priorityA !== undefined && priorityB !== undefined) {
+        if (
+          priorityA !== undefined &&
+          priorityB !== undefined
+        ) {
           return priorityA - priorityB;
         }
 
-        if (priorityA !== undefined) {
-          return -1;
-        }
-
-        if (priorityB !== undefined) {
-          return 1;
-        }
-
-        // Preserve automatic alphabetical ordering for all others.
         return a.localeCompare(b);
       });
 
