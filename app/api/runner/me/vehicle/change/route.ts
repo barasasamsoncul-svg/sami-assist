@@ -1,3 +1,4 @@
+
 import { randomUUID } from "node:crypto";
 import { NextResponse } from "next/server";
 import type { PoolClient } from "pg";
@@ -26,6 +27,7 @@ type VehicleRequirement = {
   category_key: string | null;
   document_type: string;
   is_required: boolean;
+  requires_expiry: boolean;
 };
 
 type SupportedDocument = {
@@ -38,6 +40,7 @@ type PreparedUpload = {
   file: File;
   bytes: Uint8Array;
   format: SupportedDocument;
+  validUntil: string | null;
 };
 
 type ParsedSubmission = {
@@ -47,6 +50,7 @@ type ParsedSubmission = {
   uploads: Array<{
     requirementKey: string;
     file: File;
+    validUntil: string | null;
   }>;
 };
 
@@ -60,6 +64,57 @@ function response(
       "Cache-Control": "no-store, private",
     },
   });
+}
+
+function isValidDateOnly(value: string): boolean {
+  const parts = value.split("-");
+
+  if (
+    parts.length !== 3 ||
+    parts[0].length !== 4 ||
+    parts[1].length !== 2 ||
+    parts[2].length !== 2 ||
+    parts.some((part) => !/^[0-9]+$/.test(part))
+  ) {
+    return false;
+  }
+
+  const [yearText, monthText, dayText] = parts;
+  const year = Number(yearText);
+  const month = Number(monthText);
+  const day = Number(dayText);
+
+  const date = new Date(
+    Date.UTC(year, month - 1, day),
+  );
+
+  return (
+    date.getUTCFullYear() === year &&
+    date.getUTCMonth() === month - 1 &&
+    date.getUTCDate() === day
+  );
+}
+
+function todayInNairobi(): string {
+  const parts = new Intl.DateTimeFormat("en-CA", {
+    timeZone: "Africa/Nairobi",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).formatToParts(new Date());
+
+  const values = Object.fromEntries(
+    parts.map((part) => [part.type, part.value]),
+  );
+
+  return `${values.year}-${values.month}-${values.day}`;
+}
+
+function isCurrentExpiryDate(value: string): boolean {
+  return (
+    isValidDateOnly(value) &&
+    value >= todayInNairobi()
+  );
 }
 
 function normalizeVehicleType(
@@ -214,6 +269,7 @@ function detectDocumentFormat(
 async function prepareUpload(
   requirementKey: string,
   file: File,
+  validUntil: string | null,
 ): Promise<PreparedUpload> {
   if (
     file.size <= 0 ||
@@ -250,6 +306,7 @@ async function prepareUpload(
     file,
     bytes,
     format,
+    validUntil,
   };
 }
 
@@ -313,11 +370,23 @@ function parseFormData(
   const fileValues =
     formData.getAll("file");
 
+  const validUntilValues =
+    formData.getAll("validUntil");
+
   if (
     requirementKeyValues.length !== fileValues.length
   ) {
     throw new Error(
       "Each selected document must have a matching document type.",
+    );
+  }
+
+  if (
+    validUntilValues.length !== 0 &&
+    validUntilValues.length !== requirementKeyValues.length
+  ) {
+    throw new Error(
+      "Each uploaded document must have a matching expiry-date entry.",
     );
   }
 
@@ -358,9 +427,47 @@ function parseFormData(
         );
       }
 
+      const validUntilValue =
+        validUntilValues.length > 0
+          ? validUntilValues[index]
+          : null;
+
+      if (
+        validUntilValue !== null &&
+        typeof validUntilValue !== "string"
+      ) {
+        throw new Error(
+          "Enter a valid document expiry date.",
+        );
+      }
+
+      const validUntil =
+        typeof validUntilValue === "string"
+          ? validUntilValue.trim() || null
+          : null;
+
+      if (
+        validUntil &&
+        !isValidDateOnly(validUntil)
+      ) {
+        throw new Error(
+          "Enter the expiry date in YYYY-MM-DD format.",
+        );
+      }
+
+      if (
+        validUntil &&
+        !isCurrentExpiryDate(validUntil)
+      ) {
+        throw new Error(
+          "The document expiry date cannot be in the past.",
+        );
+      }
+
       return {
         requirementKey,
         file: fileValue,
+        validUntil,
       };
     },
   );
@@ -432,7 +539,11 @@ export async function POST(request: Request) {
   try {
     preparedUploads = await Promise.all(
       parsed.uploads.map((item) =>
-        prepareUpload(item.requirementKey, item.file),
+        prepareUpload(
+          item.requirementKey,
+          item.file,
+          item.validUntil,
+        ),
       ),
     );
   } catch (cause) {
@@ -620,7 +731,8 @@ export async function POST(request: Request) {
            requirement_key,
            category_key,
            document_type,
-           is_required
+           is_required,
+           requires_expiry
          FROM public.runner_onboarding_document_requirements
          WHERE is_active = true
            AND vehicle_type = $1
@@ -707,6 +819,59 @@ export async function POST(request: Request) {
         "One or more selected documents do not match your replacement vehicle requirements.",
         403,
       );
+    }
+
+    // Validate expiry dates against the configured requirement.
+    // Dates are supplied in YYYY-MM-DD format and evaluated
+    // using the Africa/Nairobi calendar date.
+    for (const upload of preparedUploads) {
+      const requirement = requirementMap.get(
+        upload.requirementKey,
+      );
+
+      if (!requirement) {
+        continue;
+      }
+
+      if (
+        requirement.requires_expiry &&
+        !upload.validUntil
+      ) {
+        await rollback(client, transactionStarted);
+        transactionStarted = false;
+
+        return errorResponse(
+          `Enter the expiry date for ${requirement.document_type.replace(/_/g, " ")}.`,
+          400,
+        );
+      }
+
+      if (
+        requirement.requires_expiry &&
+        upload.validUntil &&
+        !isCurrentExpiryDate(upload.validUntil)
+      ) {
+        await rollback(client, transactionStarted);
+        transactionStarted = false;
+
+        return errorResponse(
+          "One of your vehicle documents has an expired or invalid expiry date.",
+          400,
+        );
+      }
+
+      if (
+        !requirement.requires_expiry &&
+        upload.validUntil
+      ) {
+        await rollback(client, transactionStarted);
+        transactionStarted = false;
+
+        return errorResponse(
+          "An expiry date was provided for a document that does not require one.",
+          400,
+        );
+      }
     }
 
     // Check the saved vehicle history before allowing another record
@@ -817,11 +982,12 @@ export async function POST(request: Request) {
       );
     }
 
-    // Upload and register each document against this replacement request.
+    // Upload and register each document against this replacement vehicle.
     const savedDocuments: Array<{
       id: string;
       requirementKey: string;
       reviewStatus: string;
+      validUntil: string | null;
     }> = [];
 
     for (const upload of preparedUploads) {
@@ -851,6 +1017,7 @@ export async function POST(request: Request) {
       const documentResult = await client.query<{
         id: string;
         review_status: string;
+        valid_until: string | null;
       }>(
         `INSERT INTO public.runner_verification_documents (
            runner_id,
@@ -860,7 +1027,9 @@ export async function POST(request: Request) {
            requirement_key,
            review_status,
            submitted_at,
+           valid_until,
            document_purpose,
+           vehicle_id,
            vehicle_change_request_id
          )
          VALUES (
@@ -871,16 +1040,20 @@ export async function POST(request: Request) {
            $5,
            'pending',
            now(),
+           $6,
            'vehicle_update',
-           $6
+           $7,
+           $8
          )
-         RETURNING id, review_status`,
+         RETURNING id, review_status, valid_until`,
         [
           auth.runner.id,
           requirement.document_type,
           storageKey,
           requirement.category_key,
           requirement.requirement_key,
+          upload.validUntil,
+          vehicleId,
           changeRequestId,
         ],
       );
@@ -897,6 +1070,7 @@ export async function POST(request: Request) {
         id: savedDocument.id,
         requirementKey: requirement.requirement_key,
         reviewStatus: savedDocument.review_status,
+        validUntil: savedDocument.valid_until,
       });
     }
 

@@ -1,3 +1,4 @@
+
 import { NextResponse } from "next/server";
 
 import { authenticateRunner } from "@/apps/runner/server/auth";
@@ -40,13 +41,15 @@ type ChangeRequestRow = {
 
 type VehicleDocumentRow = {
   id: string;
-  vehicle_change_request_id: string;
+  vehicle_id: string | null;
+  vehicle_change_request_id: string | null;
   document_type: string;
   requirement_key: string | null;
   review_status: string;
   rejection_reason: string | null;
   submitted_at: string;
   reviewed_at: string | null;
+  valid_until: string | null;
 };
 
 type RequirementRow = {
@@ -57,11 +60,17 @@ type RequirementRow = {
   title: string;
   instructions: string;
   is_required: boolean;
+  requires_expiry: boolean;
   display_order: number;
 };
 
 type ActiveJobRow = {
   status: string;
+};
+
+type ReactivationResult = {
+  canReactivate: boolean;
+  blockReason: string | null;
 };
 
 function response(
@@ -74,6 +83,29 @@ function response(
       "Cache-Control": "no-store, private",
     },
   });
+}
+
+function todayInNairobi(): string {
+  const parts = new Intl.DateTimeFormat("en-CA", {
+    timeZone: "Africa/Nairobi",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).formatToParts(new Date());
+
+  const values = Object.fromEntries(
+    parts.map((part) => [part.type, part.value]),
+  );
+
+  return `${values.year}-${values.month}-${values.day}`;
+}
+
+function isCurrentExpiryDate(
+  value: string | null,
+): boolean {
+  return Boolean(
+    value && value >= todayInNairobi(),
+  );
 }
 
 function normalizeVehicleType(value: string) {
@@ -119,35 +151,17 @@ function vehicleLabel(value: string): string {
   }
 }
 
-function shapeVehicle(vehicle: VehicleRow) {
-  return {
-    id: vehicle.id,
-    vehicleType: normalizeVehicleType(vehicle.vehicle_type),
-    storedVehicleType: vehicle.vehicle_type,
-    vehicleLabel: vehicleLabel(vehicle.vehicle_type),
-    vehicleModel: vehicle.vehicle_model,
-    vehicleRegistration: vehicle.vehicle_registration,
-    status: vehicle.status,
-    isActive: vehicle.is_active,
-    approvedAt: vehicle.approved_at,
-    createdAt: vehicle.created_at,
-    updatedAt: vehicle.updated_at,
-
-    canReactivate:
-      vehicle.status === "inactive" &&
-      !vehicle.is_active,
-  };
-}
-
 function shapeDocument(document: VehicleDocumentRow) {
   return {
     id: document.id,
+    vehicleId: document.vehicle_id,
     documentType: document.document_type,
     requirementKey: document.requirement_key,
     reviewStatus: document.review_status,
     rejectionReason: document.rejection_reason,
     submittedAt: document.submitted_at,
     reviewedAt: document.reviewed_at,
+    validUntil: document.valid_until,
   };
 }
 
@@ -163,7 +177,158 @@ function shapeRequirement(requirement: RequirementRow) {
     title: requirement.title,
     instructions: requirement.instructions,
     required: requirement.is_required,
+    requiresExpiry: requirement.requires_expiry,
     displayOrder: requirement.display_order,
+  };
+}
+
+function getReactivationEligibility(
+  vehicle: VehicleRow,
+  requirements: RequirementRow[],
+  documents: VehicleDocumentRow[],
+  hasActiveErrand: boolean,
+): ReactivationResult {
+  // Only previously approved, inactive vehicles can be reactivated.
+  if (
+    vehicle.status !== "inactive" ||
+    vehicle.is_active
+  ) {
+    return {
+      canReactivate: false,
+      blockReason: null,
+    };
+  }
+
+  // Never switch transport while an errand is active.
+  if (hasActiveErrand) {
+    return {
+      canReactivate: false,
+      blockReason:
+        "Complete your current errand before reactivating another vehicle.",
+    };
+  }
+
+  // Only the currently supported SaMi Runner vehicle types
+  // can use the reactivation workflow.
+  if (
+    !["bicycle", "motorcycle", "car"].includes(
+      vehicle.vehicle_type,
+    )
+  ) {
+    return {
+      canReactivate: false,
+      blockReason:
+        "This vehicle type is not currently supported for reactivation. Contact SaMi Support.",
+    };
+  }
+
+  const requiredRequirements = requirements.filter(
+    (requirement) => requirement.is_required,
+  );
+
+  // Do not allow a motorised vehicle to bypass an unconfigured
+  // mandatory document checklist.
+  if (
+    vehicle.vehicle_type !== "bicycle" &&
+    requiredRequirements.length === 0
+  ) {
+    return {
+      canReactivate: false,
+      blockReason:
+        "The mandatory documents for this vehicle could not be verified. Contact SaMi Support.",
+    };
+  }
+
+  // Documents are already sorted newest first. Only the latest
+  // submitted version of each requirement is considered.
+  const latestDocumentByRequirement =
+    new Map<string, VehicleDocumentRow>();
+
+  for (const document of documents) {
+    if (
+      !document.requirement_key ||
+      latestDocumentByRequirement.has(
+        document.requirement_key,
+      )
+    ) {
+      continue;
+    }
+
+    latestDocumentByRequirement.set(
+      document.requirement_key,
+      document,
+    );
+  }
+
+  for (const requirement of requiredRequirements) {
+    const document = latestDocumentByRequirement.get(
+      requirement.requirement_key,
+    );
+
+    if (!document) {
+      return {
+        canReactivate: false,
+        blockReason:
+          `The required ${requirement.title} is missing for this vehicle.`,
+      };
+    }
+
+    if (document.review_status !== "approved") {
+      return {
+        canReactivate: false,
+        blockReason:
+          `Your ${requirement.title} must be approved by Operations before this vehicle can be reactivated.`,
+      };
+    }
+
+    if (
+      requirement.requires_expiry &&
+      !isCurrentExpiryDate(document.valid_until)
+    ) {
+      return {
+        canReactivate: false,
+        blockReason:
+          `Your ${requirement.title} has expired or has no recorded expiry date. Submit a current document for review.`,
+      };
+    }
+  }
+
+  return {
+    canReactivate: true,
+    blockReason: null,
+  };
+}
+
+function shapeVehicle(
+  vehicle: VehicleRow,
+  documents: VehicleDocumentRow[],
+  requirements: RequirementRow[],
+  hasActiveErrand: boolean,
+) {
+  const eligibility = getReactivationEligibility(
+    vehicle,
+    requirements,
+    documents,
+    hasActiveErrand,
+  );
+
+  return {
+    id: vehicle.id,
+    vehicleType: normalizeVehicleType(vehicle.vehicle_type),
+    storedVehicleType: vehicle.vehicle_type,
+    vehicleLabel: vehicleLabel(vehicle.vehicle_type),
+    vehicleModel: vehicle.vehicle_model,
+    vehicleRegistration: vehicle.vehicle_registration,
+    status: vehicle.status,
+    isActive: vehicle.is_active,
+    approvedAt: vehicle.approved_at,
+    createdAt: vehicle.created_at,
+    updatedAt: vehicle.updated_at,
+
+    documents: documents.map(shapeDocument),
+
+    canReactivate: eligibility.canReactivate,
+    reactivationBlockReason: eligibility.blockReason,
   };
 }
 
@@ -172,10 +337,11 @@ function shapeRequirement(requirement: RequirementRow) {
  *
  * Returns:
  * - The currently active vehicle.
- * - All saved vehicle records.
+ * - All saved vehicle records and their documents.
+ * - Document review and expiry information.
  * - Recent replacement requests and their document reviews.
  * - Requirements for replacement vehicles.
- * - Whether a replacement can currently be submitted.
+ * - Replacement and reactivation eligibility.
  *
  * This endpoint is read-only. It does not modify availability,
  * vehicle activation, Runner profile or document review states.
@@ -256,7 +422,152 @@ export async function GET(request: Request) {
       [auth.runner.id],
     );
 
-    const savedVehicles = vehiclesResult.rows.map(shapeVehicle);
+    const vehicleRows = vehiclesResult.rows;
+
+    const vehicleIds = vehicleRows.map(
+      (vehicle) => vehicle.id,
+    );
+
+    // Read every document attached to a saved vehicle.
+    // This includes onboarding documents migrated to the
+    // active vehicle and replacement documents.
+    // R2 storage keys are deliberately excluded.
+    let vehicleDocuments: VehicleDocumentRow[] = [];
+
+    if (vehicleIds.length > 0) {
+      const vehicleDocumentsResult =
+        await query<VehicleDocumentRow>(
+          `SELECT
+             id,
+             vehicle_id,
+             vehicle_change_request_id,
+             document_type,
+             requirement_key,
+             review_status,
+             rejection_reason,
+             submitted_at,
+             reviewed_at,
+             valid_until
+           FROM public.runner_verification_documents
+           WHERE runner_id = $1
+             AND vehicle_id = ANY($2::uuid[])
+           ORDER BY
+             submitted_at DESC NULLS LAST,
+             id DESC`,
+          [
+            auth.runner.id,
+            vehicleIds,
+          ],
+        );
+
+      vehicleDocuments = vehicleDocumentsResult.rows;
+    }
+
+    const documentsByVehicle = new Map<
+      string,
+      VehicleDocumentRow[]
+    >();
+
+    for (const document of vehicleDocuments) {
+      if (!document.vehicle_id) {
+        continue;
+      }
+
+      const existing =
+        documentsByVehicle.get(document.vehicle_id) ?? [];
+
+      existing.push(document);
+
+      documentsByVehicle.set(
+        document.vehicle_id,
+        existing,
+      );
+    }
+
+    // Read the configured document requirements for the vehicle
+    // types available in SaMi Runner.
+    const requirementsResult =
+      await query<RequirementRow>(
+        `SELECT
+           requirement_key,
+           category_key,
+           vehicle_type,
+           document_type,
+           title,
+           instructions,
+           is_required,
+           requires_expiry,
+           display_order
+         FROM public.runner_onboarding_document_requirements
+         WHERE is_active = true
+           AND vehicle_type IN (
+             'bicycle',
+             'motorcycle',
+             'car'
+           )
+           AND (
+             category_key IS NULL
+             OR category_key = ANY($1::text[])
+           )
+         ORDER BY
+           vehicle_type,
+           category_key NULLS FIRST,
+           display_order,
+           requirement_key`,
+        [categoryKeys],
+      );
+
+    const requirementRows = requirementsResult.rows;
+
+    const requirementsByVehicleType = new Map<
+      string,
+      RequirementRow[]
+    >();
+
+    for (const requirement of requirementRows) {
+      const existing =
+        requirementsByVehicleType.get(
+          requirement.vehicle_type,
+        ) ?? [];
+
+      existing.push(requirement);
+
+      requirementsByVehicleType.set(
+        requirement.vehicle_type,
+        existing,
+      );
+    }
+
+    // A Runner cannot change vehicles in the middle of an errand.
+    const activeJobResult = await query<ActiveJobRow>(
+      `SELECT status
+       FROM public.runner_jobs
+       WHERE accepted_runner_id = $1
+         AND status IN (
+           'accepted',
+           'in_progress',
+           'completion_submitted'
+         )
+       ORDER BY accepted_at DESC
+       LIMIT 1`,
+      [auth.runner.id],
+    );
+
+    const activeJob = activeJobResult.rows[0] ?? null;
+    const hasActiveErrand = activeJob !== null;
+
+    // Shape vehicles only after checking active errand state,
+    // so reactivation eligibility is consistent for all vehicles.
+    const savedVehicles = vehicleRows.map((vehicle) =>
+      shapeVehicle(
+        vehicle,
+        documentsByVehicle.get(vehicle.id) ?? [],
+        requirementsByVehicleType.get(
+          vehicle.vehicle_type,
+        ) ?? [],
+        hasActiveErrand,
+      ),
+    );
 
     const activeVehicles = savedVehicles.filter(
       (vehicle) =>
@@ -304,34 +615,38 @@ export async function GET(request: Request) {
       (item) => item.id,
     );
 
-    // Read the document review state for those requests.
-    // R2 storage keys are deliberately excluded.
-    let documents: VehicleDocumentRow[] = [];
+    // Read document review state for recent replacement requests.
+    // Expiry information is included, but R2 storage keys are not.
+    let requestDocuments: VehicleDocumentRow[] = [];
 
     if (requestIds.length > 0) {
       const documentsResult =
         await query<VehicleDocumentRow>(
           `SELECT
              id,
+             vehicle_id,
              vehicle_change_request_id,
              document_type,
              requirement_key,
              review_status,
              rejection_reason,
              submitted_at,
-             reviewed_at
+             reviewed_at,
+             valid_until
            FROM public.runner_verification_documents
            WHERE runner_id = $1
              AND document_purpose = 'vehicle_update'
              AND vehicle_change_request_id = ANY($2::uuid[])
-           ORDER BY submitted_at DESC, id DESC`,
+           ORDER BY
+             submitted_at DESC NULLS LAST,
+             id DESC`,
           [
             auth.runner.id,
             requestIds,
           ],
         );
 
-      documents = documentsResult.rows;
+      requestDocuments = documentsResult.rows;
     }
 
     const documentsByRequest = new Map<
@@ -339,7 +654,11 @@ export async function GET(request: Request) {
       VehicleDocumentRow[]
     >();
 
-    for (const document of documents) {
+    for (const document of requestDocuments) {
+      if (!document.vehicle_change_request_id) {
+        continue;
+      }
+
       const existing =
         documentsByRequest.get(
           document.vehicle_change_request_id,
@@ -382,64 +701,11 @@ export async function GET(request: Request) {
           item.status === "changes_required",
       ) ?? null;
 
-    // Return the configured document requirements for the
-    // vehicle choices available in SaMi Runner.
-    const requirementsResult =
-      await query<RequirementRow>(
-        `SELECT
-           requirement_key,
-           category_key,
-           vehicle_type,
-           document_type,
-           title,
-           instructions,
-           is_required,
-           display_order
-         FROM public.runner_onboarding_document_requirements
-         WHERE is_active = true
-           AND vehicle_type IN (
-             'bicycle',
-             'motorcycle',
-             'car'
-           )
-           AND (
-             category_key IS NULL
-             OR category_key = ANY($1::text[])
-           )
-         ORDER BY
-           vehicle_type,
-           category_key NULLS FIRST,
-           display_order,
-           requirement_key`,
-        [categoryKeys],
-      );
-
     const replacementRequirements =
-      requirementsResult.rows.map(shapeRequirement);
-
-    // Replacement submission is not allowed in the middle of an errand.
-    const activeJobResult = await query<ActiveJobRow>(
-      `SELECT status
-       FROM public.runner_jobs
-       WHERE accepted_runner_id = $1
-         AND status IN (
-           'accepted',
-           'in_progress',
-           'completion_submitted'
-         )
-       ORDER BY accepted_at DESC
-       LIMIT 1`,
-      [auth.runner.id],
-    );
-
-    const activeJob =
-      activeJobResult.rows[0] ?? null;
+      requirementRows.map(shapeRequirement);
 
     const hasOpenReplacement =
       pendingReplacement !== null;
-
-    const hasActiveErrand =
-      activeJob !== null;
 
     const canSubmitReplacement = Boolean(
       activeVehicle &&
@@ -490,6 +756,14 @@ export async function GET(request: Request) {
         hasActiveErrand,
         activeErrandStatus: activeJob?.status ?? null,
         blockReason: replacementBlockReason,
+      },
+
+      reactivationEligibility: {
+        hasActiveErrand,
+        activeErrandStatus: activeJob?.status ?? null,
+        eligibleVehicleIds: savedVehicles
+          .filter((vehicle) => vehicle.canReactivate)
+          .map((vehicle) => vehicle.id),
       },
     });
   } catch (cause) {
