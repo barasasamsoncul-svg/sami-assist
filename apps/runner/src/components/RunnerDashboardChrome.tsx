@@ -1,4 +1,3 @@
-
 /*
 |--------------------------------------------------------------------------
 | 1. IMPORTS
@@ -15,7 +14,6 @@ import {
   Pressable,
   Share,
   ScrollView,
-  StatusBar,
   StyleSheet,
   Text,
   View,
@@ -25,7 +23,14 @@ import {
 import { Ionicons } from "@expo/vector-icons";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
-import { runnerMotion, useRunnerTheme } from "@/theme";
+import {
+  runnerMotion,
+  runnerRadii,
+  runnerSpacing,
+  runnerTouchTargets,
+  runnerTypography,
+  useRunnerTheme,
+} from "@/theme";
 
 /*
 |--------------------------------------------------------------------------
@@ -72,19 +77,17 @@ type Props = {
 
 const DASHBOARD_EARNINGS_PLACEHOLDER = "KSh 2,500";
 
-const AVAILABILITY_WIDTH = 188;
-const AVAILABILITY_HEIGHT = 46;
+const AVAILABILITY_WIDTH = 204;
+const AVAILABILITY_HEIGHT = 54;
+const OFFERS_REWARDS_HEIGHT = 58;
 
-const AVAILABILITY_THUMB_SIZE = 36;
-const AVAILABILITY_THUMB_INSET = 5;
+const AVAILABILITY_THUMB_SIZE = 42;
+const AVAILABILITY_THUMB_INSET = 6;
 
 const AVAILABILITY_MAX_DRAG =
   AVAILABILITY_WIDTH -
   AVAILABILITY_THUMB_SIZE -
   AVAILABILITY_THUMB_INSET * 2;
-
-const OFFLINE_BLUE = "#1558B0";
-const ONLINE_RED = "#B42318";
 
 const PERFORMANCE_TIERS = [
   "Silver",
@@ -136,16 +139,13 @@ export function SaMiRunnerDashboardChrome({
   |--------------------------------------------------------------------------
   */
 
-  const { colors, showOverlay, isDark } = useRunnerTheme();
+  const { colors, showOverlay } = useRunnerTheme();
 
   const navy = colors.brandNavy || "#000535";
 
-  // Consistent faint grey outline across the dashboard cards.
-  const outlineColor = isDark
-    ? "rgba(192,203,217,0.30)"
-    : "rgba(70,86,107,0.30)";
-
-  const gold = isDark ? "#E8C574" : "#9A6A16";
+  // All separators and accents follow the selected Runner theme.
+  const outlineColor = colors.divider;
+  const gold = colors.amber;
 
   /*
   |--------------------------------------------------------------------------
@@ -175,7 +175,7 @@ export function SaMiRunnerDashboardChrome({
     12 +
     AVAILABILITY_HEIGHT +
     10 +
-    50 +
+    OFFERS_REWARDS_HEIGHT +
     safeBottom +
     12;
 
@@ -223,12 +223,6 @@ export function SaMiRunnerDashboardChrome({
   |--------------------------------------------------------------------------
   | 11. COMPACT DASHBOARD FADE
   |--------------------------------------------------------------------------
-  |
-  | Availability and the single Offers & Rewards card use
-  | precisely the same opacity.
-  |
-  | The fade starts as the sheet approaches the middle.
-  |--------------------------------------------------------------------------
   */
 
   const compactOpacity = sheetProgress.interpolate({
@@ -251,10 +245,6 @@ export function SaMiRunnerDashboardChrome({
   |--------------------------------------------------------------------------
   | 12. COMPACT CONTENT MOVEMENT
   |--------------------------------------------------------------------------
-  |
-  | The compact controls remain together as the sheet moves.
-  | Their position transitions to the top safe area.
-  |--------------------------------------------------------------------------
   */
 
   const compactContentTranslateY = sheetProgress.interpolate({
@@ -266,10 +256,6 @@ export function SaMiRunnerDashboardChrome({
   /*
   |--------------------------------------------------------------------------
   | 13. RUNNER HUB FADE
-  |--------------------------------------------------------------------------
-  |
-  | Runner Hub begins appearing as the compact controls fade.
-  | Reversing the gesture reverses the same animation.
   |--------------------------------------------------------------------------
   */
 
@@ -295,7 +281,18 @@ export function SaMiRunnerDashboardChrome({
   |--------------------------------------------------------------------------
   */
 
+  const previousExpanded = useRef(expanded);
+
   useEffect(() => {
+    // The animated value already starts at the correct position. Skip a
+    // redundant first-mount spring to prevent a brief first-touch flash.
+    if (previousExpanded.current === expanded) {
+      return;
+    }
+
+    previousExpanded.current = expanded;
+    sheetProgress.stopAnimation();
+
     Animated.spring(sheetProgress, {
       toValue: expanded ? 1 : 0,
       ...runnerMotion.spring,
@@ -306,18 +303,6 @@ export function SaMiRunnerDashboardChrome({
   /*
   |--------------------------------------------------------------------------
   | 15. VERTICAL SWIPE / PAGE TRANSITION
-  |--------------------------------------------------------------------------
-  |
-  | The sheet follows the finger.
-  |
-  | Swipe UP:
-  |   Opens Runner Hub.
-  |
-  | Swipe DOWN:
-  |   Returns to normal dashboard.
-  |
-  | This gesture is attached to the upper dashboard area,
-  | NOT to the independent Quick Access list.
   |--------------------------------------------------------------------------
   */
 
@@ -376,7 +361,6 @@ export function SaMiRunnerDashboardChrome({
           if (nextExpanded !== expanded) {
             onExpandedChange(nextExpanded);
           } else {
-            // An incomplete swipe returns to its original state.
             Animated.spring(sheetProgress, {
               toValue: expanded ? 1 : 0,
               ...runnerMotion.spring,
@@ -447,7 +431,7 @@ export function SaMiRunnerDashboardChrome({
     onOpenSection(section);
   };
 
-    const handleInviteFriends = () => {
+  const handleInviteFriends = () => {
     void Share.share({
       title: "Join SaMi Runner",
       message:
@@ -473,31 +457,6 @@ export function SaMiRunnerDashboardChrome({
       pointerEvents="box-none"
       style={styles.root}
     >
-      {/*
-      |--------------------------------------------------------------------------
-      | 20. STATUS BAR
-      |--------------------------------------------------------------------------
-      |
-      | The system status bar remains visible throughout.
-      | Its visibility is NOT linked to the sheet animation.
-      |--------------------------------------------------------------------------
-      */}
-
-      <StatusBar
-        hidden={false}
-        barStyle={isDark ? "light-content" : "dark-content"}
-      />
-
-      {/*
-      |--------------------------------------------------------------------------
-      | 21. NORMAL DASHBOARD TOP CONTROLS
-      |--------------------------------------------------------------------------
-      |
-      | These remain on the map dashboard.
-      | The expanded Runner Hub will cover them completely.
-      |--------------------------------------------------------------------------
-      */}
-
       <View
         style={[
           styles.headerRow,
@@ -562,12 +521,6 @@ export function SaMiRunnerDashboardChrome({
 
         <View style={styles.headerRightSpacer} />
       </View>
-
-      {/*
-      |--------------------------------------------------------------------------
-      | 22. EARNINGS DETAILS
-      |--------------------------------------------------------------------------
-      */}
 
       {earningsExpanded ? (
         <>
@@ -639,23 +592,6 @@ export function SaMiRunnerDashboardChrome({
         </>
       ) : null}
 
-      {/*
-      |--------------------------------------------------------------------------
-      | 23. CONTINUOUS BOTTOM SHEET
-      |--------------------------------------------------------------------------
-      |
-      | This is the actual full-screen page layer.
-      |
-      | Collapsed:
-      |   Only its bottom portion is visible.
-      |
-      | Expanded:
-      |   It covers the map, hamburger and earnings overlay.
-      |
-      | There is no extra page margin, side gap or grab handle.
-      |--------------------------------------------------------------------------
-      */}
-
       {!activeErrand ? (
         <Animated.View
           style={[
@@ -680,20 +616,6 @@ export function SaMiRunnerDashboardChrome({
             },
           ]}
         >
-          {/*
-          |--------------------------------------------------------------------------
-          | 24. COMPACT DASHBOARD CONTENT
-          |--------------------------------------------------------------------------
-          |
-          | Only two controls:
-          |
-          | 1. Availability
-          | 2. Offers & Rewards
-          |
-          | They fade out together during expansion.
-          |--------------------------------------------------------------------------
-          */}
-
           <Animated.View
             {...sheetPanResponder.panHandlers}
             pointerEvents={expanded ? "none" : "auto"}
@@ -711,12 +633,6 @@ export function SaMiRunnerDashboardChrome({
               },
             ]}
           >
-            {/*
-            |--------------------------------------------------------------------------
-            | 25. CENTRED AVAILABILITY
-            |--------------------------------------------------------------------------
-            */}
-
             <View style={styles.availabilityContainer}>
               <AvailabilityControl
                 isOnline={isOnline}
@@ -725,12 +641,6 @@ export function SaMiRunnerDashboardChrome({
                 onToggle={onToggleAvailability}
               />
             </View>
-
-            {/*
-            |--------------------------------------------------------------------------
-            | 26. ONE OFFERS & REWARDS CARD
-            |--------------------------------------------------------------------------
-            */}
 
             <Pressable
               accessibilityRole="button"
@@ -743,8 +653,8 @@ export function SaMiRunnerDashboardChrome({
               style={({ pressed }) => [
                 styles.offersRewardsCard,
                 {
-                  borderColor: outlineColor,
-                  opacity: pressed ? 0.65 : 1,
+                  borderBottomColor: outlineColor,
+                  opacity: pressed ? 0.72 : 1,
                 },
               ]}
             >
@@ -784,18 +694,6 @@ export function SaMiRunnerDashboardChrome({
             </Pressable>
           </Animated.View>
 
-          {/*
-          |--------------------------------------------------------------------------
-          | 27. FULL-SCREEN RUNNER HUB
-          |--------------------------------------------------------------------------
-          |
-          | One uninterrupted page.
-          | No SaMi Runner heading.
-          | No duplicate availability badge.
-          | No View details link.
-          |--------------------------------------------------------------------------
-          */}
-
           <Animated.View
             pointerEvents={expanded ? "auto" : "none"}
             style={[
@@ -807,22 +705,10 @@ export function SaMiRunnerDashboardChrome({
               },
             ]}
           >
-            {/*
-            |--------------------------------------------------------------------------
-            | 28. RUNNER HUB PERFORMANCE AREA
-            |--------------------------------------------------------------------------
-            |
-            | Vertical drag gestures in this area collapse the page.
-            | Its contents are not independently scrolled.
-            |--------------------------------------------------------------------------
-            */}
-
             <View
               {...sheetPanResponder.panHandlers}
               style={styles.hubPerformanceArea}
             >
-              {/* Hub page heading */}
-
               <Text
                 style={[
                   styles.hubTitle,
@@ -833,12 +719,6 @@ export function SaMiRunnerDashboardChrome({
               >
                 Runner Hub
               </Text>
-
-              {/*
-              |--------------------------------------------------------------------------
-              | 29. PERFORMANCE HEADING
-              |--------------------------------------------------------------------------
-              */}
 
               <View style={styles.performanceHeading}>
                 <Text
@@ -853,16 +733,6 @@ export function SaMiRunnerDashboardChrome({
                 </Text>
               </View>
 
-              {/*
-              |--------------------------------------------------------------------------
-              | 30. PERFORMANCE TIERS CARD
-              |--------------------------------------------------------------------------
-              |
-              | Existing Silver tier and progress remain unchanged.
-              | Arrows show the path to the next levels.
-              |--------------------------------------------------------------------------
-              */}
-
               <Pressable
                 accessibilityRole="button"
                 accessibilityLabel="Open performance and tier progress"
@@ -870,11 +740,8 @@ export function SaMiRunnerDashboardChrome({
                 style={({ pressed }) => [
                   styles.tierCard,
                   {
-                    backgroundColor: isDark
-                      ? "#071329"
-                      : "#F2F5FA",
-                    borderColor: outlineColor,
-                    opacity: pressed ? 0.86 : 1,
+                    borderBottomColor: colors.divider,
+                    opacity: pressed ? 0.76 : 1,
                   },
                 ]}
               >
@@ -883,9 +750,7 @@ export function SaMiRunnerDashboardChrome({
                     style={[
                       styles.tierIconWrap,
                       {
-                        backgroundColor: isDark
-                          ? "rgba(232,197,116,0.13)"
-                          : "rgba(154,106,22,0.09)",
+                        backgroundColor: "transparent",
                       },
                     ]}
                   >
@@ -955,9 +820,7 @@ export function SaMiRunnerDashboardChrome({
                   style={[
                     styles.tierProgressTrack,
                     {
-                      backgroundColor: isDark
-                        ? "rgba(255,255,255,0.13)"
-                        : "#D8E0EA",
+                      backgroundColor: colors.divider,
                     },
                   ]}
                 >
@@ -965,9 +828,7 @@ export function SaMiRunnerDashboardChrome({
                     style={[
                       styles.tierProgressFill,
                       {
-                        backgroundColor: isDark
-                          ? "#D6B568"
-                          : "#A97826",
+                        backgroundColor: colors.amber,
                         width: "20%",
                       },
                     ]}
@@ -997,12 +858,6 @@ export function SaMiRunnerDashboardChrome({
                     20% complete
                   </Text>
                 </View>
-
-                {/*
-                |--------------------------------------------------------------------------
-                | 31. TIER PROGRESSION ARROWS
-                |--------------------------------------------------------------------------
-                */}
 
                 <View style={styles.tierStepsRow}>
                   {PERFORMANCE_TIERS.map((tier, index) => (
@@ -1035,161 +890,42 @@ export function SaMiRunnerDashboardChrome({
                 </View>
               </Pressable>
 
-              {/*
-              |--------------------------------------------------------------------------
-              | 32. PERFORMANCE METRICS
-              |--------------------------------------------------------------------------
-              |
-              | Rating.
-              | Acceptance.
-              | Cancellation.
-              |
-              | Existing placeholders and navigation preserved.
-              |--------------------------------------------------------------------------
-              */}
-
               <View style={styles.performanceMetricRow}>
                 <Pressable
                   accessibilityRole="button"
                   onPress={() => openSection("performance")}
-                  style={[
-                    styles.performanceMetric,
-                    {
-                      backgroundColor: isDark
-                        ? "#071329"
-                        : "#F2F5FA",
-                      borderColor: outlineColor,
-                    },
-                  ]}
+                  style={styles.performanceMetric}
                 >
-                  <Ionicons
-                    name="star"
-                    size={16}
-                    color={isDark ? "#F2C66D" : "#A16A13"}
-                  />
-
-                  <Text
-                    style={[
-                      styles.performanceMetricValue,
-                      {
-                        color: colors.text,
-                      },
-                    ]}
-                  >
-                    —
-                  </Text>
-
-                  <Text
-                    style={[
-                      styles.performanceMetricLabel,
-                      {
-                        color: colors.textMuted,
-                      },
-                    ]}
-                  >
-                    Rating
-                  </Text>
+                  <Ionicons name="star" size={20} color={gold} />
+                  <Text style={[styles.performanceMetricValue, { color: colors.text }]}>—</Text>
+                  <Text style={[styles.performanceMetricLabel, { color: colors.textMuted }]}>Rating</Text>
                 </Pressable>
+
+                <View style={[styles.metricDivider, { backgroundColor: colors.divider }]} />
 
                 <Pressable
                   accessibilityRole="button"
                   onPress={() => openSection("performance")}
-                  style={[
-                    styles.performanceMetric,
-                    {
-                      backgroundColor: isDark
-                        ? "#071329"
-                        : "#F2F5FA",
-                      borderColor: outlineColor,
-                    },
-                  ]}
+                  style={styles.performanceMetric}
                 >
-                  <Ionicons
-                    name="trending-up-outline"
-                    size={16}
-                    color={colors.blue}
-                  />
-
-                  <Text
-                    style={[
-                      styles.performanceMetricValue,
-                      {
-                        color: colors.text,
-                      },
-                    ]}
-                  >
-                    —%
-                  </Text>
-
-                  <Text
-                    style={[
-                      styles.performanceMetricLabel,
-                      {
-                        color: colors.textMuted,
-                      },
-                    ]}
-                  >
-                    Acceptance
-                  </Text>
+                  <Ionicons name="trending-up-outline" size={20} color={colors.blue} />
+                  <Text style={[styles.performanceMetricValue, { color: colors.text }]}>—%</Text>
+                  <Text style={[styles.performanceMetricLabel, { color: colors.textMuted }]}>Acceptance</Text>
                 </Pressable>
+
+                <View style={[styles.metricDivider, { backgroundColor: colors.divider }]} />
 
                 <Pressable
                   accessibilityRole="button"
                   onPress={() => openSection("performance")}
-                  style={[
-                    styles.performanceMetric,
-                    {
-                      backgroundColor: isDark
-                        ? "#071329"
-                        : "#F2F5FA",
-                      borderColor: outlineColor,
-                    },
-                  ]}
+                  style={styles.performanceMetric}
                 >
-                  <Ionicons
-                    name="close-circle-outline"
-                    size={16}
-                    color={colors.red}
-                  />
-
-                  <Text
-                    style={[
-                      styles.performanceMetricValue,
-                      {
-                        color: colors.text,
-                      },
-                    ]}
-                  >
-                    —%
-                  </Text>
-
-                  <Text
-                    style={[
-                      styles.performanceMetricLabel,
-                      {
-                        color: colors.textMuted,
-                      },
-                    ]}
-                  >
-                    Cancellation
-                  </Text>
+                  <Ionicons name="close-circle-outline" size={20} color={colors.danger} />
+                  <Text style={[styles.performanceMetricValue, { color: colors.text }]}>—%</Text>
+                  <Text style={[styles.performanceMetricLabel, { color: colors.textMuted }]}>Cancellation</Text>
                 </Pressable>
               </View>
             </View>
-
-            {/*
-            |--------------------------------------------------------------------------
-            | 33. QUICK ACCESS
-            |--------------------------------------------------------------------------
-            |
-            | Separate scrolling area.
-            |
-            | No "Your tools and account".
-            | No grid.
-            | No tile backgrounds.
-            | Consistent faint grey outlines.
-            |--------------------------------------------------------------------------
-            */}
 
             <View style={styles.quickAccessSection}>
               <Text
@@ -1211,147 +947,129 @@ export function SaMiRunnerDashboardChrome({
                 nestedScrollEnabled
               >
                 <View style={styles.quickAccessRows}>
-                <HubAccessRow
-                  icon="wallet-outline"
-                  title="Earnings"
-                  subtitle="Payouts and history"
-                  outlineColor={outlineColor}
-                  textColor={colors.text}
-                  mutedColor={colors.textMuted}
-                  iconColor={colors.blue}
-                  onPress={() => openSection("earnings")}
-                />
+                  <HubAccessRow
+                    icon="wallet-outline"
+                    title="Earnings"
+                    subtitle="Payouts and history"
+                    outlineColor={outlineColor}
+                    textColor={colors.text}
+                    mutedColor={colors.textMuted}
+                    iconColor={colors.blue}
+                    onPress={() => openSection("earnings")}
+                  />
 
-                <HubAccessRow
-                  icon="settings-outline"
-                  title="Settings"
-                  subtitle="App preferences"
-                  outlineColor={outlineColor}
-                  textColor={colors.text}
-                  mutedColor={colors.textMuted}
-                  iconColor={colors.blue}
-                  onPress={() => openSection("settings")}
-                />
+                  <HubAccessRow
+                    icon="settings-outline"
+                    title="Settings"
+                    subtitle="App preferences"
+                    outlineColor={outlineColor}
+                    textColor={colors.text}
+                    mutedColor={colors.textMuted}
+                    iconColor={colors.blue}
+                    onPress={() => openSection("settings")}
+                  />
 
-                <HubAccessRow
-                  icon="shield-checkmark-outline"
-                  title="Privacy"
-                  subtitle="Location and privacy"
-                  outlineColor={outlineColor}
-                  textColor={colors.text}
-                  mutedColor={colors.textMuted}
-                  iconColor={colors.blue}
-                  onPress={() => openSection("privacy")}
-                />
+                  <HubAccessRow
+                    icon="shield-checkmark-outline"
+                    title="Privacy"
+                    subtitle="Location and privacy"
+                    outlineColor={outlineColor}
+                    textColor={colors.text}
+                    mutedColor={colors.textMuted}
+                    iconColor={colors.blue}
+                    onPress={() => openSection("privacy")}
+                  />
 
-                <HubAccessRow
-                  icon="person-circle-outline"
-                  title="Runner profile"
-                  subtitle="Profile and documents"
-                  outlineColor={outlineColor}
-                  textColor={colors.text}
-                  mutedColor={colors.textMuted}
-                  iconColor={colors.blue}
-                  onPress={() => openSection("menu")}
-                />
+                  <HubAccessRow
+                    icon="person-circle-outline"
+                    title="Runner profile"
+                    subtitle="Profile and documents"
+                    outlineColor={outlineColor}
+                    textColor={colors.text}
+                    mutedColor={colors.textMuted}
+                    iconColor={colors.blue}
+                    onPress={() => openSection("menu")}
+                  />
 
-                <HubAccessRow
-                  icon="headset-outline"
-                  title="Help & support"
-                  subtitle="Get help and assistance"
-                  outlineColor={outlineColor}
-                  textColor={colors.text}
-                  mutedColor={colors.textMuted}
-                  iconColor={colors.blue}
-                  onPress={() => openSection("help")}
-                />
-<HubAccessRow
-  icon="options-outline"
-  title="Runner Preferences"
-  subtitle="Your runner preferences"
-  outlineColor={outlineColor}
-  textColor={colors.text}
-  mutedColor={colors.textMuted}
-  iconColor={colors.blue}
-  onPress={() => openSection("menu")}
-/>
-</View>
+                  <HubAccessRow
+                    icon="headset-outline"
+                    title="Help & support"
+                    subtitle="Get help and assistance"
+                    outlineColor={outlineColor}
+                    textColor={colors.text}
+                    mutedColor={colors.textMuted}
+                    iconColor={colors.blue}
+                    onPress={() => openSection("help")}
+                  />
 
-<Pressable
-  accessibilityRole="button"
-  accessibilityLabel="Invite friends to SaMi Runner and earn"
-  onPress={handleInviteFriends}
-  style={({ pressed }) => [
-    styles.inviteReferralCard,
-    {
-      backgroundColor: navy,
-      borderColor: isDark
-        ? "rgba(255,255,255,0.20)"
-        : "rgba(0,5,53,0.18)",
-      opacity: pressed ? 0.88 : 1,
-    },
-  ]}
->
-  <View
-    style={[
-      styles.inviteReferralIcon,
-      { backgroundColor: gold },
-    ]}
-  >
-    <Ionicons
-      name="people-outline"
-      size={22}
-      color={navy}
-    />
-  </View>
+                  <HubAccessRow
+                    icon="options-outline"
+                    title="Runner Preferences"
+                    subtitle="Your runner preferences"
+                    outlineColor={outlineColor}
+                    textColor={colors.text}
+                    mutedColor={colors.textMuted}
+                    iconColor={colors.blue}
+                    onPress={() => openSection("menu")}
+                  />
+                </View>
 
-  <Text style={styles.inviteReferralEyebrow}>
-    INVITE & EARN
-  </Text>
+                <Pressable
+                  accessibilityRole="button"
+                  accessibilityLabel="Invite friends to SaMi Runner and earn"
+                  onPress={handleInviteFriends}
+                  style={({ pressed }) => [
+                    styles.inviteReferralCard,
+                    {
+                      borderBottomColor: colors.divider,
+                      opacity: pressed ? 0.72 : 1,
+                    },
+                  ]}
+                >
+                  <View style={styles.inviteReferralIcon}>
+                    <Ionicons
+                      name="people-outline"
+                      size={24}
+                      color={colors.blue}
+                    />
+                  </View>
 
-  <Text style={styles.inviteReferralTitle}>
-    Earn up to KSh 2,000
-  </Text>
+                  <View style={styles.inviteReferralCopy}>
+                    <Text style={[styles.inviteReferralEyebrow, { color: colors.textMuted }]}>
+                      INVITE & EARN
+                    </Text>
 
-  <Text style={styles.inviteReferralSubtitle}>
-    Invite friends to run with SaMi.
-  </Text>
+                    <Text style={[styles.inviteReferralTitle, { color: colors.text }]}>
+                      Earn up to KSh 2,000
+                    </Text>
 
-  <View style={styles.inviteReferralAction}>
-    <Text style={styles.inviteReferralActionText}>
-      Invite friends to run
-    </Text>
+                    <Text style={[styles.inviteReferralSubtitle, { color: colors.textMuted }]}>
+                      Invite friends to run with SaMi.
+                    </Text>
+                  </View>
 
-    <Ionicons
-      name="arrow-forward"
-      size={16}
-      color={navy}
-    />
-  </View>
-</Pressable>
-
+                  <Ionicons
+                    name="arrow-forward"
+                    size={20}
+                    color={colors.textMuted}
+                  />
+                </Pressable>
               </ScrollView>
             </View>
           </Animated.View>
         </Animated.View>
       ) : null}
 
-      {/*
-      |--------------------------------------------------------------------------
-      | 34. DASHBOARD MENU
-      |--------------------------------------------------------------------------
-      */}
-
       <Modal
         visible={menuOpen}
         transparent
-        animationType="fade"
+        animationType="none"
         statusBarTranslucent={false}
         onRequestClose={() => setMenuOpen(false)}
       >
         <View style={styles.drawerRoot}>
           <Pressable
-            style={styles.drawerBackdrop}
+            style={[styles.drawerBackdrop, { backgroundColor: colors.overlay }]}
             onPress={() => setMenuOpen(false)}
             accessibilityLabel="Close menu"
           />
@@ -1464,6 +1182,9 @@ function AvailabilityControl({
   busy: boolean;
   onToggle: () => void;
 }) {
+  const { colors, isDark } = useRunnerTheme();
+  const offlineColor = colors.blueAction;
+  const onlineColor = isDark ? "#A92F3A" : "#B42318";
   const thumbTranslateX = useRef(
     new Animated.Value(0),
   ).current;
@@ -1474,8 +1195,20 @@ function AvailabilityControl({
   |--------------------------------------------------------------------------
   */
 
+  const previousAvailability = useRef({ isOnline, busy });
+
   useEffect(() => {
-    if (busy) return;
+    const changed =
+      previousAvailability.current.isOnline !== isOnline ||
+      previousAvailability.current.busy !== busy;
+
+    previousAvailability.current = { isOnline, busy };
+
+    // The thumb starts at zero. Only reset it after a real availability
+    // transition, not during the first render.
+    if (!changed || busy) {
+      return;
+    }
 
     Animated.spring(thumbTranslateX, {
       toValue: 0,
@@ -1489,9 +1222,6 @@ function AvailabilityControl({
   /*
   |--------------------------------------------------------------------------
   | 37. HORIZONTAL RIGHT-SLIDE GESTURE
-  |--------------------------------------------------------------------------
-  |
-  | This gesture is only used while ONLINE.
   |--------------------------------------------------------------------------
   */
 
@@ -1585,7 +1315,7 @@ function AvailabilityControl({
           {
             width: AVAILABILITY_WIDTH,
             height: AVAILABILITY_HEIGHT,
-            backgroundColor: OFFLINE_BLUE,
+            backgroundColor: offlineColor,
             opacity: disabled
               ? 0.55
               : pressed
@@ -1630,7 +1360,7 @@ function AvailabilityControl({
         {
           width: AVAILABILITY_WIDTH,
           height: AVAILABILITY_HEIGHT,
-          backgroundColor: ONLINE_RED,
+          backgroundColor: onlineColor,
           opacity: disabled ? 0.55 : 1,
         },
       ]}
@@ -1660,13 +1390,13 @@ function AvailabilityControl({
         {busy ? (
           <ActivityIndicator
             size="small"
-            color="#000535"
+            color={colors.brandNavy}
           />
         ) : (
           <Ionicons
             name="chevron-forward"
             size={20}
-            color="#000535"
+            color={colors.brandNavy}
           />
         )}
       </Animated.View>
@@ -1679,8 +1409,8 @@ function AvailabilityControl({
 | 40. QUICK ACCESS ROW
 |--------------------------------------------------------------------------
 |
-| Plain text actions with consistent grey outlines.
-| These rows do not use glassmorphism or grid tiles.
+| Plain text actions separated by thin theme-coloured lines.
+| These rows do not use cards, tiles or filled containers.
 |--------------------------------------------------------------------------
 */
 
@@ -1807,40 +1537,27 @@ function DrawerItem({
 */
 
 const styles = StyleSheet.create({
-
-  /*
-  |--------------------------------------------------------------------------
-  | ROOT
-  |--------------------------------------------------------------------------
-  */
-
   root: {
     ...StyleSheet.absoluteFill,
   },
 
-  /*
-  |--------------------------------------------------------------------------
-  | DASHBOARD TOP BAR
-  |--------------------------------------------------------------------------
-  */
-
   headerRow: {
     position: "absolute",
-    left: 16,
-    right: 16,
+    left: runnerSpacing.md,
+    right: runnerSpacing.md,
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
   },
 
   hamburgerButton: {
-    width: 44,
-    height: 44,
-    borderRadius: 22,
+    width: runnerTouchTargets.minimum,
+    height: runnerTouchTargets.minimum,
+    borderRadius: runnerRadii.pill,
     alignItems: "center",
     justifyContent: "center",
-    borderWidth: 1,
-    borderColor: "rgba(255,255,255,0.19)",
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: "rgba(255,255,255,0.26)",
     elevation: 8,
     shadowColor: "#000000",
     shadowOffset: { width: 0, height: 3 },
@@ -1849,29 +1566,23 @@ const styles = StyleSheet.create({
   },
 
   headerRightSpacer: {
-    width: 44,
-    height: 44,
+    width: runnerTouchTargets.minimum,
+    height: runnerTouchTargets.minimum,
   },
-
-  /*
-  |--------------------------------------------------------------------------
-  | EARNINGS
-  |--------------------------------------------------------------------------
-  */
 
   earningsPill: {
     position: "absolute",
     left: "50%",
-    transform: [{ translateX: -78 }],
-    width: 156,
-    minHeight: 53,
-    borderRadius: 28,
-    borderWidth: 1,
-    borderColor: "rgba(255,255,255,0.2)",
+    transform: [{ translateX: -86 }],
+    width: 172,
+    minHeight: 58,
+    borderRadius: runnerRadii.pill,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: "rgba(255,255,255,0.26)",
     alignItems: "center",
     justifyContent: "center",
-    paddingHorizontal: 14,
-    paddingVertical: 6,
+    paddingHorizontal: runnerSpacing.md,
+    paddingVertical: runnerSpacing.xs,
     elevation: 9,
     shadowColor: "#000000",
     shadowOffset: { width: 0, height: 4 },
@@ -1881,16 +1592,16 @@ const styles = StyleSheet.create({
 
   earningsPillAmount: {
     color: "#FFFFFF",
-    fontSize: 17,
-    lineHeight: 21,
+    fontSize: 18,
+    lineHeight: 24,
     fontWeight: "900",
     letterSpacing: -0.2,
   },
 
   earningsPillToday: {
-    color: "rgba(255,255,255,0.86)",
-    fontSize: 10,
-    lineHeight: 13,
+    color: "rgba(255,255,255,0.9)",
+    fontSize: 13,
+    lineHeight: 17,
     fontWeight: "700",
   },
 
@@ -1906,14 +1617,14 @@ const styles = StyleSheet.create({
 
   earningsOverlay: {
     position: "absolute",
-    left: 16,
-    right: 16,
+    left: runnerSpacing.md,
+    right: runnerSpacing.md,
     zIndex: 60,
-    borderWidth: 1,
-    borderRadius: 20,
-    paddingHorizontal: 17,
-    paddingVertical: 15,
-    gap: 10,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderRadius: runnerRadii.xl,
+    paddingHorizontal: runnerSpacing.lg,
+    paddingVertical: runnerSpacing.lg,
+    gap: runnerSpacing.sm,
     elevation: 18,
     shadowColor: "#000000",
     shadowOffset: { width: 0, height: 8 },
@@ -1928,40 +1639,34 @@ const styles = StyleSheet.create({
   },
 
   earningsOverlayEyebrow: {
-    color: "rgba(255,255,255,0.72)",
-    fontSize: 9,
+    color: "rgba(255,255,255,0.82)",
+    fontSize: 13,
     fontWeight: "900",
-    letterSpacing: 1.2,
+    letterSpacing: 1.1,
   },
 
   earningsOverlayValue: {
     color: "#FFFFFF",
-    fontSize: 24,
-    lineHeight: 30,
+    fontSize: 28,
+    lineHeight: 36,
     fontWeight: "900",
   },
 
   eyeButton: {
-    width: 42,
-    height: 42,
-    borderRadius: 21,
+    width: runnerTouchTargets.minimum,
+    height: runnerTouchTargets.minimum,
+    borderRadius: runnerRadii.pill,
     alignItems: "center",
     justifyContent: "center",
-    borderWidth: 1,
-    borderColor: "rgba(255,255,255,0.22)",
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: "rgba(255,255,255,0.26)",
   },
 
   earningsOverlayHint: {
-    color: "rgba(255,255,255,0.82)",
-    fontSize: 11,
-    lineHeight: 16,
+    color: "rgba(255,255,255,0.9)",
+    fontSize: 14,
+    lineHeight: 21,
   },
-
-  /*
-  |--------------------------------------------------------------------------
-  | FULL-SCREEN SHEET
-  |--------------------------------------------------------------------------
-  */
 
   bottomSheet: {
     position: "absolute",
@@ -1975,20 +1680,14 @@ const styles = StyleSheet.create({
     shadowRadius: 15,
   },
 
-  /*
-  |--------------------------------------------------------------------------
-  | COMPACT DASHBOARD
-  |--------------------------------------------------------------------------
-  */
-
   compactLayer: {
     position: "absolute",
     top: 0,
     left: 0,
     right: 0,
-    paddingHorizontal: 18,
+    paddingHorizontal: runnerSpacing.lg,
     paddingTop: 0,
-    gap: 10,
+    gap: runnerSpacing.sm,
     alignItems: "stretch",
   },
 
@@ -2000,15 +1699,15 @@ const styles = StyleSheet.create({
   },
 
   availabilityButton: {
-    borderRadius: 999,
+    borderRadius: runnerRadii.pill,
     alignItems: "center",
     justifyContent: "center",
-    paddingHorizontal: 16,
+    paddingHorizontal: runnerSpacing.lg,
   },
 
   availabilitySlider: {
     position: "relative",
-    borderRadius: 999,
+    borderRadius: runnerRadii.pill,
     alignItems: "center",
     justifyContent: "center",
     overflow: "hidden",
@@ -2016,7 +1715,8 @@ const styles = StyleSheet.create({
 
   availabilityText: {
     color: "#FFFFFF",
-    fontSize: 12,
+    fontSize: 15,
+    lineHeight: 20,
     fontWeight: "900",
     letterSpacing: 0.1,
   },
@@ -2035,40 +1735,29 @@ const styles = StyleSheet.create({
     shadowRadius: 3,
   },
 
-  /*
-  |--------------------------------------------------------------------------
-  | ONE OFFERS & REWARDS CARD
-  |--------------------------------------------------------------------------
-  */
-
   offersRewardsCard: {
     width: "100%",
-    minHeight: 50,
-    borderWidth: 1,
-    borderRadius: 15,
-    paddingHorizontal: 13,
+    minHeight: 58,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    paddingHorizontal: runnerSpacing.xs,
+    paddingVertical: runnerSpacing.sm,
     flexDirection: "row",
     alignItems: "center",
-    gap: 11,
+    gap: runnerSpacing.md,
     backgroundColor: "transparent",
   },
 
   offersRewardsTitle: {
     flex: 1,
-    fontSize: 13,
+    fontSize: 16,
+    lineHeight: 22,
     fontWeight: "800",
   },
 
   offersRewardsCount: {
-    fontSize: 11,
+    fontSize: 14,
     fontWeight: "800",
   },
-
-  /*
-  |--------------------------------------------------------------------------
-  | FULL-SCREEN RUNNER HUB PAGE
-  |--------------------------------------------------------------------------
-  */
 
   hubPage: {
     position: "absolute",
@@ -2076,78 +1765,69 @@ const styles = StyleSheet.create({
     left: 0,
     right: 0,
     bottom: 0,
-    paddingHorizontal: 18,
+    paddingHorizontal: runnerSpacing.lg,
     flexDirection: "column",
   },
 
   hubPerformanceArea: {
     flexShrink: 0,
-    gap: 12,
+    gap: runnerSpacing.md,
   },
 
   hubTitle: {
-    fontSize: 23,
-    lineHeight: 30,
+    fontSize: runnerTypography.heading,
+    lineHeight: 34,
     fontWeight: "900",
     letterSpacing: -0.45,
   },
 
-  /*
-  |--------------------------------------------------------------------------
-  | PERFORMANCE HEADING
-  |--------------------------------------------------------------------------
-  */
-
   performanceHeading: {
-    marginTop: 2,
-    marginBottom: 1,
+    marginTop: runnerSpacing.xxs,
+    marginBottom: runnerSpacing.xxs,
   },
 
   sectionHeading: {
-    fontSize: 15,
+    fontSize: 19,
+    lineHeight: 26,
     fontWeight: "900",
   },
 
-  /*
-  |--------------------------------------------------------------------------
-  | PERFORMANCE TIERS
-  |--------------------------------------------------------------------------
-  */
-
   tierCard: {
-    borderWidth: 1,
-    borderRadius: 19,
-    padding: 15,
-    gap: 12,
+    paddingVertical: runnerSpacing.md,
+    paddingHorizontal: runnerSpacing.xs,
+    gap: runnerSpacing.md,
+    borderBottomWidth: StyleSheet.hairlineWidth,
   },
 
   tierCardTop: {
     flexDirection: "row",
     alignItems: "center",
-    gap: 11,
+    gap: runnerSpacing.md,
   },
 
   tierIconWrap: {
-    width: 43,
-    height: 43,
-    borderRadius: 14,
+    width: 44,
+    height: 44,
+    borderRadius: runnerRadii.md,
     alignItems: "center",
     justifyContent: "center",
   },
 
   tierCardCopy: {
     flex: 1,
-    gap: 4,
+    gap: runnerSpacing.xxs,
   },
 
   tierEyebrow: {
-    fontSize: 9,
-    fontWeight: "900",
-    letterSpacing: 1,
+    fontSize: 13,
+    lineHeight: 18,
+    fontWeight: "800",
+    letterSpacing: 0.8,
   },
 
   tierTitle: {
-    fontSize: 15,
+    fontSize: 19,
+    lineHeight: 25,
     fontWeight: "900",
   },
 
@@ -2155,39 +1835,44 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
-    gap: 10,
+    flexWrap: "wrap",
+    gap: runnerSpacing.sm,
   },
 
   tierPointsLabel: {
-    fontSize: 10,
+    fontSize: 14,
+    lineHeight: 20,
     fontWeight: "700",
   },
 
   tierPointsValue: {
-    fontSize: 12,
+    fontSize: 14,
+    lineHeight: 20,
     fontWeight: "900",
     letterSpacing: 0.2,
   },
 
   tierProgressTrack: {
     height: 7,
-    borderRadius: 5,
+    borderRadius: runnerRadii.pill,
     overflow: "hidden",
   },
 
   tierProgressFill: {
     height: "100%",
-    borderRadius: 5,
+    borderRadius: runnerRadii.pill,
   },
 
   tierProgressFooter: {
     flexDirection: "row",
     justifyContent: "space-between",
-    gap: 8,
+    flexWrap: "wrap",
+    gap: runnerSpacing.sm,
   },
 
   tierProgressCaption: {
-    fontSize: 9,
+    fontSize: 13,
+    lineHeight: 19,
     fontWeight: "700",
   },
 
@@ -2195,70 +1880,69 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
-    gap: 3,
+    flexWrap: "wrap",
+    gap: runnerSpacing.xs,
   },
 
   tierStepItem: {
     flexDirection: "row",
     alignItems: "center",
-    gap: 4,
+    gap: runnerSpacing.xxs,
     flexShrink: 1,
   },
 
   tierStep: {
-    fontSize: 9,
+    fontSize: 13,
+    lineHeight: 18,
     fontWeight: "800",
   },
 
-  /*
-  |--------------------------------------------------------------------------
-  | PERFORMANCE METRICS
-  |--------------------------------------------------------------------------
-  */
-
   performanceMetricRow: {
     flexDirection: "row",
-    gap: 8,
+    alignItems: "stretch",
+    paddingVertical: runnerSpacing.sm,
   },
 
   performanceMetric: {
     flex: 1,
-    minHeight: 83,
-    borderRadius: 15,
-    borderWidth: 1,
+    minWidth: 0,
+    minHeight: 88,
     alignItems: "center",
     justifyContent: "center",
-    paddingHorizontal: 4,
-    paddingVertical: 9,
-    gap: 4,
+    paddingHorizontal: runnerSpacing.xs,
+    paddingVertical: runnerSpacing.sm,
+    gap: runnerSpacing.xs,
+  },
+
+  metricDivider: {
+    width: StyleSheet.hairlineWidth,
+    alignSelf: "stretch",
+    marginVertical: runnerSpacing.xs,
   },
 
   performanceMetricValue: {
-    fontSize: 17,
+    fontSize: 21,
+    lineHeight: 27,
     fontWeight: "900",
   },
 
   performanceMetricLabel: {
-    fontSize: 9,
-    fontWeight: "800",
+    fontSize: 14,
+    lineHeight: 19,
+    fontWeight: "700",
     textAlign: "center",
   },
-
-  /*
-  |--------------------------------------------------------------------------
-  | QUICK ACCESS
-  |--------------------------------------------------------------------------
-  */
 
   quickAccessSection: {
     flex: 1,
     minHeight: 0,
-    paddingTop: 15,
-    gap: 10,
+    paddingTop: runnerSpacing.lg,
+    gap: runnerSpacing.sm,
   },
 
   quickAccessHeading: {
-    fontSize: 15,
+    fontSize: 20,
+    lineHeight: 27,
     fontWeight: "900",
   },
 
@@ -2267,121 +1951,94 @@ const styles = StyleSheet.create({
     minHeight: 0,
   },
 
-    quickAccessContent: {
+  quickAccessContent: {
     flexGrow: 1,
-    justifyContent: "space-between",
-    gap: 12,
-    paddingBottom: 8,
+    justifyContent: "flex-start",
+    paddingBottom: runnerSpacing.lg,
   },
 
   quickAccessRows: {
-    gap: 9,
+    gap: 0,
   },
 
   quickAccessRow: {
-    minHeight: 66,
-    borderWidth: 1,
-    borderRadius: 15,
-    paddingHorizontal: 13,
-    paddingVertical: 9,
+    minHeight: 76,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    paddingHorizontal: runnerSpacing.xs,
+    paddingVertical: runnerSpacing.sm,
     flexDirection: "row",
     alignItems: "center",
-    gap: 12,
+    gap: runnerSpacing.md,
     backgroundColor: "transparent",
   },
 
   quickAccessIcon: {
-    width: 32,
-    height: 36,
+    width: 36,
+    height: 42,
     alignItems: "center",
     justifyContent: "center",
   },
 
   quickAccessCopy: {
     flex: 1,
-    gap: 3,
+    gap: runnerSpacing.xxs,
   },
 
   quickAccessTitle: {
-    fontSize: 12,
-    fontWeight: "900",
+    fontSize: 16,
+    lineHeight: 22,
+    fontWeight: "800",
   },
 
   quickAccessSubtitle: {
-    fontSize: 10,
-    lineHeight: 14,
-    fontWeight: "600",
+    fontSize: 14,
+    lineHeight: 20,
+    fontWeight: "500",
   },
 
-    inviteReferralCard: {
+  inviteReferralCard: {
     width: "100%",
-    minHeight: 154,
-    marginTop: 12,
-    marginBottom: 4,
-    borderWidth: 1,
-    borderRadius: 19,
-    paddingHorizontal: 16,
-    paddingVertical: 14,
+    minHeight: 90,
+    marginTop: runnerSpacing.sm,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    paddingHorizontal: runnerSpacing.xs,
+    paddingVertical: runnerSpacing.md,
+    flexDirection: "row",
     alignItems: "center",
-    justifyContent: "center",
-    gap: 6,
+    gap: runnerSpacing.md,
+    backgroundColor: "transparent",
   },
 
   inviteReferralIcon: {
-    width: 39,
-    height: 39,
-    borderRadius: 20,
+    width: 44,
+    height: 44,
     alignItems: "center",
     justifyContent: "center",
-    marginBottom: 2,
+  },
+
+  inviteReferralCopy: {
+    flex: 1,
+    gap: runnerSpacing.xxs,
   },
 
   inviteReferralEyebrow: {
-    color: "#E8C574",
-    fontSize: 8,
+    fontSize: 13,
+    lineHeight: 18,
     fontWeight: "900",
-    letterSpacing: 1.4,
+    letterSpacing: 0.9,
   },
 
   inviteReferralTitle: {
-    color: "#FFFFFF",
     fontSize: 18,
-    lineHeight: 23,
+    lineHeight: 24,
     fontWeight: "900",
-    textAlign: "center",
   },
 
   inviteReferralSubtitle: {
-    color: "rgba(255,255,255,0.78)",
-    fontSize: 10,
-    lineHeight: 15,
-    fontWeight: "600",
-    textAlign: "center",
+    fontSize: 14,
+    lineHeight: 20,
+    fontWeight: "500",
   },
-
-  inviteReferralAction: {
-    minHeight: 35,
-    marginTop: 5,
-    paddingHorizontal: 14,
-    borderRadius: 20,
-    backgroundColor: "#FFFFFF",
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "center",
-    gap: 8,
-  },
-
-  inviteReferralActionText: {
-    color: "#000535",
-    fontSize: 10,
-    fontWeight: "900",
-  },
-  
-  /*
-  |--------------------------------------------------------------------------
-  | DASHBOARD MENU
-  |--------------------------------------------------------------------------
-  */
 
   drawerRoot: {
     flex: 1,
@@ -2394,16 +2051,15 @@ const styles = StyleSheet.create({
     left: 0,
     right: 0,
     bottom: 0,
-    backgroundColor: "rgba(0,0,0,0.58)",
   },
 
   drawerPanel: {
-    width: "82%",
-    maxWidth: 340,
+    width: "84%",
+    maxWidth: 360,
     minHeight: "100%",
-    borderRightWidth: 1,
-    paddingHorizontal: 17,
-    gap: 8,
+    borderRightWidth: StyleSheet.hairlineWidth,
+    paddingHorizontal: runnerSpacing.lg,
+    gap: runnerSpacing.xs,
     elevation: 24,
   },
 
@@ -2411,26 +2067,28 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
-    marginBottom: 10,
+    marginBottom: runnerSpacing.sm,
   },
 
   drawerBrand: {
     color: "#FFFFFF",
-    fontSize: 21,
+    fontSize: 24,
+    lineHeight: 31,
     fontWeight: "900",
     letterSpacing: -0.4,
   },
 
   drawerSubtitle: {
-    color: "rgba(255,255,255,0.68)",
-    fontSize: 11,
-    marginTop: 3,
+    color: "rgba(255,255,255,0.78)",
+    fontSize: 14,
+    lineHeight: 20,
+    marginTop: runnerSpacing.xxs,
   },
 
   drawerClose: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
+    width: runnerTouchTargets.minimum,
+    height: runnerTouchTargets.minimum,
+    borderRadius: runnerRadii.pill,
     backgroundColor: "rgba(255,255,255,0.12)",
     alignItems: "center",
     justifyContent: "center",
@@ -2438,23 +2096,25 @@ const styles = StyleSheet.create({
 
   drawerDivider: {
     height: StyleSheet.hairlineWidth,
-    backgroundColor: "rgba(255,255,255,0.23)",
-    marginBottom: 8,
+    backgroundColor: "rgba(255,255,255,0.3)",
+    marginBottom: runnerSpacing.sm,
   },
 
   drawerItem: {
-    minHeight: 52,
-    borderRadius: 13,
-    paddingHorizontal: 11,
+    minHeight: 60,
+    paddingHorizontal: runnerSpacing.xs,
     flexDirection: "row",
     alignItems: "center",
-    gap: 12,
+    gap: runnerSpacing.md,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: "rgba(255,255,255,0.2)",
   },
 
   drawerItemText: {
     flex: 1,
     color: "#FFFFFF",
-    fontSize: 13,
-    fontWeight: "800",
+    fontSize: 16,
+    lineHeight: 22,
+    fontWeight: "700",
   },
 });
