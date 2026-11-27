@@ -25,6 +25,7 @@ type Requirement = {
   document_type: string;
   title: string;
   is_required: boolean;
+  requires_expiry: boolean;
 };
 
 type SupportedDocument = {
@@ -37,6 +38,7 @@ type UploadInput = {
   file: File;
   bytes: Uint8Array;
   format: SupportedDocument;
+  validUntil: string | null;
 };
 
 type UploadedDocument = {
@@ -46,6 +48,7 @@ type UploadedDocument = {
   requirement_key: string;
   review_status: string;
   submitted_at: Date | string;
+  valid_until: string | null;
 };
 
 type ExistingDocument = {
@@ -60,6 +63,41 @@ type RunnerProfile = {
   vehicle_model: string | null;
   vehicle_registration: string | null;
 };
+
+function isValidDateOnly(value: string): boolean {
+  const match = /^(\\d{4})-(\\d{2})-(\\d{2})$/.exec(value);
+  if (!match) return false;
+
+  const year = Number(match[1]);
+  const month = Number(match[2]);
+  const day = Number(match[3]);
+  const date = new Date(Date.UTC(year, month - 1, day));
+
+  return (
+    date.getUTCFullYear() === year &&
+    date.getUTCMonth() === month - 1 &&
+    date.getUTCDate() === day
+  );
+}
+
+function todayInNairobi(): string {
+  const parts = new Intl.DateTimeFormat("en-CA", {
+    timeZone: "Africa/Nairobi",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).formatToParts(new Date());
+
+  const values = Object.fromEntries(
+    parts.map((part) => [part.type, part.value]),
+  );
+
+  return `${values.year}-${values.month}-${values.day}`;
+}
+
+function isCurrentExpiryDate(value: string): boolean {
+  return isValidDateOnly(value) && value >= todayInNairobi();
+}
 
 function response(
   body: Record<string, unknown>,
@@ -153,6 +191,7 @@ function validRequirementKey(value: string): boolean {
 async function prepareUpload(
   requirementKey: string,
   file: File,
+  validUntil: string | null,
 ): Promise<UploadInput> {
   if (file.size <= 0) {
     throw new Error("The selected document is empty.");
@@ -190,6 +229,7 @@ async function prepareUpload(
     file,
     bytes,
     format,
+    validUntil,
   };
 }
 
@@ -212,6 +252,7 @@ function parseUploadInputs(
   inputs: Array<{
     requirementKey: string;
     file: File;
+    validUntil: string | null;
   }>;
   isNationalIdPair: boolean;
 } {
@@ -263,10 +304,12 @@ function parseUploadInputs(
         {
           requirementKey: frontKey,
           file: frontFileValue,
+          validUntil: null,
         },
         {
           requirementKey: backKey,
           file: backFileValue,
+          validUntil: null,
         },
       ],
     };
@@ -276,6 +319,7 @@ function parseUploadInputs(
     formData.get("requirementKey");
 
   const fileValue = formData.get("file");
+  const expiryValue = formData.get("validUntil");
 
   if (
     typeof requirementKeyValue !== "string" ||
@@ -288,6 +332,36 @@ function parseUploadInputs(
 
   if (!isFileValue(fileValue)) {
     throw new Error("Select a document to upload.");
+  }
+
+  if (
+    expiryValue !== null &&
+    typeof expiryValue !== "string"
+  ) {
+    throw new Error("Enter a valid document expiry date.");
+  }
+
+  const validUntil =
+    typeof expiryValue === "string" && expiryValue.trim()
+      ? expiryValue.trim()
+      : null;
+
+  if (
+    validUntil &&
+    !isValidDateOnly(validUntil)
+  ) {
+    throw new Error(
+      "Enter the expiry date in YYYY-MM-DD format.",
+    );
+  }
+
+  if (
+    validUntil &&
+    !isCurrentExpiryDate(validUntil)
+  ) {
+    throw new Error(
+      "The document expiry date cannot be in the past.",
+    );
   }
 
   const requirementKey = requirementKeyValue.trim();
@@ -309,6 +383,7 @@ function parseUploadInputs(
       {
         requirementKey,
         file: fileValue,
+        validUntil,
       },
     ],
   };
@@ -374,6 +449,7 @@ export async function POST(request: Request) {
         prepareUpload(
           input.requirementKey,
           input.file,
+          input.validUntil,
         ),
       ),
     );
@@ -535,7 +611,8 @@ export async function POST(request: Request) {
            vehicle_type,
            document_type,
            title,
-           is_required
+           is_required,
+           requires_expiry
          FROM public.runner_onboarding_document_requirements
          WHERE requirement_key = ANY($1::text[])
            AND is_active = true
@@ -582,6 +659,36 @@ export async function POST(request: Request) {
         "Optional documents cannot be submitted during Runner onboarding. Upload only the mandatory documents shown in your checklist.",
         403,
       );
+    }
+
+    for (const upload of preparedUploads) {
+      const requirement = requirementMap.get(upload.requirementKey);
+      if (!requirement) continue;
+
+      if (requirement.requires_expiry && !upload.validUntil) {
+        return await rejectTransaction(
+          `Enter the expiry date for ${requirement.title} before uploading it.`,
+          400,
+        );
+      }
+
+      if (
+        requirement.requires_expiry &&
+        upload.validUntil &&
+        !isCurrentExpiryDate(upload.validUntil)
+      ) {
+        return await rejectTransaction(
+          `The expiry date for ${requirement.title} must be today or a future date.`,
+          400,
+        );
+      }
+
+      if (!requirement.requires_expiry && upload.validUntil) {
+        return await rejectTransaction(
+          `An expiry date is not required for ${requirement.title}.`,
+          400,
+        );
+      }
     }
 
     if (parsed.isNationalIdPair) {
@@ -718,22 +825,25 @@ export async function POST(request: Request) {
              category_key,
              requirement_key,
              review_status,
-             submitted_at
+             submitted_at,
+             valid_until
            )
-           VALUES ($1, $2, $3, $4, $5, 'pending', now())
+           VALUES ($1, $2, $3, $4, $5, 'pending', now(), $6)
            RETURNING
              id,
              document_type,
              category_key,
              requirement_key,
              review_status,
-             submitted_at`,
+             submitted_at,
+             valid_until`,
           [
             auth.runner.id,
             item.requirement.document_type,
             item.storageKey,
             item.requirement.category_key,
             item.requirement.requirement_key,
+            item.upload.validUntil,
           ],
         );
 
@@ -758,6 +868,7 @@ export async function POST(request: Request) {
       requirementKey: document.requirement_key,
       reviewStatus: document.review_status,
       submittedAt: document.submitted_at,
+      validUntil: document.valid_until,
     }));
 
     return response({
