@@ -21,11 +21,16 @@ const MIGRATIONS_DIR = path.join(
 
 const MIGRATION_LOCK_ID = "73420520261107";
 
-// These two migrations have a strict dependency:
-// initial-schema creates runner_accounts, which email-auth modifies.
+// Explicit migration dependencies. Vehicle management must run before
+// vehicle-document-validity because it creates document_purpose and the
+// vehicle tables. Document-expiry-capture then attaches uploaded documents
+// to those vehicle records and configures requires_expiry.
 const MIGRATION_PRIORITY = new Map([
   ["2026-11-07-runner-initial-schema.sql", 0],
   ["2026-11-07-runner-email-auth.sql", 1],
+  ["2026-11-27-runner-vehicle-management.sql", 2],
+  ["2026-11-27-runner-vehicle-document-validity.sql", 3],
+  ["2026-11-27-runner-document-expiry-capture.sql", 4],
 ]);
 
 async function migrateRunnerDatabase() {
@@ -91,23 +96,26 @@ async function migrateRunnerDatabase() {
     const files = (await readdir(MIGRATIONS_DIR))
       .filter((file) => file.endsWith(".sql"))
       .sort((a, b) => {
+        // Keep migrations from earlier dates ahead of later migrations.
+        // Priority ordering applies only within the same date, preventing
+        // new vehicle migrations from jumping ahead of their prerequisites.
+        const dateA = a.slice(0, 10);
+        const dateB = b.slice(0, 10);
+
+        if (dateA !== dateB) {
+          return dateA.localeCompare(dateB);
+        }
+
         const priorityA = MIGRATION_PRIORITY.get(a);
         const priorityB = MIGRATION_PRIORITY.get(b);
 
-        // Run explicitly ordered prerequisite migrations first.
-        if (priorityA !== undefined && priorityB !== undefined) {
+        if (
+          priorityA !== undefined &&
+          priorityB !== undefined
+        ) {
           return priorityA - priorityB;
         }
 
-        if (priorityA !== undefined) {
-          return -1;
-        }
-
-        if (priorityB !== undefined) {
-          return 1;
-        }
-
-        // Preserve automatic alphabetical ordering for all others.
         return a.localeCompare(b);
       });
 
@@ -168,13 +176,21 @@ async function migrateRunnerDatabase() {
     console.log(`Already applied: ${skipped}`);
     console.log("--------------------------------");
   } finally {
+    // A failed SQL migration can leave its explicit BEGIN transaction
+    // aborted. Roll it back before attempting advisory_unlock; otherwise
+    // PostgreSQL rejects the unlock query inside the failed transaction.
+    await client.query("ROLLBACK").catch(() => undefined);
+
     if (lockAcquired) {
       try {
         await client.query("SELECT pg_advisory_unlock($1::bigint)", [
           MIGRATION_LOCK_ID,
         ]);
-      } catch {
-        console.error("Could not release Runner migration lock.");
+      } catch (cause) {
+        console.error(
+          "Could not release Runner migration lock cleanly.",
+          cause instanceof Error ? cause.message : "unknown error",
+        );
       }
     }
 

@@ -221,6 +221,7 @@ export type RunnerDocumentRequirement = {
   title: string;
   instructions: string | null;
   required: boolean;
+  requiresExpiry: boolean;
 };
 
 export type RunnerDocumentReviewStatus =
@@ -238,6 +239,7 @@ export type RunnerUploadedDocument = {
   rejectionReason: string | null;
   submittedAt: string;
   reviewedAt: string | null;
+  validUntil: string | null;
 };
 
 export type RunnerOnboardingData = {
@@ -1085,6 +1087,7 @@ export async function updateRunnerOnboarding(input: {
 export async function uploadRunnerDocument(input: {
   requirementKey: string;
   file: RunnerDocumentFile;
+  validUntil?: string | null;
 }): Promise<RunnerDocumentUploadResult> {
   const requirementKey = input.requirementKey.trim();
 
@@ -1110,6 +1113,10 @@ export async function uploadRunnerDocument(input: {
   const formData = new FormData();
 
   formData.append("requirementKey", requirementKey);
+
+  if (input.validUntil) {
+    formData.append("validUntil", input.validUntil);
+  }
 
   appendRunnerFile(
     formData,

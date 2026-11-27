@@ -16,6 +16,7 @@ import {
   StatusBar,
   StyleSheet,
   Text,
+  TextInput,
   View,
 } from "react-native";
 
@@ -61,6 +62,7 @@ type Requirement = {
   title: string;
   instructions: string | null;
   required: boolean;
+  requiresExpiry: boolean;
 };
 
 type UploadedDocument = Pick<
@@ -110,6 +112,61 @@ function isRunnerSessionExpired(cause: unknown): boolean {
   return /HTTP 401|session has expired|sign in again|sign in to continue|no valid runner session|unauthorized/i.test(
     message,
   );
+}
+
+function formatExpiryInput(value: string): string {
+  const digits = value.replace(/[^0-9]/g, "").slice(0, 8);
+
+  if (digits.length <= 2) return digits;
+  if (digits.length <= 4) {
+    return `${digits.slice(0, 2)}/${digits.slice(2)}`;
+  }
+
+  return `${digits.slice(0, 2)}/${digits.slice(2, 4)}/${digits.slice(4)}`;
+}
+
+function expiryInputToIso(value: string): string | null {
+  const parts = value.trim().split("/");
+  if (
+    parts.length !== 3 ||
+    parts[0].length !== 2 ||
+    parts[1].length !== 2 ||
+    parts[2].length !== 4 ||
+    parts.some((part) => !/^[0-9]+$/.test(part))
+  ) {
+    return null;
+  }
+
+  const [dayText, monthText, yearText] = parts;
+  const day = Number(dayText);
+  const month = Number(monthText);
+  const year = Number(yearText);
+  const date = new Date(Date.UTC(year, month - 1, day));
+
+  if (
+    date.getUTCFullYear() !== year ||
+    date.getUTCMonth() !== month - 1 ||
+    date.getUTCDate() !== day
+  ) {
+    return null;
+  }
+
+  const iso = `${yearText}-${monthText}-${dayText}`;
+
+  const todayParts = new Intl.DateTimeFormat("en-CA", {
+    timeZone: "Africa/Nairobi",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).formatToParts(new Date());
+
+  const todayValues = Object.fromEntries(
+    todayParts.map((part) => [part.type, part.value]),
+  );
+
+  const today = `${todayValues.year}-${todayValues.month}-${todayValues.day}`;
+
+  return iso >= today ? iso : null;
 }
 
 function formatFileSize(bytes: number): string {
@@ -540,6 +597,7 @@ export default function RunnerDocumentDetailScreen() {
   const [frontFile, setFrontFile] = useState<PickedFile | null>(null);
   const [backFile, setBackFile] = useState<PickedFile | null>(null);
   const [singleFile, setSingleFile] = useState<PickedFile | null>(null);
+  const [singleExpiryDate, setSingleExpiryDate] = useState("");
 
   const [loading, setLoading] = useState(true);
   const [uploading, setUploading] = useState(false);
@@ -795,6 +853,15 @@ export default function RunnerDocumentDetailScreen() {
   const singleDescription =
     singleRequirement?.instructions ??
     "Upload a clear, readable image or PDF of this document.";
+
+  const singleDocumentRequiresExpiry =
+    !isNationalIdentity &&
+    singleRequirement?.requiresExpiry === true;
+
+  const singleExpiryIso =
+    singleDocumentRequiresExpiry
+      ? expiryInputToIso(singleExpiryDate)
+      : null;
 
   /* =========================================================
      COMPLIANCE AND DOCUMENT LOCKS
@@ -1199,6 +1266,15 @@ export default function RunnerDocumentDetailScreen() {
 
         return;
       }
+
+      if (singleDocumentRequiresExpiry && !singleExpiryIso) {
+        showWarning(
+          "Enter a valid expiry date from the document. Use DD/MM/YYYY and make sure the date is today or later.",
+          "Document expiry required",
+        );
+
+        return;
+      }
     }
 
     uploadInFlightRef.current = true;
@@ -1231,6 +1307,7 @@ export default function RunnerDocumentDetailScreen() {
         const result = await uploadRunnerDocument({
           requirementKey: routeKey,
           file: toApiFile(singleFile),
+          validUntil: singleExpiryIso,
         });
 
         if (
@@ -1284,7 +1361,8 @@ export default function RunnerDocumentDetailScreen() {
     !canUpload ||
     (isNationalIdentity
       ? !frontFile || !backFile
-      : !singleFile);
+      : !singleFile ||
+        (singleDocumentRequiresExpiry && !singleExpiryIso));
 
   /* =========================================================
      RENDER
@@ -1867,6 +1945,72 @@ export default function RunnerDocumentDetailScreen() {
                 onBrowse={() => void pickDocumentFile("single")}
                 onClear={() => clearFile("single")}
               />
+
+              {singleDocumentRequiresExpiry ? (
+                <View
+                  style={[
+                    styles.expiryField,
+                    {
+                      backgroundColor: colors.surface,
+                      borderColor: colors.border,
+                    },
+                  ]}
+                >
+                  <Text
+                    style={[
+                      styles.expiryLabel,
+                      { color: colors.text },
+                    ]}
+                  >
+                    Document expiry date
+                  </Text>
+
+                  <Text
+                    style={[
+                      styles.expiryHint,
+                      { color: supportingText },
+                    ]}
+                  >
+                    Enter the expiry date printed on this document.
+                  </Text>
+
+                  <TextInput
+                    value={singleExpiryDate}
+                    onChangeText={(value) =>
+                      setSingleExpiryDate(formatExpiryInput(value))
+                    }
+                    placeholder="DD/MM/YYYY"
+                    placeholderTextColor={colors.textMuted}
+                    keyboardType="number-pad"
+                    maxLength={10}
+                    editable={!uploading && canUpload}
+                    accessibilityLabel="Document expiry date, day month year"
+                    style={[
+                      styles.expiryInput,
+                      {
+                        color: colors.text,
+                        borderColor: colors.border,
+                        backgroundColor: colors.paper,
+                      },
+                    ]}
+                  />
+
+                  <Text
+                    style={[
+                      styles.expiryHint,
+                      {
+                        color: singleExpiryDate.length === 10 && !singleExpiryIso
+                          ? colors.red
+                          : supportingText,
+                      },
+                    ]}
+                  >
+                    {singleExpiryDate.length === 10 && !singleExpiryIso
+                      ? "Enter a real date that has not passed."
+                      : "This date is required before you can submit the document."}
+                  </Text>
+                </View>
+              ) : null}
             </>
           ) : null}
 
@@ -2258,6 +2402,34 @@ const styles = StyleSheet.create({
     fontSize: 12,
     fontWeight: "900",
     paddingTop: 2,
+  },
+
+  expiryField: {
+    borderWidth: 1,
+    borderRadius: 15,
+    padding: 15,
+    gap: 8,
+  },
+
+  expiryLabel: {
+    fontSize: 14,
+    lineHeight: 19,
+    fontWeight: "900",
+  },
+
+  expiryHint: {
+    fontSize: 12,
+    lineHeight: 17,
+  },
+
+  expiryInput: {
+    minHeight: 50,
+    borderWidth: 1,
+    borderRadius: 11,
+    paddingHorizontal: 14,
+    fontSize: 16,
+    fontWeight: "800",
+    letterSpacing: 1,
   },
 
   primaryButton: {

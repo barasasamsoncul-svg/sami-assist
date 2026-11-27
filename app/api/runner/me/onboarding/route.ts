@@ -35,6 +35,7 @@ type RequirementRow = {
   title: string;
   instructions: string | null;
   is_required: boolean;
+  requires_expiry: boolean;
 };
 
 type DocumentRow = {
@@ -46,6 +47,7 @@ type DocumentRow = {
   rejection_reason: string | null;
   submitted_at: string;
   reviewed_at: string | null;
+  valid_until: string | null;
 };
 
 type RunnerVehicleType = "bike" | "motorbike" | "vehicle";
@@ -301,7 +303,8 @@ export async function GET(request: Request) {
            document_type,
            title,
            instructions,
-           is_required
+           is_required,
+           requires_expiry
          FROM public.runner_onboarding_document_requirements
          WHERE is_active = true
            AND is_required = true
@@ -333,7 +336,8 @@ export async function GET(request: Request) {
          review_status,
          rejection_reason,
          submitted_at,
-         reviewed_at
+         reviewed_at,
+         valid_until
        FROM public.runner_verification_documents
        WHERE runner_id = $1
        ORDER BY submitted_at DESC, id DESC`,
@@ -349,6 +353,7 @@ export async function GET(request: Request) {
         title: item.title,
         instructions: item.instructions,
         required: item.is_required,
+        requiresExpiry: item.requires_expiry,
       }),
     );
 
@@ -362,6 +367,7 @@ export async function GET(request: Request) {
         rejectionReason: item.rejection_reason,
         submittedAt: item.submitted_at,
         reviewedAt: item.reviewed_at,
+        validUntil: item.valid_until,
       }),
     );
 
