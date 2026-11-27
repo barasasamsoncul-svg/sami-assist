@@ -65,12 +65,21 @@ type RunnerProfile = {
 };
 
 function isValidDateOnly(value: string): boolean {
-  const match = /^(\\d{4})-(\\d{2})-(\\d{2})$/.exec(value);
-  if (!match) return false;
+  const parts = value.split("-");
+  if (
+    parts.length !== 3 ||
+    parts[0].length !== 4 ||
+    parts[1].length !== 2 ||
+    parts[2].length !== 2 ||
+    parts.some((part) => !/^[0-9]+$/.test(part))
+  ) {
+    return false;
+  }
 
-  const year = Number(match[1]);
-  const month = Number(match[2]);
-  const day = Number(match[3]);
+  const [yearText, monthText, dayText] = parts;
+  const year = Number(yearText);
+  const month = Number(monthText);
+  const day = Number(dayText);
   const date = new Date(Date.UTC(year, month - 1, day));
 
   return (
