@@ -157,7 +157,7 @@ export default function RunnerSettingsScreen() {
         <View style={styles.header}>
           <Pressable
             accessibilityRole="button"
-            accessibilityLabel="Go back to dashboard"
+            accessibilityLabel="Go back"
             onPress={goBack}
             style={({ pressed }) => [
               styles.backButton,
@@ -197,15 +197,7 @@ export default function RunnerSettingsScreen() {
                 {group.title}
               </Text>
 
-              <View
-                style={[
-                  styles.groupCard,
-                  {
-                    backgroundColor: colors.surface,
-                    borderColor: colors.border,
-                  },
-                ]}
-              >
+              <View style={styles.groupItems}>
                 {group.items.map((item, index) => (
                   <View key={item.key}>
                     <Pressable
@@ -217,7 +209,7 @@ export default function RunnerSettingsScreen() {
                         {
                           backgroundColor: pressed
                             ? colors.pressed
-                            : colors.surface,
+                            : "transparent",
                         },
                       ]}
                     >
@@ -245,22 +237,18 @@ export default function RunnerSettingsScreen() {
                         {item.title}
                       </Text>
 
-                      <View style={styles.arrowContainer}>
-                        <Ionicons
-                          name="chevron-forward"
-                          size={19}
-                          color="#00061D"
-                        />
-                      </View>
+                      <Ionicons
+                        name="chevron-forward"
+                        size={19}
+                        color="#00061D"
+                      />
                     </Pressable>
 
                     {index < group.items.length - 1 ? (
                       <View
                         style={[
                           styles.separator,
-                          {
-                            backgroundColor: colors.divider,
-                          },
+                          { backgroundColor: colors.divider },
                         ]}
                       />
                     ) : null}
@@ -320,17 +308,15 @@ const styles = StyleSheet.create({
     letterSpacing: 0.9,
   },
 
-  groupCard: {
-    borderWidth: 1,
-    borderRadius: runnerRadii.lg,
-    overflow: "hidden",
+  groupItems: {
+    width: "100%",
   },
 
   categoryRow: {
     minHeight: runnerTouchTargets.comfortable + runnerSpacing.lg,
     flexDirection: "row",
     alignItems: "center",
-    paddingHorizontal: runnerSpacing.md,
+    paddingHorizontal: runnerSpacing.xs,
     paddingVertical: runnerSpacing.sm,
     gap: runnerSpacing.md,
   },
@@ -349,15 +335,8 @@ const styles = StyleSheet.create({
     fontWeight: runnerTypography.fontWeight.semibold,
   },
 
-  arrowContainer: {
-    alignItems: "center",
-    justifyContent: "center",
-    width: 24,
-  },
-
   separator: {
     height: StyleSheet.hairlineWidth,
-    marginLeft: 44 + runnerSpacing.md,
-    marginRight: runnerSpacing.md,
+    width: "100%",
   },
 });
