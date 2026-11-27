@@ -115,7 +115,7 @@ function isRunnerSessionExpired(cause: unknown): boolean {
 }
 
 function formatExpiryInput(value: string): string {
-  const digits = value.replace(/\\D/g, "").slice(0, 8);
+  const digits = value.replace(/[^0-9]/g, "").slice(0, 8);
 
   if (digits.length <= 2) return digits;
   if (digits.length <= 4) {
@@ -126,12 +126,21 @@ function formatExpiryInput(value: string): string {
 }
 
 function expiryInputToIso(value: string): string | null {
-  const match = /^(\\d{2})\\/(\\d{2})\\/(\\d{4})$/.exec(value.trim());
-  if (!match) return null;
+  const parts = value.trim().split("/");
+  if (
+    parts.length !== 3 ||
+    parts[0].length !== 2 ||
+    parts[1].length !== 2 ||
+    parts[2].length !== 4 ||
+    parts.some((part) => !/^[0-9]+$/.test(part))
+  ) {
+    return null;
+  }
 
-  const day = Number(match[1]);
-  const month = Number(match[2]);
-  const year = Number(match[3]);
+  const [dayText, monthText, yearText] = parts;
+  const day = Number(dayText);
+  const month = Number(monthText);
+  const year = Number(yearText);
   const date = new Date(Date.UTC(year, month - 1, day));
 
   if (
@@ -142,7 +151,7 @@ function expiryInputToIso(value: string): string | null {
     return null;
   }
 
-  const iso = `${match[3]}-${match[2]}-${match[1]}`;
+  const iso = `${yearText}-${monthText}-${dayText}`;
 
   const todayParts = new Intl.DateTimeFormat("en-CA", {
     timeZone: "Africa/Nairobi",
